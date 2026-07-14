@@ -9,6 +9,6 @@ export async function GET(req, { params }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
-  const token = signVideoId(id);
+  const token = await signVideoId(id);
   return NextResponse.json({ src: `/api/v/${token}`, id });
 }

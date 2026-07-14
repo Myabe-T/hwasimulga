@@ -8,7 +8,7 @@ const CDN_BASE = 'https://cdn.desimms.com.co';
 // GET /api/v/[token] — Signed Redirect
 export async function GET(req, { params }) {
   const { token } = await params;
-  const id = verifyVideoToken(token);
+  const id = await verifyVideoToken(token);
   if (!id) return new NextResponse('Token expired or invalid', { status: 403 });
 
   const url = `${CDN_BASE}/${id}.mp4`;
