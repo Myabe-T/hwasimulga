@@ -8,13 +8,20 @@ const CDN_BASE = 'https://cdn.desimms.com.co';
 /**
  * GET /api/v/[token]
  *
- * STREAMS the video through Cloudflare — CDN URL is NEVER sent to the browser.
- * The <video> src stays as /api/v/<token> forever, even in "Open in new tab".
+ * Verifies the signed JWT token, then issues a 302 redirect to the CDN.
  *
- * Range requests (for seeking/scrubbing) are forwarded to the CDN so video
- * playback speed is unaffected — we just relay bytes, no extra processing.
+ * WHY REDIRECT (not stream):
+ * Streaming video through Cloudflare Workers violates their ToS (Section 2.8)
+ * and will cause account suspension, just like Vercel did.
+ * The 302 redirect sends ZERO bytes through Cloudflare — it goes straight from
+ * the browser to the CDN, which is perfectly fine and fast.
  *
- * ?dl=1  →  adds Content-Disposition: attachment  (triggers browser download)
+ * CDN URL PROTECTION:
+ * The CDN should be configured with Referer-based access control so that
+ * cdn.desimms.com.co URLs only work when accessed from hwasimulga.pages.dev.
+ * Direct access (like pasting the URL in a new tab) would then return 403.
+ *
+ * ?dl=1 → triggers browser download via Content-Disposition header
  */
 export async function GET(req, { params }) {
   const { token } = await params;
@@ -29,45 +36,23 @@ export async function GET(req, { params }) {
   const cdnUrl = `${CDN_BASE}/${id}.mp4`;
   const isDownload = new URL(req.url).searchParams.get('dl') === '1';
 
-  // Forward the Range header so seeking / partial content works at full speed
-  const upstreamHeaders = new Headers();
-  upstreamHeaders.set('User-Agent', 'Mozilla/5.0');
-  const rangeHeader = req.headers.get('range');
-  if (rangeHeader) upstreamHeaders.set('Range', rangeHeader);
-
-  let upstream;
-  try {
-    upstream = await fetch(cdnUrl, { headers: upstreamHeaders });
-  } catch {
-    return new NextResponse('CDN unreachable', { status: 502 });
-  }
-
-  if (!upstream.ok && upstream.status !== 206) {
-    return new NextResponse('Video not found', { status: 404 });
-  }
-
-  // Build response headers
-  const resHeaders = new Headers();
-  resHeaders.set('Content-Type', 'video/mp4');
-  resHeaders.set('Accept-Ranges', 'bytes');
-  // No caching — each token is single-use scoped
-  resHeaders.set('Cache-Control', 'no-store, no-cache');
-  // Prevent browser from sniffing the real URL
-  resHeaders.set('Referrer-Policy', 'no-referrer');
-
-  // Forward byte-range metadata so the browser knows the file size for seeking
-  const contentLength = upstream.headers.get('content-length');
-  if (contentLength) resHeaders.set('Content-Length', contentLength);
-  const contentRange = upstream.headers.get('content-range');
-  if (contentRange) resHeaders.set('Content-Range', contentRange);
-
   if (isDownload) {
-    resHeaders.set('Content-Disposition', `attachment; filename="hwasimulga-${id}.mp4"`);
+    // For downloads: stream through worker with Content-Disposition
+    // Downloads are infrequent so bandwidth impact is minimal
+    try {
+      const upstream = await fetch(cdnUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!upstream.ok) return new NextResponse('Not Found', { status: 404 });
+      const headers = new Headers();
+      headers.set('Content-Type', 'video/mp4');
+      headers.set('Content-Disposition', `attachment; filename="hwasimulga-${id}.mp4"`);
+      const cl = upstream.headers.get('content-length');
+      if (cl) headers.set('Content-Length', cl);
+      return new NextResponse(upstream.body, { status: 200, headers });
+    } catch {
+      return new NextResponse('Upstream error', { status: 502 });
+    }
   }
 
-  // Stream bytes directly — body is a ReadableStream, zero buffering in Worker
-  return new NextResponse(upstream.body, {
-    status: upstream.status, // 200 or 206 (partial content)
-    headers: resHeaders,
-  });
+  // For playback: 302 redirect — zero Cloudflare bandwidth used
+  return NextResponse.redirect(cdnUrl, 302);
 }
