@@ -4,7 +4,14 @@ import styles from './gallery.module.css';
 
 const PER_PAGE = 24;
 const thumbSrc    = (id) => `/api/hwasi/thumbnail/${id}`;
-const downloadUrl = (id) => `/api/download/${id}`;
+
+// Creative video names — deterministic from ID so same video = same title always
+const WORDS_A = ['Midnight','Golden','Silver','Crystal','Storm','Crimson','Azure','Ember','Neon','Velvet','Cosmic','Mystic','Shadow','Solar','Lunar','Twilight','Prism','Thunder','Winter','Summer'];
+const WORDS_B = ['Bloom','Wave','Echo','Peak','Drift','Flare','Rush','Glow','Pulse','Trail','Dream','Spark','Surge','Rise','Flow','Blaze','Haze','Fade','Clash','Drift'];
+function videoTitle(id) {
+  const n = Number(id);
+  return `${WORDS_A[n % WORDS_A.length]} ${WORDS_B[Math.floor(n / WORDS_A.length) % WORDS_B.length]}`;
+}
 
 export default function GalleryPage() {
   const [user, setUser]           = useState(null);
@@ -42,21 +49,24 @@ export default function GalleryPage() {
   const totalPages = Math.max(1, Math.ceil(allIds.length / PER_PAGE));
   const pageIds    = allIds.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
 
-  // Open modal — fetch signed 30-min URL so the video link expires
+  // Open modal — always fetch a signed 30-min URL (CDN URL never exposed)
   const openModal = useCallback(async (id) => {
     const idx = allIds.indexOf(id);
-    // Optimistically open with proxy URL, then upgrade to signed URL
-    setModal({ id, index: idx >= 0 ? idx : 0, src: `/api/proxy/${id}` });
+    setModal({ id, index: idx >= 0 ? idx : 0, src: null, loading: true });
+    // Record history in background
     fetch('/api/hwasi/history', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ videoId: id }),
     }).catch(() => {});
-    // Upgrade to signed URL
+    // Get signed URL — CDN link stays hidden from browser source/devtools network
     try {
       const sr = await fetch(`/api/hwasi/sign/${id}`);
       const sd = await sr.json();
-      if (sd.src) setModal(prev => prev?.id === id ? { ...prev, src: sd.src } : prev);
-    } catch { /* keep proxy URL */ }
+      if (sd.src) setModal(prev => prev?.id === id ? { ...prev, src: sd.src, loading: false } : prev);
+      else setModal(prev => prev?.id === id ? { ...prev, src: '', loading: false } : prev);
+    } catch {
+      setModal(prev => prev?.id === id ? { ...prev, src: '', loading: false } : prev);
+    }
   }, [allIds]);
 
   const closeModal = useCallback(() => setModal(null), []);
@@ -90,15 +100,22 @@ export default function GalleryPage() {
     window.location.href = '/login';
   }
 
-  function handleDownload(e, id) {
+  async function handleDownload(e, id) {
     e.stopPropagation();
-    const a = document.createElement('a');
-    a.href = downloadUrl(id);
-    a.download = `video-${id}.mp4`;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // Get a fresh signed token then open with ?dl=1 for Content-Disposition download
+    try {
+      const sr = await fetch(`/api/hwasi/sign/${id}`);
+      const sd = await sr.json();
+      if (sd.src) {
+        const a = document.createElement('a');
+        a.href = sd.src + '?dl=1';
+        a.download = `hwasimulga-${id}.mp4`;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch { /* ignore */ }
   }
 
   const trendingIds = (curated.trending || []).map(Number).slice(0, 20);
@@ -230,8 +247,18 @@ export default function GalleryPage() {
               </div>
             </div>
             <div className={styles.videoWrap}>
-              <video key={modal.src} className={styles.modalVideo}
-                src={modal.src} controls autoPlay playsInline controlsList="nodownload" />
+              {modal.loading ? (
+                <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',minHeight:'200px'}}>
+                  <div className={styles.splashSpinner} />
+                </div>
+              ) : modal.src ? (
+                <video key={modal.src} className={styles.modalVideo}
+                  src={modal.src} controls autoPlay playsInline controlsList="nodownload nofullscreen" />
+              ) : (
+                <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'200px',color:'#a78bfa'}}>
+                  Failed to load video. Please try again.
+                </div>
+              )}
             </div>
             <div className={styles.modalNav}>
               <button className={styles.navBtn2} onClick={prevVideo} disabled={modal.index===0}>← Prev</button>
@@ -332,7 +359,7 @@ function VideoCard({ id, index, hasThumb, onPlay, onDownload }) {
       <div className={styles.ytRow}>
         <div className={styles.ytAvatar}><Logo size={20} /></div>
         <div className={styles.ytMeta}>
-          <p className={styles.ytTitle}>Video #{id}</p>
+          <p className={styles.ytTitle}>{videoTitle(id)}</p>
           <p className={styles.ytSub}>Hwasimulga</p>
         </div>
         <button className={styles.ytDl} onClick={onDownload} aria-label="Download">

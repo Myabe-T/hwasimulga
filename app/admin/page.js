@@ -145,15 +145,14 @@ export default function AdminPage() {
   async function runGenerator(start, end) {
     genStopRef.current = false;
 
-    // 1. Test Redis connectivity first
+    // 1. Test connectivity first
     setGenStatus('Testing connection…');
     setGenRunning(true);
     const testR = await fetch('/api/hwasi/thumbnails').catch(() => null);
-    const testD = testR ? await testR.json().catch(() => ({})) : {};
     if (!testR || !testR.ok) {
       setGenRunning(false);
-      setGenStatus('❌ Redis connection failed! Update Upstash credentials in Vercel env vars.');
-      flash('❌ Redis unreachable — update UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in Vercel', 'err');
+      setGenStatus('❌ Redis connection failed!');
+      flash('❌ Redis unreachable — check your Secrets in Cloudflare Pages settings', 'err');
       return;
     }
 
@@ -162,70 +161,77 @@ export default function AdminPage() {
     setGenProgress(0);
     let saved = 0;
     let done  = 0;
-    const CONCURRENT = 2; // proxy is heavier than direct CDN, keep concurrency low
+    const CONCURRENT = 3;
     const ids = Array.from({ length: total }, (_, i) => i + start);
+
+    async function captureWithSignedUrl(id) {
+      // Get a fresh signed URL for this video
+      const sr = await fetch(`/api/hwasi/sign/${id}`).catch(() => null);
+      if (!sr || !sr.ok) return null;
+      const sd = await sr.json().catch(() => null);
+      if (!sd?.src) return null;
+
+      return await new Promise((resolve) => {
+        const vid = document.createElement('video');
+        vid.muted = true; vid.playsInline = true; vid.preload = 'metadata';
+        vid.crossOrigin = 'anonymous';
+        let settled = false;
+
+        const capture = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const vw = vid.videoWidth  || 320;
+            const vh = vid.videoHeight || 180;
+            canvas.width  = 320;
+            canvas.height = 180;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#0a0010';
+            ctx.fillRect(0, 0, 320, 180);
+            const scale  = Math.min(320 / vw, 180 / vh);
+            const drawW  = Math.round(vw * scale);
+            const drawH  = Math.round(vh * scale);
+            const ox     = Math.round((320 - drawW) / 2);
+            const oy     = Math.round((180 - drawH) / 2);
+            ctx.drawImage(vid, ox, oy, drawW, drawH);
+            resolve(canvas.toDataURL('image/jpeg', 0.72));
+          } catch { resolve(null); }
+          finally { vid.src = ''; vid.load(); }
+        };
+
+        const finish = (ok) => {
+          if (settled) return; settled = true;
+          if (ok) capture(); else { vid.src = ''; vid.load(); resolve(null); }
+        };
+
+        vid.addEventListener('loadedmetadata', () => {
+          const seekTo = Math.min(3, (vid.duration || 10) * 0.1);
+          vid.currentTime = isFinite(seekTo) && seekTo > 0 ? seekTo : 1;
+        }, { once: true });
+        vid.addEventListener('seeked',  () => finish(true),  { once: true });
+        vid.addEventListener('error',   () => finish(false), { once: true });
+        setTimeout(() => finish(false), 30000); // 30s timeout
+
+        vid.src = sd.src;
+        vid.load();
+      });
+    }
 
     async function processOne(id) {
       if (genStopRef.current) return;
-      setGenStatus(`Generating #${id}… (${saved} saved)`);
+      setGenStatus(`Generating ${id}… (${saved} saved)`);
       try {
-        const dataUrl = await new Promise((resolve) => {
-          const vid = document.createElement('video');
-          vid.muted = true; vid.playsInline = true; vid.preload = 'auto';
-          // /api/proxy/{id} = same-origin → no CORS, browser handles all range requests
-          // Browser fetches moov atom wherever it is (beginning or end of file) automatically
-          let settled = false;
-
-          const capture = () => {
-            try {
-              const canvas = document.createElement('canvas');
-              const vw = vid.videoWidth  || 320;
-              const vh = vid.videoHeight || 180;
-              // Letterbox into 320×180 — no stretching regardless of video shape
-              canvas.width  = 320;
-              canvas.height = 180;
-              const ctx = canvas.getContext('2d');
-              ctx.fillStyle = '#0a0010';
-              ctx.fillRect(0, 0, 320, 180);
-              const scale  = Math.min(320 / vw, 180 / vh);
-              const drawW  = Math.round(vw * scale);
-              const drawH  = Math.round(vh * scale);
-              const ox     = Math.round((320 - drawW) / 2);
-              const oy     = Math.round((180 - drawH) / 2);
-              ctx.drawImage(vid, ox, oy, drawW, drawH);
-              resolve(canvas.toDataURL('image/jpeg', 0.75));
-            } catch { resolve(null); }
-          };
-
-          const finish = (ok) => {
-            if (settled) return; settled = true;
-            if (ok) capture(); else resolve(null);
-          };
-
-          vid.addEventListener('loadedmetadata', () => {
-            // Seek to 3s or 10% of duration — avoids black intros
-            const seekTo = Math.min(3, (vid.duration || 10) * 0.1);
-            vid.currentTime = isFinite(seekTo) ? seekTo : 1;
-          }, { once: true });
-          vid.addEventListener('seeked',  () => finish(true),  { once: true });
-          vid.addEventListener('error',   () => finish(false), { once: true });
-          setTimeout(() => finish(false), 45000); // 45s for slow proxy connections
-
-          vid.src = `/api/proxy/${id}`; // same-origin proxy — works for ALL videos ✅
-        });
-
+        const dataUrl = await captureWithSignedUrl(id);
         if (dataUrl) {
           const saveResp = await fetch(`/api/hwasi/thumbnail/${id}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ dataUrl }),
           });
-          if (saveResp.ok) { saved++; setThumbCount(saved); }
+          if (saveResp.ok) { saved++; setThumbCount(c => c + 1); }
         }
       } catch { /* skip */ }
       done++;
       setGenProgress(done);
     }
-
 
     for (let i = 0; i < ids.length; i += CONCURRENT) {
       if (genStopRef.current) break;
