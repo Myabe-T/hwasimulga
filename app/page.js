@@ -1,6 +1,2 @@
-import { redirect } from 'next/navigation';
-
-// Root → always send to login (middleware handles redirect to gallery if authed)
-export default function Home() {
-  redirect('/login');
-}
+// Root → show landing page. Middleware redirects authed users to /gallery.
+export { default } from './landing/page';
