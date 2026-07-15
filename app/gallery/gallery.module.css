@@ -195,19 +195,15 @@
   box-shadow:0 32px 80px rgba(0,0,0,.8),0 0 0 1px rgba(124,58,237,.12);
   animation: scaleIn .2s cubic-bezier(.16,1,.3,1);
 }
-/* Mobile: true full-screen modal */
+/* Mobile: slides up from bottom (original working style) */
 @media(max-width:640px) {
-  .modalBg { padding:0; align-items:stretch; }
+  .modalBg { padding:0; align-items:flex-end; }
   .modalBox {
-    border-radius: 0;
-    max-height: 100dvh;
-    height: 100dvh;
-    animation: slideUp .25s cubic-bezier(.16,1,.3,1);
-    display: flex;
-    flex-direction: column;
+    border-radius: 22px 22px 0 0;
+    max-height: 92dvh;
+    animation: slideUp .28s cubic-bezier(.16,1,.3,1);
+    overflow-y: auto;
   }
-  .videoWrap { flex: 1; display:flex; align-items:center; }
-  .modalVideo { max-height: none !important; height: 100%; width: 100%; object-fit: contain; }
 }
 .modalHeader { display:flex;align-items:center;justify-content:space-between;padding:10px 14px 10px;border-bottom:1px solid rgba(255,255,255,.07); }
 .modalMeta { display:flex;align-items:center;gap:10px; }

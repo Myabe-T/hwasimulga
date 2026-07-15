@@ -233,17 +233,31 @@ export default function AdminPage() {
           if (ok) capture(); else { cleanup(); resolve(null); }
         };
 
-        // PRIMARY: loadeddata fires when first frame is decodable — no seek required!
-        // This works even when moov atom is at end of file (partial blob, NaN duration).
+        // PRIMARY: loadeddata fires when first frame bytes are decoded.
+        // With start+end combined blob: browser finds moov at end → initialises → decodes frame.
         vid.addEventListener('loadeddata', () => {
           if (settled) return;
-          // If duration is known and captureAt is reachable, try to seek for a better frame
           if (isFinite(vid.duration) && vid.duration > 0.5 && captureAt > 0 && captureAt < vid.duration) {
+            // Duration known → seek to configured captureAt time for a better frame
             seekPending = true;
             vid.currentTime = captureAt;
           } else {
-            // Duration unknown (moov at end) — capture frame 0 immediately, it's loaded
-            finish(true);
+            // Duration unknown (moov still being parsed) — play briefly to advance past black frame
+            vid.play().then(() => {
+              setTimeout(() => {
+                vid.pause();
+                if (!settled) finish(true);
+              }, 800);
+            }).catch(() => finish(true)); // play blocked → capture frame 0
+          }
+        }, { once: true });
+
+        // canplay fires when enough data to play — extra safety net
+        vid.addEventListener('canplay', () => {
+          if (settled || seekPending) return;
+          if (isFinite(vid.duration) && vid.duration > 0.5 && captureAt < vid.duration) {
+            seekPending = true;
+            vid.currentTime = captureAt;
           }
         }, { once: true });
 
@@ -254,14 +268,14 @@ export default function AdminPage() {
 
         vid.addEventListener('error', () => finish(false), { once: true });
 
-        // Fallback: if after 12s nothing happened, capture whatever frame is available
+        // Timeout: 15s max — capture whatever frame is available
         setTimeout(() => {
           if (!settled) {
             settled = true;
-            if (vid.readyState >= 2) capture(); // HAVE_CURRENT_DATA or better
+            if (vid.readyState >= 2) capture();
             else { cleanup(); resolve(null); }
           }
-        }, 12000);
+        }, 15000);
 
         vid.src = blobUrl;
         vid.load();
