@@ -392,7 +392,8 @@ export default function AdminPage() {
   );
 
   // Stats for dashboard
-  const totalVideos = settings.end - settings.start + 1;
+  const deletedCount  = (settings.deletedIds || []).length;
+  const totalVideos   = Math.max(0, (settings.end - settings.start + 1) - deletedCount);
   const totalWatched = history.length;
   const uniqueViewers = new Set(history.map(h=>h.userId)).size;
   const topVideo = history.length ? (() => {
@@ -495,7 +496,7 @@ export default function AdminPage() {
           {tab==='dashboard' && (
             <div className={styles.fadeIn}>
               <div className={styles.statsGrid}>
-                <StatCard icon="🎬" label="Total Videos" value={totalVideos.toLocaleString()} sub={`#${settings.start}–#${settings.end}`} color="purple"/>
+                <StatCard icon="🎬" label="Total Videos" value={totalVideos.toLocaleString()} sub={`#${settings.start}–#${settings.end}${deletedCount ? ` · ${deletedCount} deleted` : ''}`} color="purple"/>
                 <StatCard icon="👁" label="Total Watches" value={totalWatched.toLocaleString()} sub="all time" color="pink"/>
                 <StatCard icon="👥" label="Active Viewers" value={uniqueViewers} sub="unique users" color="blue"/>
                 <StatCard icon="🏆" label="Top Video" value={topVideo} sub="most watched" color="green"/>
