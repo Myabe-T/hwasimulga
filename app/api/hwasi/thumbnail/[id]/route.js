@@ -65,7 +65,7 @@ export async function PUT(req, { params }) {
     // Fetch first 512KB of the video from CDN server-side (no CORS on server!)
     const resp = await fetch(videoUrl, {
       headers: {
-        'Range': 'bytes=0-3145727',  // 3MB — enough to include moov atom for seeking
+        'Range': 'bytes=0-8388607',  // 8MB — covers moov atom for most MP4s
         'User-Agent': 'Mozilla/5.0 (compatible; HwasimulgaBot/1.0)',
       },
       signal: AbortSignal.timeout(15000),

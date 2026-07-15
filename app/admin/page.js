@@ -174,12 +174,17 @@ export default function AdminPage() {
     setGenProgress(0);
     let saved = 0;
     let done  = 0;
-    const CONCURRENT = 3;
+    const CONCURRENT = 4;
 
     async function captureViaServerBlob(id) {
-      // PUT /api/hwasi/thumbnail/[id] fetches the video SERVER-SIDE from CDN (no CORS issue),
-      // returns the first 512KB as raw bytes. We turn that into a same-origin blob URL
-      // so canvas.toDataURL() works without any CORS taint.
+      // PUT /api/hwasi/thumbnail/[id] fetches video bytes SERVER-SIDE from CDN (no CORS!).
+      // We get back raw MP4 bytes and turn them into a same-origin blob URL so
+      // canvas.toDataURL() works without CORS taint.
+      //
+      // KEY FIX: Many MP4s have their moov atom at the END of the file.
+      // Fetching only the first 3MB means duration=NaN → seek never fires → timeout.
+      // Solution: use 'loadeddata' (fires when first FRAME is decodable, no seek needed)
+      // as the primary trigger. Only try seeking if duration is known finite.
       let blobUrl = null;
       try {
         const resp = await fetch(`/api/hwasi/thumbnail/${id}`, { method: 'PUT' });
@@ -191,9 +196,10 @@ export default function AdminPage() {
 
       return await new Promise((resolve) => {
         const vid = document.createElement('video');
-        vid.muted = true; vid.playsInline = true; vid.preload = 'metadata';
-        // No crossOrigin needed — blob URLs are same-origin, canvas capture is safe ✅
+        vid.muted = true; vid.playsInline = true; vid.preload = 'auto';
+        // No crossOrigin — blob URLs are same-origin, canvas capture always works ✅
         let settled = false;
+        let seekPending = false;
 
         const cleanup = () => {
           vid.src = '';
@@ -217,7 +223,7 @@ export default function AdminPage() {
             const ox    = Math.round((320 - drawW) / 2);
             const oy    = Math.round((180 - drawH) / 2);
             ctx.drawImage(vid, ox, oy, drawW, drawH);
-            resolve(canvas.toDataURL('image/jpeg', 0.75));
+            resolve(canvas.toDataURL('image/jpeg', 0.78));
           } catch { resolve(null); }
           finally { cleanup(); }
         };
@@ -227,19 +233,35 @@ export default function AdminPage() {
           if (ok) capture(); else { cleanup(); resolve(null); }
         };
 
-        vid.addEventListener('loadedmetadata', () => {
-          // Seek to admin-configured captureAt time
-          const seekTo = Math.min(captureAt, vid.duration || captureAt);
-          vid.currentTime = isFinite(seekTo) && seekTo >= 0 ? seekTo : 0.5;
+        // PRIMARY: loadeddata fires when first frame is decodable — no seek required!
+        // This works even when moov atom is at end of file (partial blob, NaN duration).
+        vid.addEventListener('loadeddata', () => {
+          if (settled) return;
+          // If duration is known and captureAt is reachable, try to seek for a better frame
+          if (isFinite(vid.duration) && vid.duration > 0.5 && captureAt > 0 && captureAt < vid.duration) {
+            seekPending = true;
+            vid.currentTime = captureAt;
+          } else {
+            // Duration unknown (moov at end) — capture frame 0 immediately, it's loaded
+            finish(true);
+          }
         }, { once: true });
-        vid.addEventListener('seeked',  () => finish(true),  { once: true });
-        vid.addEventListener('error',   () => finish(false), { once: true });
-        // The 512KB partial blob may not have the full moov atom for long videos —
-        // fall back to frame 0 if seeking fails
-        vid.addEventListener('stalled', () => {
-          if (!settled) { settled = true; capture(); }
+
+        // SECONDARY: seeked fires after successful seek
+        vid.addEventListener('seeked', () => {
+          if (seekPending) { seekPending = false; finish(true); }
         }, { once: true });
-        setTimeout(() => finish(false), 20000); // 20s timeout per video
+
+        vid.addEventListener('error', () => finish(false), { once: true });
+
+        // Fallback: if after 12s nothing happened, capture whatever frame is available
+        setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            if (vid.readyState >= 2) capture(); // HAVE_CURRENT_DATA or better
+            else { cleanup(); resolve(null); }
+          }
+        }, 12000);
 
         vid.src = blobUrl;
         vid.load();

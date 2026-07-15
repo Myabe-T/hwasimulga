@@ -302,7 +302,7 @@ export default function GalleryPage() {
               ) : modal.src ? (
                 <video key={modal.src} className={styles.modalVideo}
                   src={modal.src} controls autoPlay playsInline
-                  controlsList="nodownload nofullscreen"
+                  controlsList="nodownload"
                   onContextMenu={e => e.preventDefault()}
                 />
               ) : (
