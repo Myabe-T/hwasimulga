@@ -5,7 +5,7 @@ import { requireAuth } from '@/lib/auth';
 import { getUsers, saveUsers } from '@/lib/redis';
 
 export async function PUT(req, { params }) {
-  const { error, status } = await requireAuth('admin');
+  const { error, status } = await requireAuth(['admin','advisor']);
   if (error) return NextResponse.json({ error }, { status });
   const { id } = await params;
   const body = await req.json();
@@ -21,7 +21,7 @@ export async function PUT(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const { error, status, session } = await requireAuth('admin');
+  const { error, status, session } = await requireAuth(['admin','advisor']);
   if (error) return NextResponse.json({ error }, { status });
   const { id } = await params;
   const users = await getUsers();

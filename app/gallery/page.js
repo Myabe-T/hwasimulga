@@ -73,12 +73,34 @@ export default function GalleryPage() {
   const [pwdForm, setPwdForm] = useState({ old: '', new: '', confirm: '' });
   const [pwdMsg, setPwdMsg] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [guestAuthModal, setGuestAuthModal] = useState(false);
+
+  // Global epoch-based countdown (same for everyone)
+  const EPOCH_START = 1704067200;
+  const PERIOD_SECS = 34 * 3600;
+  const calcSecs = () => { const n = Math.floor(Date.now()/1000); const e = (n - EPOCH_START) % PERIOD_SECS; return PERIOD_SECS - e; };
+  const [globalSecs, setGlobalSecs] = useState(calcSecs);
+  useEffect(() => { const id = setInterval(() => setGlobalSecs(calcSecs()), 1000); return () => clearInterval(id); }, []);
+  const gH = Math.floor(globalSecs / 3600), gM = Math.floor((globalSecs % 3600) / 60), gS = globalSecs % 60;
+  const globalTimer = `${String(gH).padStart(2,'0')}:${String(gM).padStart(2,'0')}:${String(gS).padStart(2,'0')}`;
 
   useEffect(() => {
     async function init() {
       const r = await fetch('/api/verify');
       const d = await r.json();
-      if (!d.auth) { window.location.href = '/login'; return; }
+      // Guest mode: do NOT redirect — show videos but gate on play
+      if (!d.auth) {
+        // Load public settings to show video grid
+        const [s, t] = await Promise.all([
+          fetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:1, end:730 })),
+          fetch('/api/hwasi/thumbnails').then(x => x.json()).catch(() => ({})),
+        ]);
+        const st = s.error ? { start:1, end:730 } : s;
+        setSettings(st);
+        setThumbIds(new Set((t.ids || []).map(Number)));
+        setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start));
+        return; // user stays null = guest
+      }
       setUser(d);
       const [s, c, h, t, vs, bm] = await Promise.all([
         fetch('/api/hwasi/settings').then(x => x.json()),
@@ -122,6 +144,12 @@ export default function GalleryPage() {
 
   const openModal = useCallback(async (id) => {
     const idx = allIds.indexOf(id);
+
+    // Guest (not logged in) → show auth modal with pricing
+    if (!user) {
+      setGuestAuthModal(true);
+      return;
+    }
 
     if (!viewStatus?.isPremium && user?.role !== 'admin' && user?.role !== 'advisor') {
       const fp = getFingerprint();
@@ -247,12 +275,118 @@ export default function GalleryPage() {
 
   const isAdminOrAdvisor = user?.role === 'admin' || user?.role === 'advisor';
 
-  if (!user) return (
+  // Show spinner only while loading (allIds empty AND no user yet determined)
+  if (allIds.length === 0 && user === null) return (
     <div className={styles.splash}>
-      <Logo size={44} /><div className={styles.splashSpinner} />
+      <img src="/logo.png" alt="" style={{width:44,height:44,borderRadius:10,marginBottom:8}} />
+      <div className={styles.splashSpinner} />
     </div>
   );
 
+  // GUEST view — not logged in but show gallery
+  if (!user) return (
+    <div className={styles.page}>
+      {/* Guest header */}
+      <header className={styles.header}>
+        <div className={styles.headerInner}>
+          <div className={styles.brand}>
+            <img src="/logo.png" alt="" className={styles.brandLogo} />
+            <span className={styles.brandName}>Hwasimulga</span>
+          </div>
+          <nav className={styles.desktopNav}>
+            <span className={styles.navBtn} style={{color:'rgba(255,255,255,.45)',cursor:'default'}}>🎬 Gallery</span>
+          </nav>
+          <div className={styles.headerRight}>
+            <a href="/login" className={styles.guestLoginBtn}>Login</a>
+            <a href="/register" className={styles.guestRegBtn}>Register Free 🚀</a>
+          </div>
+        </div>
+        {/* Sale timer */}
+        <div className={styles.guestSaleBanner}>
+          🔥 Flash Sale —
+          <span style={{fontFamily:'Courier New',fontWeight:900,color:'#f59e0b',margin:'0 6px'}}>{globalTimer}</span>
+          left · <s style={{opacity:.4}}>₹200/₹500/₹999</s> → <strong style={{color:'#34d399'}}>₹100/₹300/₹599</strong>
+          <a href="/register" style={{marginLeft:10,color:'#f59e0b',fontWeight:700,textDecoration:'none'}}>Unlock →</a>
+        </div>
+      </header>
+
+      {/* Guest video grid */}
+      <main className={styles.main}>
+        <div className={styles.sectionHead}>
+          <div className={styles.sectionAccent} />
+          <h2 className={styles.sectionTitle}>Browse All Videos</h2>
+          <span className={styles.sectionCount}>{allIds.length} videos</span>
+        </div>
+        <div className={styles.grid}>
+          {pageIds.map(id => (
+            <div key={id} className={styles.card} onClick={() => openModal(id)}>
+              <div className={styles.thumb}>
+                {thumbIds.has(id) ? (
+                  <img src={thumbSrc(id)} alt="" className={styles.thumbImg} loading="lazy" />
+                ) : (
+                  <div className={styles.thumbPlaceholder} style={{background: GRADIENT_PLACEHOLDER(id)}} />
+                )}
+                <div className={styles.cardOverlay}>
+                  <button className={styles.playBtn}>▶</button>
+                </div>
+                {/* Lock icon for guests */}
+                <div style={{position:'absolute',top:8,right:8,background:'rgba(0,0,0,.6)',backdropFilter:'blur(6px)',padding:'3px 8px',borderRadius:8,fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:4}}>
+                  🔒 Login
+                </div>
+                <div className={styles.qualityBadge} style={{background: qualityColor(videoQuality(id)), color:'#fff'}}>{videoQuality(id)}</div>
+              </div>
+              <div className={styles.cardInfo}>
+                <div className={styles.cardTitle}>{videoTitle(id)}</div>
+                <div className={styles.cardMeta}>
+                  <span>👁 {viewCount(id)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className={styles.pagination}>
+            <button className={styles.pgBtn} disabled={page === 0} onClick={() => goPage(page - 1)}>← Prev</button>
+            <span className={styles.pgInfo}>{page + 1} / {totalPages}</span>
+            <button className={styles.pgBtn} disabled={page >= totalPages - 1} onClick={() => goPage(page + 1)}>Next →</button>
+          </div>
+        )}
+      </main>
+
+      {/* Guest auth modal */}
+      {guestAuthModal && (
+        <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) setGuestAuthModal(false); }}>
+          <div className={styles.smallModal} style={{textAlign:'center'}}>
+            <img src="/logo.png" alt="" style={{width:50,height:50,borderRadius:10,marginBottom:12}} />
+            <h3 style={{fontWeight:800,fontSize:18,marginBottom:6}}>🔒 Login to Watch</h3>
+            <p style={{fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:14,lineHeight:1.5}}>
+              Create a free account to watch videos.<br/>Get premium for unlimited access!
+            </p>
+            <div style={{padding:'10px 14px',background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.25)',borderRadius:12,marginBottom:16,fontSize:13}}>
+              🔥 Sale ends in <strong style={{fontFamily:'Courier New',color:'#f59e0b'}}>{globalTimer}</strong>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16}}>
+              <a href="/login" style={{padding:'12px',borderRadius:12,background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.12)',color:'#fff',textDecoration:'none',fontSize:14,fontWeight:700,display:'block'}}>🔑 Login</a>
+              <a href="/register" style={{padding:'12px',borderRadius:12,background:'linear-gradient(135deg,#7c3aed,#4f46e5)',color:'#fff',textDecoration:'none',fontSize:14,fontWeight:700,display:'block'}}>🚀 Register</a>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+              {[['⚡ Basic','₹100','14d'],['🚀 Plus','₹300','60d'],['👑 Pro','₹599','3yr']].map(([label,price,period]) => (
+                <div key={label} style={{padding:'10px 6px',background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.07)',borderRadius:12,textAlign:'center'}}>
+                  <div style={{fontSize:12,color:'rgba(255,255,255,.5)'}}>{label}</div>
+                  <div style={{fontWeight:800,fontSize:14}}>{price}</div>
+                  <div style={{fontSize:10,color:'rgba(255,255,255,.3)'}}>{period}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── LOGGED IN VIEW ──
   return (
     <div className={styles.page}>
 

@@ -1,32 +1,49 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import styles from './landing.module.css';
 
-// Live countdown — always shows ~23h remaining, live seconds
-function useLiveCountdown() {
-  const [secs, setSecs] = useState(0);
+// ── Global countdown: 34h cycle, fixed epoch — same for EVERYONE, doesn't reset on refresh
+const EPOCH_START = 1704067200; // Jan 1 2025 00:00:00 UTC (seconds)
+const PERIOD_SECS = 34 * 3600;  // 34 hours
+
+function useGlobalCountdown() {
+  const calc = () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const elapsed = (nowSec - EPOCH_START) % PERIOD_SECS;
+    return PERIOD_SECS - elapsed;
+  };
+  const [secs, setSecs] = useState(calc);
   useEffect(() => {
-    // Fixed "next reset" = next 23:00 from now (or just 23h from now)
-    const target = Date.now() + 23 * 3600 * 1000;
-    const tick = () => setSecs(Math.max(0, Math.floor((target - Date.now()) / 1000)));
-    tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(() => setSecs(calc()), 1000);
     return () => clearInterval(id);
   }, []);
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
   const s = secs % 60;
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return {
+    secs,
+    label: `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`,
+    humanLeft: h > 0 ? `${h}h ${m}m left` : `${m}m ${s}s left`,
+  };
 }
 
+const FEATURES = [
+  { icon: '🔥', title: 'Hotter Than Summer', desc: "730+ videos so steamy, your phone needs a cool-down break after every session 🥵" },
+  { icon: '⚡', title: 'Instant Gratification', desc: "Loads so fast you'll forget loading screens exist. Zero wait, maximum... satisfaction." },
+  { icon: '📱', title: 'Pocket-Sized Pleasure', desc: "Perfect on any screen — phone, tablet, laptop. Take it anywhere, anytime, nobody's watching 😉" },
+  { icon: '🆕', title: 'Always Fresh, Never Boring', desc: "New drops every single day. Like a sneaker release but way more exciting." },
+  { icon: '💾', title: 'Download & Keep', desc: "Save your favourites for offline mode. For those long flights where you need... entertainment." },
+  { icon: '👑', title: 'VIP Access Unlocked', desc: "Go premium and get all-access. Because you deserve the entire collection, not just the preview." },
+];
+
 export default function LandingPage() {
-  const [authModal, setAuthModal] = useState(null); // 'gallery' | null
+  const [authModal, setAuthModal] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const countdown = useLiveCountdown();
+  const { secs, label, humanLeft } = useGlobalCountdown();
 
   function handleGalleryClick(e) {
     e.preventDefault();
-    setAuthModal('gallery');
+    setAuthModal(true);
   }
 
   return (
@@ -39,7 +56,6 @@ export default function LandingPage() {
           <span className={styles.navLogoText}>Hwasimulga</span>
         </a>
 
-        {/* Center nav links */}
         <div className={styles.navCenter}>
           <a href="#features" className={styles.navLink}>Features</a>
           <a href="#pricing" className={styles.navLink}>Pricing</a>
@@ -58,7 +74,7 @@ export default function LandingPage() {
           <div className={styles.mobileMenu}>
             <a href="#features" onClick={() => setMobileOpen(false)}>Features</a>
             <a href="#pricing" onClick={() => setMobileOpen(false)}>Pricing</a>
-            <a href="/gallery" onClick={(e) => { handleGalleryClick(e); setMobileOpen(false); }}>Gallery</a>
+            <a href="/gallery" onClick={e => { handleGalleryClick(e); setMobileOpen(false); }}>Gallery</a>
             <div className={styles.mobileMenuDivider} />
             <a href="/login">Login</a>
             <a href="/register" className={styles.mobileRegBtn}>Register Free</a>
@@ -66,13 +82,12 @@ export default function LandingPage() {
         )}
       </nav>
 
-      {/* ── FREE COUNTDOWN BANNER ── */}
-      <div className={styles.countdownBanner}>
-        <span className={styles.countdownBannerDot} />
-        <span>Free access resets in </span>
-        <span className={styles.countdownTimer}>{countdown}</span>
-        <span> · 5 free videos daily</span>
-        <a href="/register" className={styles.countdownUpgrade}>Upgrade →</a>
+      {/* ── SALE BANNER ── */}
+      <div className={styles.saleBanner}>
+        <span className={styles.saleFire}>🔥</span>
+        <span className={styles.saleText}>FLASH SALE — prices drop back in</span>
+        <span className={styles.saleTimer}>{label}</span>
+        <a href="/register" className={styles.saleLink}>Grab it →</a>
       </div>
 
       {/* ── HERO ── */}
@@ -94,16 +109,16 @@ export default function LandingPage() {
           730+ exclusive videos · HD quality · Daily updates · Secure & private
         </p>
 
-        {/* Premium countdown inside hero */}
+        {/* Countdown hero box */}
         <div className={styles.heroPremiumOffer}>
           <div className={styles.heroPremiumLeft}>
-            <span className={styles.heroPremiumIcon}>⏱</span>
+            <span className={styles.heroPremiumIcon}>⏳</span>
             <div>
-              <div className={styles.heroPremiumLabel}>Today's free access resets in</div>
-              <div className={styles.heroPremiumTimer}>{countdown}</div>
+              <div className={styles.heroPremiumLabel}>Sale price resets in</div>
+              <div className={styles.heroPremiumTimer}>{label}</div>
             </div>
           </div>
-          <a href="/register" className={styles.heroPremiumCta}>Get Unlimited →</a>
+          <a href="/register" className={styles.heroPremiumCta}>Lock In Price →</a>
         </div>
 
         <div className={styles.heroActions}>
@@ -118,23 +133,16 @@ export default function LandingPage() {
           <div className={styles.statDiv} />
           <div className={styles.stat}><span>Daily</span><label>Updates</label></div>
           <div className={styles.statDiv} />
-          <div className={styles.stat}><span>100%</span><label>Secure</label></div>
+          <div className={styles.stat}><span>100%</span><label>Private</label></div>
         </div>
       </section>
 
       {/* ── FEATURES ── */}
       <section className={styles.features} id="features">
-        <h2 className={styles.sectionTitle}>Everything you need</h2>
-        <p className={styles.sectionSub}>Built for premium video delivery at scale</p>
+        <h2 className={styles.sectionTitle}>Why you'll be obsessed 👀</h2>
+        <p className={styles.sectionSub}>Honestly, fair warning — this is addictive</p>
         <div className={styles.featureGrid}>
-          {[
-            { icon: '⚡', title: 'Ultra Fast CDN', desc: 'Global delivery ensures instant loading from anywhere worldwide' },
-            { icon: '🔒', title: 'Token-Signed', desc: 'Every link is signed and expires. No direct CDN URLs ever exposed' },
-            { icon: '📱', title: 'Mobile First', desc: 'Perfect experience on any device — phone, tablet or desktop' },
-            { icon: '🔥', title: 'Daily Updates', desc: 'New exclusive content added every single day' },
-            { icon: '⬇️', title: 'HD Download', desc: 'Download any video in full HD for offline viewing' },
-            { icon: '👑', title: 'Premium Plans', desc: 'Unlock unlimited access with our affordable plans' },
-          ].map(f => (
+          {FEATURES.map(f => (
             <div key={f.title} className={styles.featureCard}>
               <div className={styles.featureIcon}>{f.icon}</div>
               <h3>{f.title}</h3>
@@ -146,46 +154,76 @@ export default function LandingPage() {
 
       {/* ── PRICING ── */}
       <section className={styles.pricing} id="pricing">
-        <h2 className={styles.sectionTitle}>Simple Pricing</h2>
-        <p className={styles.sectionSub}>Unlock all videos. Cancel anytime.</p>
+        <h2 className={styles.sectionTitle}>🔥 Limited Time Prices</h2>
+        <p className={styles.sectionSub}>These deals disappear in <strong style={{color:'#a78bfa'}}>{humanLeft}</strong> — don't say we didn't warn you</p>
+
+        {/* Global timer bar */}
+        <div className={styles.pricingTimer}>
+          <span>⏳</span>
+          <span>Sale ends in</span>
+          <span className={styles.pricingTimerClock}>{label}</span>
+          <div className={styles.pricingTimerBar}>
+            <div className={styles.pricingTimerFill} style={{width: `${((PERIOD_SECS - secs) / PERIOD_SECS) * 100}%`}} />
+          </div>
+        </div>
+
         <div className={styles.pricingGrid}>
+          {/* Basic */}
           <div className={styles.pricingCard}>
-            <div className={styles.pricingBadge} style={{ background: '#7c3aed' }}>BASIC</div>
-            <div className={styles.pricingPrice}>₹100</div>
+            <div className={styles.pricingBadge} style={{background:'#7c3aed'}}>BASIC</div>
+            <div className={styles.pricingPriceWrap}>
+              <span className={styles.pricingOld}>₹200</span>
+              <span className={styles.pricingPrice}>₹100</span>
+            </div>
             <div className={styles.pricingPeriod}>14 days access</div>
+            <div className={styles.pricingSave}>You save ₹100 🎉</div>
             <ul className={styles.pricingFeatures}>
-              <li>✓ Unlimited videos</li>
+              <li>✓ All 730+ videos</li>
               <li>✓ HD quality</li>
               <li>✓ Download access</li>
             </ul>
-            <a href="/register" className={styles.pricingBtn} style={{ background: '#7c3aed' }}>Get Basic</a>
+            <a href="/register" className={styles.pricingBtn} style={{background:'#7c3aed'}}>Get Basic</a>
           </div>
 
+          {/* Plus */}
           <div className={`${styles.pricingCard} ${styles.pricingFeatured}`}>
             <div className={styles.pricingPopular}>⭐ MOST POPULAR</div>
-            <div className={styles.pricingBadge} style={{ background: '#0ea5e9' }}>PLUS</div>
-            <div className={styles.pricingPrice}>₹300</div>
+            <div className={styles.pricingBadge} style={{background:'#0ea5e9'}}>PLUS</div>
+            <div className={styles.pricingPriceWrap}>
+              <span className={styles.pricingOld}>₹500</span>
+              <span className={styles.pricingPrice}>₹300</span>
+            </div>
             <div className={styles.pricingPeriod}>60 days access</div>
+            <div className={styles.pricingSave}>You save ₹200 🎉</div>
             <ul className={styles.pricingFeatures}>
               <li>✓ Everything in Basic</li>
-              <li>✓ Priority support</li>
-              <li>✓ Early access</li>
+              <li>✓ Priority access</li>
+              <li>✓ Early drops</li>
             </ul>
-            <a href="/register" className={styles.pricingBtn} style={{ background: '#0ea5e9' }}>Get Plus</a>
+            <a href="/register" className={styles.pricingBtn} style={{background:'#0ea5e9'}}>Get Plus</a>
           </div>
 
+          {/* Pro */}
           <div className={styles.pricingCard}>
-            <div className={styles.pricingBadge} style={{ background: '#f59e0b' }}>PRO</div>
-            <div className={styles.pricingPrice}>₹599</div>
+            <div className={styles.pricingBadge} style={{background:'#f59e0b'}}>PRO</div>
+            <div className={styles.pricingPriceWrap}>
+              <span className={styles.pricingOld}>₹999</span>
+              <span className={styles.pricingPrice}>₹599</span>
+            </div>
             <div className={styles.pricingPeriod}>3 years access</div>
+            <div className={styles.pricingSave}>You save ₹400 🎉</div>
             <ul className={styles.pricingFeatures}>
               <li>✓ Everything in Plus</li>
               <li>✓ Lifetime-style access</li>
               <li>✓ Exclusive content</li>
             </ul>
-            <a href="/register" className={styles.pricingBtn} style={{ background: '#f59e0b' }}>Get Pro</a>
+            <a href="/register" className={styles.pricingBtn} style={{background:'#f59e0b'}}>Get Pro</a>
           </div>
         </div>
+
+        <p className={styles.pricingNote}>
+          After the timer hits zero, prices go back to normal. Your plan stays locked at the price you bought. 🔒
+        </p>
       </section>
 
       {/* ── FOOTER ── */}
@@ -194,52 +232,53 @@ export default function LandingPage() {
           <img src="/logo.png" alt="" style={{width:24,height:24,borderRadius:4,verticalAlign:'middle',marginRight:8}} />
           Hwasimulga
         </div>
-        <p>Premium private video platform · Secure · Fast · Private</p>
+        <p>Premium private video platform · {secs > 0 ? `Sale ends in ${humanLeft}` : 'Sale active'}</p>
         <div className={styles.footerLinks}>
           <a href="/login">Login</a>
           <a href="/register">Register</a>
         </div>
       </footer>
 
-      {/* ── AUTH GATE MODAL (when clicking Gallery) ── */}
+      {/* ── AUTH GATE MODAL ── */}
       {authModal && (
-        <div className={styles.authModalBg} onClick={e => { if (e.target === e.currentTarget) setAuthModal(null); }}>
+        <div className={styles.authModalBg} onClick={e => { if (e.target === e.currentTarget) setAuthModal(false); }}>
           <div className={styles.authModal}>
-            <button className={styles.authModalClose} onClick={() => setAuthModal(null)}>✕</button>
+            <button className={styles.authModalClose} onClick={() => setAuthModal(false)}>✕</button>
             <img src="/logo.png" alt="" className={styles.authModalLogo} />
             <h2 className={styles.authModalTitle}>Access Gallery</h2>
             <p className={styles.authModalSub}>
-              Sign in or create a free account to browse 730+ videos
+              Sign in or create a free account to browse 730+ exclusive videos
             </p>
 
-            {/* Live countdown in modal */}
             <div className={styles.authModalCountdown}>
-              <span>⏱ Free access resets in</span>
-              <strong className={styles.authModalTimer}>{countdown}</strong>
+              <span>🔥 Sale price resets in</span>
+              <strong className={styles.authModalTimer}>{label}</strong>
             </div>
 
             <div className={styles.authModalActions}>
-              <a href="/login" className={styles.authModalLogin}>
-                🔑 Sign In
-              </a>
-              <a href="/register" className={styles.authModalRegister}>
-                🚀 Register Free
-              </a>
+              <a href="/login" className={styles.authModalLogin}>🔑 Sign In</a>
+              <a href="/register" className={styles.authModalRegister}>🚀 Register Free</a>
             </div>
 
             <div className={styles.authModalPlans}>
-              <div className={styles.authModalPlan} style={{'--c':'#7c3aed'}}>
-                <span>⚡ Basic</span><strong>₹100 / 14d</strong>
+              <div className={styles.authModalPlan}>
+                <span>⚡ Basic</span>
+                <div><s style={{fontSize:10,color:'rgba(255,255,255,.35)'}}>₹200</s> <strong>₹100</strong></div>
+                <small>14 days</small>
               </div>
-              <div className={styles.authModalPlan} style={{'--c':'#0ea5e9'}}>
-                <span>🚀 Plus</span><strong>₹300 / 60d</strong>
+              <div className={styles.authModalPlan}>
+                <span>🚀 Plus</span>
+                <div><s style={{fontSize:10,color:'rgba(255,255,255,.35)'}}>₹500</s> <strong>₹300</strong></div>
+                <small>60 days</small>
               </div>
-              <div className={styles.authModalPlan} style={{'--c':'#f59e0b'}}>
-                <span>👑 Pro</span><strong>₹599 / 3yr</strong>
+              <div className={styles.authModalPlan}>
+                <span>👑 Pro</span>
+                <div><s style={{fontSize:10,color:'rgba(255,255,255,.35)'}}>₹999</s> <strong>₹599</strong></div>
+                <small>3 years</small>
               </div>
             </div>
             <p style={{fontSize:11,textAlign:'center',color:'rgba(255,255,255,.3)',marginTop:8}}>
-              5 free videos/day without premium
+              5 free video previews/day without premium
             </p>
           </div>
         </div>

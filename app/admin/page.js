@@ -2,16 +2,17 @@
 import { useState, useEffect } from 'react';
 import styles from './admin.module.css';
 
+const BOTH = ['admin','advisor'];
 const NAV = [
-  { id: 'dashboard',     icon: IconDash,    label: 'Dashboard',     roles: ['admin','advisor'] },
-  { id: 'curated',       icon: IconCurated, label: 'Curated',       roles: ['admin']           },
-  { id: 'thumbnails',    icon: IconThumb,   label: 'Thumbnails',    roles: ['admin']           },
-  { id: 'users',         icon: IconUsers,   label: 'Users',         roles: ['admin']           },
-  { id: 'subscriptions', icon: IconPremium, label: 'Subscriptions', roles: ['admin']           },
-  { id: 'reports',       icon: IconFlag,    label: 'Reports',       roles: ['admin','advisor'] },
-  { id: 'deleted',       icon: IconTrash,   label: 'Deleted',       roles: ['admin','advisor'] },
-  { id: 'analytics',     icon: IconChart,   label: 'Analytics',     roles: ['admin','advisor'] },
-  { id: 'settings',      icon: IconSettings,label: 'Settings',      roles: ['admin']           },
+  { id: 'dashboard',     icon: IconDash,    label: 'Dashboard',     roles: BOTH },
+  { id: 'curated',       icon: IconCurated, label: 'Curated',       roles: BOTH },
+  { id: 'thumbnails',    icon: IconThumb,   label: 'Thumbnails',    roles: BOTH },
+  { id: 'users',         icon: IconUsers,   label: 'Users',         roles: BOTH },
+  { id: 'subscriptions', icon: IconPremium, label: 'Subscriptions', roles: BOTH },
+  { id: 'reports',       icon: IconFlag,    label: 'Reports',       roles: BOTH },
+  { id: 'deleted',       icon: IconTrash,   label: 'Deleted',       roles: BOTH },
+  { id: 'analytics',     icon: IconChart,   label: 'Analytics',     roles: BOTH },
+  { id: 'settings',      icon: IconSettings,label: 'Settings',      roles: BOTH },
 ];
 
 export default function AdminPage() {
@@ -59,6 +60,7 @@ export default function AdminPage() {
   // Reports + Deleted state (advisor + admin)
   const [reportsList,  setReportsList]  = useState([]);
   const [deletedList,  setDeletedList]  = useState([]);
+  const [directDelForm, setDirectDelForm] = useState({ id: '', reason: 'duplicate' });
 
   useEffect(() => {
     async function init() {
@@ -73,18 +75,17 @@ export default function AdminPage() {
 
   async function loadAll(role) {
     const userRole = role || user?.role || 'admin';
-    const isAdmin = userRole === 'admin';
     const fetches = [
       fetch('/api/hwasi/settings').then(x=>x.json()),
-      isAdmin ? fetch('/api/hwasi/curated').then(x=>x.json()) : Promise.resolve({}),
-      isAdmin ? fetch('/api/hwasi/users').then(x=>x.json()) : Promise.resolve([]),
-      fetch('/api/hwasi/history').then(x=>x.json()),
-      fetch('/api/hwasi/thumbnails').then(x=>x.json()),
-      isAdmin ? fetch('/api/hwasi/premium').then(x=>x.json()).catch(()=>({})) : Promise.resolve({}),
+      fetch('/api/hwasi/curated').then(x=>x.json()).catch(()=>({})),
+      fetch('/api/hwasi/users').then(x=>x.json()).catch(()=>([])),
+      fetch('/api/hwasi/history').then(x=>x.json()).catch(()=>([])),
+      fetch('/api/hwasi/thumbnails').then(x=>x.json()).catch(()=>({})),
+      fetch('/api/hwasi/premium').then(x=>x.json()).catch(()=>({})),
       fetch('/api/hwasi/reports').then(x=>x.json()).catch(()=>({ reports:[] })),
       fetch('/api/hwasi/deleted').then(x=>x.json()).catch(()=>({ deleted:[] })),
-      isAdmin ? fetch('/api/hwasi/pending-users').then(x=>x.json()).catch(()=>({ users:[] })) : Promise.resolve({ users:[] }),
-      isAdmin ? fetch('/api/hwasi/reg-approval').then(x=>x.json()).catch(()=>({ required:false })) : Promise.resolve({ required:false }),
+      fetch('/api/hwasi/pending-users').then(x=>x.json()).catch(()=>({ users:[] })),
+      fetch('/api/hwasi/reg-approval').then(x=>x.json()).catch(()=>({ required:false })),
       fetch('/api/hwasi/sub-requests').then(x=>x.json()).catch(()=>({ requests:[] })),
     ];
     const [s, c, u, h, t, p, rep, del, pu, ra, sr] = await Promise.all(fetches);
@@ -1158,6 +1159,40 @@ export default function AdminPage() {
           {/* ══ DELETED VIDEOS ══ */}
           {tab==='deleted' && (
             <div className={styles.fadeIn}>
+              
+              {/* Direct Delete Card */}
+              <div className={styles.card} style={{marginBottom: 20}}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>🎯</span>
+                  <div><h3 className={styles.cardTitle}>Direct Delete</h3><p className={styles.cardSub}>Instantly delete a video by its ID</p></div>
+                </div>
+                <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-end'}}>
+                  <div style={{flex:1,minWidth:120}}>
+                    <label className={styles.fieldLabel}>Video ID</label>
+                    <input className="input" type="number" placeholder="e.g. 142" 
+                      value={directDelForm.id} onChange={e=>setDirectDelForm(p=>({...p,id:e.target.value}))}/>
+                  </div>
+                  <div style={{flex:2,minWidth:180}}>
+                    <label className={styles.fieldLabel}>Reason</label>
+                    <select className="input" value={directDelForm.reason} onChange={e=>setDirectDelForm(p=>({...p,reason:e.target.value}))}>
+                      <option value="duplicate">Duplicate</option>
+                      <option value="low_quality">Low Quality / Error</option>
+                      <option value="violation">TOS Violation</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <button className="btn btn-primary" style={{background:'linear-gradient(135deg,#ef4444,#b91c1c)'}} disabled={!directDelForm.id} onClick={async () => {
+                    if (!confirm(`Are you sure you want to delete Video #${directDelForm.id}?`)) return;
+                    const r = await fetch(`/api/hwasi/video/${directDelForm.id}`, {
+                      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ reason: directDelForm.reason })
+                    });
+                    if (r.ok) { flash(`✅ Video #${directDelForm.id} deleted successfully`); loadAll(); setDirectDelForm(p=>({...p,id:''})); }
+                    else flash(`❌ Failed to delete video #${directDelForm.id}`, 'err');
+                  }}>🗑 Delete Video</button>
+                </div>
+              </div>
+
               <div className={styles.card}>
                 <div className={styles.cardHeader}>
                   <span style={{fontSize:22}}>🗑</span>

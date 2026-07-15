@@ -11,7 +11,7 @@ export async function GET() {
 }
 
 export async function PUT(req) {
-  const { error, status } = await requireAuth('admin');
+  const { error, status } = await requireAuth(['admin','advisor']);
   if (error) return NextResponse.json({ error }, { status });
   const body = await req.json();
   const cur = await getSettings();

@@ -8,14 +8,14 @@ let counter = 0;
 function uid() { return `usr_${Date.now().toString(36)}_${(++counter).toString(36)}`; }
 
 export async function GET() {
-  const { error, status } = await requireAuth('admin');
+  const { error, status } = await requireAuth(['admin','advisor']);
   if (error) return NextResponse.json({ error }, { status });
   const users = await getUsers();
   return NextResponse.json(users.map(({ password: _, ...u }) => u));
 }
 
 export async function POST(req) {
-  const { error, status } = await requireAuth('admin');
+  const { error, status } = await requireAuth(['admin','advisor']);
   if (error) return NextResponse.json({ error }, { status });
   const { username, password, displayName, role } = await req.json();
   if (!username || !password || !displayName)
