@@ -132,6 +132,15 @@ export default function LoginPage() {
               New here? <a href="/register">Create an account</a>
             </div>
           </form>
+
+          {/* Sexy Flirty Line */}
+          <div style={{marginTop:30, textAlign:'center', position:'relative'}}>
+            <div style={{position:'absolute', top:'50%', left:0, right:0, height:1, background:'linear-gradient(90deg, transparent, rgba(236,72,153,.3), transparent)'}} />
+            <span style={{background:'#0e0713', padding:'0 10px', position:'relative', fontSize:11, color:'rgba(236,72,153,.6)', letterSpacing:'.1em', textTransform:'uppercase', fontWeight:800}}>
+              Taste The Difference
+            </span>
+          </div>
+
         </div>
       </div>
     </main>

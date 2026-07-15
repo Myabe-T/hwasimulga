@@ -4,7 +4,7 @@ import { SignJWT } from 'jose';
 import {
   getRegUsers, saveRegUsers,
   getPendingUsers, savePendingUsers,
-  getRegApprovalRequired,
+  getRegApprovalRequired, getUsers,
 } from '@/lib/redis';
 
 const ALLOWED_DOMAINS = [
@@ -47,8 +47,8 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Please use Gmail, Yahoo, Outlook, iCloud or Proton email' }, { status: 400 });
 
     // Duplicate check across all user stores
-    const [regUsers, pendingUsers] = await Promise.all([getRegUsers(), getPendingUsers()]);
-    const allExisting = [...regUsers, ...pendingUsers];
+    const [regUsers, pendingUsers, staticUsers] = await Promise.all([getRegUsers(), getPendingUsers(), getUsers()]);
+    const allExisting = [...regUsers, ...pendingUsers, ...staticUsers];
     if (allExisting.some(u => u.username?.toLowerCase() === username.toLowerCase()))
       return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
     if (allExisting.some(u => u.email?.toLowerCase() === email.toLowerCase()))
