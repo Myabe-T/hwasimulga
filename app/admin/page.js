@@ -879,8 +879,8 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* Grant subscription (admin direct) */}
-              {user.role === 'admin' && (
+              {/* Grant subscription + Users list (admin direct) */}
+              {user.role === 'admin' && (<>
               <div className={styles.card} style={{marginBottom:20}}>
                 <div className={styles.cardHeader}>
                   <span style={{fontSize:22}}>✨</span>
@@ -971,7 +971,7 @@ export default function AdminPage() {
                   </table>
                 </div>
               </div>
-              )} {/* end admin-only grant section */}
+              </>)} {/* end admin-only section */}
 
             </div>
           )}
