@@ -215,3 +215,70 @@
 .navBtn2:hover:not(:disabled) { background:rgba(124,58,237,.15);border-color:rgba(124,58,237,.3);color:#a78bfa; }
 .navBtn2:disabled { opacity:.25;cursor:not-allowed; }
 .navDot { width:6px;height:6px;border-radius:50%;background:rgba(124,58,237,.6); }
+
+/* ── Premium badge & free chip ───────────────────────────────────────────── */
+.premiumBadge {
+  display:flex;align-items:center;gap:4px;
+  padding:4px 10px;border-radius:999px;
+  background:linear-gradient(135deg,rgba(245,158,11,.2),rgba(236,72,153,.15));
+  border:1px solid rgba(245,158,11,.4);
+  color:#fbbf24;font-size:11px;font-weight:700;
+  white-space:nowrap;letter-spacing:0.04em;
+}
+.freeChip {
+  display:flex;align-items:center;gap:4px;
+  padding:4px 10px;border-radius:999px;
+  background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.3);
+  color:#a78bfa;font-size:11px;font-weight:600;cursor:pointer;
+  white-space:nowrap;transition:background .2s;
+}
+.freeChip:hover { background:rgba(124,58,237,.2); }
+
+/* ── Upgrade paywall modal ───────────────────────────────────────────────── */
+.upgradeBox {
+  background:linear-gradient(160deg,#0d0820,#12052a);
+  border:1px solid rgba(124,58,237,.3);
+  border-radius:24px;padding:36px 28px;
+  max-width:480px;width:90%;text-align:center;
+  animation:scaleIn .25s ease;
+  box-shadow:0 0 60px rgba(124,58,237,.25);
+}
+.upgradeLock { font-size:44px;margin-bottom:16px; }
+.upgradeTitle { font-size:22px;font-weight:800;color:#f1f5f9;margin:0 0 12px; }
+.upgradeSub { font-size:14px;color:#94a3b8;margin:0 0 28px;line-height:1.6; }
+.upgradeCards {
+  display:flex;gap:12px;justify-content:center;margin-bottom:24px;flex-wrap:wrap;
+}
+.upgradeCard {
+  position:relative;
+  flex:1;min-width:100px;max-width:130px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;padding:16px 10px;cursor:pointer;
+  transition:transform .2s,border-color .2s,box-shadow .2s;
+}
+.upgradeCard:hover {
+  transform:translateY(-4px);
+  border-color:var(--c);
+  box-shadow:0 12px 30px rgba(0,0,0,.3);
+}
+.upgradeBest {
+  position:absolute;top:-10px;left:50%;transform:translateX(-50%);
+  background:linear-gradient(135deg,#0ea5e9,#7c3aed);
+  color:white;font-size:9px;font-weight:700;
+  padding:3px 10px;border-radius:999px;white-space:nowrap;
+}
+.upgradeCardLabel { font-size:12px;font-weight:700;color:#e2e8f0;margin:8px 0 4px; }
+.upgradeCardPrice { font-size:20px;font-weight:800;color:var(--c); }
+.upgradeCardPeriod { font-size:10px;color:#64748b;margin-top:2px; }
+.upgradeBtn {
+  width:100%;padding:14px;border:none;border-radius:14px;
+  background:linear-gradient(135deg,#7c3aed,#ec4899);
+  color:white;font-size:16px;font-weight:700;cursor:pointer;
+  transition:opacity .2s,transform .15s;margin-bottom:12px;font-family:inherit;
+}
+.upgradeBtn:hover { opacity:.85;transform:scale(1.01); }
+.upgradeSkip {
+  background:none;border:none;color:#475569;font-size:13px;cursor:pointer;font-family:inherit;
+}
+.upgradeSkip:hover { color:#94a3b8; }

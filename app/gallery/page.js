@@ -13,6 +13,21 @@ function videoTitle(id) {
   return `${WORDS_A[n % WORDS_A.length]} ${WORDS_B[Math.floor(n / WORDS_A.length) % WORDS_B.length]}`;
 }
 
+// Browser fingerprint — screen + timezone + UA hash for free tier anti-bypass
+function getFingerprint() {
+  try {
+    const raw = [
+      screen.width, screen.height, screen.colorDepth,
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+      navigator.language,
+      navigator.hardwareConcurrency || '',
+    ].join('|');
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash) + raw.charCodeAt(i); hash |= 0; }
+    return 'fp_' + Math.abs(hash).toString(36);
+  } catch { return 'fp_unknown'; }
+}
+
 export default function GalleryPage() {
   const [user, setUser]           = useState(null);
   const [settings, setSettings]   = useState({ start: 1, end: 730 });
@@ -21,8 +36,11 @@ export default function GalleryPage() {
   const [allIds, setAllIds]       = useState([]);
   const [thumbIds, setThumbIds]   = useState(new Set());
   const [page, setPage]           = useState(0);
-  const [modal, setModal]         = useState(null);   // { id, index, src }
+  const [modal, setModal]         = useState(null);
   const [view, setView]           = useState('home');
+  const [viewStatus, setViewStatus] = useState(null);   // { allowed, isPremium, remaining, hoursLeft }
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [upgradeInfo, setUpgradeInfo] = useState(null); // { hoursLeft, remaining }
 
   useEffect(() => {
     async function init() {
@@ -30,11 +48,12 @@ export default function GalleryPage() {
       const d = await r.json();
       if (!d.auth) { window.location.href = '/login'; return; }
       setUser(d);
-      const [s, c, h, t] = await Promise.all([
+      const [s, c, h, t, vs] = await Promise.all([
         fetch('/api/hwasi/settings').then(x => x.json()),
         fetch('/api/hwasi/curated').then(x => x.json()),
         fetch('/api/hwasi/history/me').then(x => x.json()),
         fetch('/api/hwasi/thumbnails').then(x => x.json()),
+        fetch('/api/hwasi/views').then(x => x.json()).catch(() => ({ allowed: true })),
       ]);
       const st = s.error ? { start:1, end:730 } : s;
       setSettings(st);
@@ -42,6 +61,7 @@ export default function GalleryPage() {
       setMyHistory(Array.isArray(h) ? h : []);
       setThumbIds(new Set((t.ids || []).map(Number)));
       setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start));
+      setViewStatus(vs);
     }
     init();
   }, []);
@@ -52,6 +72,24 @@ export default function GalleryPage() {
   // Open modal — always fetch a signed 30-min URL (CDN URL never exposed)
   const openModal = useCallback(async (id) => {
     const idx = allIds.indexOf(id);
+
+    // Check free tier limit before playing (skip for admin/premium)
+    if (!viewStatus?.isPremium) {
+      const fp = getFingerprint();
+      const checkRes = await fetch('/api/hwasi/views', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId: id, fingerprint: fp }),
+      }).catch(() => ({ json: () => ({ allowed: true }) }));
+      const check = await checkRes.json();
+      setViewStatus(check);
+      if (!check.allowed) {
+        setUpgradeInfo(check);
+        setShowUpgrade(true);
+        return;
+      }
+    }
+
     setModal({ id, index: idx >= 0 ? idx : 0, src: null, loading: true });
     // Record history in background
     fetch('/api/hwasi/history', {
@@ -67,7 +105,7 @@ export default function GalleryPage() {
     } catch {
       setModal(prev => prev?.id === id ? { ...prev, src: '', loading: false } : prev);
     }
-  }, [allIds]);
+  }, [allIds, viewStatus]);
 
   const closeModal = useCallback(() => setModal(null), []);
   const prevVideo  = useCallback(() => {
@@ -154,6 +192,16 @@ export default function GalleryPage() {
           <div className={styles.headerRight}>
             {thumbCount > 0 && thumbCount < allIds.length && user.role === 'admin' && (
               <a href="/admin" className={styles.genBanner}>🖼 {thumbCount}/{allIds.length}</a>
+            )}
+            {/* Free-videos counter for non-premium */}
+            {viewStatus && !viewStatus.isPremium && user.role !== 'admin' && (
+              <div className={styles.freeChip} onClick={() => window.location.href='/premium'}>
+                <span>{viewStatus.remaining ?? (5 - (viewStatus.count || 0))}/5 free</span>
+              </div>
+            )}
+            {/* Premium badge */}
+            {viewStatus?.isPremium && user.role !== 'admin' && (
+              <div className={styles.premiumBadge}>✨ Premium</div>
             )}
             <div className={styles.userChip}>
               <div className={styles.avatar}>{user.username?.slice(0,2).toUpperCase()}</div>
@@ -253,7 +301,10 @@ export default function GalleryPage() {
                 </div>
               ) : modal.src ? (
                 <video key={modal.src} className={styles.modalVideo}
-                  src={modal.src} controls autoPlay playsInline controlsList="nodownload nofullscreen" />
+                  src={modal.src} controls autoPlay playsInline
+                  controlsList="nodownload nofullscreen"
+                  onContextMenu={e => e.preventDefault()}
+                />
               ) : (
                 <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'200px',color:'#a78bfa'}}>
                   Failed to load video. Please try again.
@@ -265,6 +316,42 @@ export default function GalleryPage() {
               <div className={styles.navDot} />
               <button className={styles.navBtn2} onClick={nextVideo} disabled={modal.index>=allIds.length-1}>Next →</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── UPGRADE MODAL ────────────────────────────────────────────────── */}
+      {showUpgrade && (
+        <div className={styles.modalBg} onClick={e => { if(e.target===e.currentTarget) setShowUpgrade(false); }}>
+          <div className={styles.upgradeBox}>
+            <div className={styles.upgradeLock}>🔒</div>
+            <h2 className={styles.upgradeTitle}>Daily Limit Reached</h2>
+            <p className={styles.upgradeSub}>
+              {upgradeInfo?.hoursLeft
+                ? `You've watched all 5 free videos today. Come back in ${upgradeInfo.hoursLeft} hour${upgradeInfo.hoursLeft === 1 ? '' : 's'}, or upgrade to watch unlimited.`
+                : 'You\'ve used all your free videos for today. Upgrade to Premium for unlimited access.'}
+            </p>
+            <div className={styles.upgradeCards}>
+              {[{id:'basic',icon:'⚡',label:'Basic',price:100,period:'14 Days',color:'#7c3aed'},
+                {id:'plus',icon:'🚀',label:'Plus',price:300,period:'2 Months',color:'#0ea5e9',popular:true},
+                {id:'pro',icon:'👑',label:'Pro',price:599,period:'3 Years',color:'#f59e0b'}]
+                .map(p => (
+                <div key={p.id} className={styles.upgradeCard} style={{'--c': p.color}}
+                  onClick={() => window.location.href='/premium'}>
+                  {p.popular && <div className={styles.upgradeBest}>Best</div>}
+                  <div style={{fontSize:24}}>{p.icon}</div>
+                  <div className={styles.upgradeCardLabel}>{p.label}</div>
+                  <div className={styles.upgradeCardPrice}>₹{p.price}</div>
+                  <div className={styles.upgradeCardPeriod}>{p.period}</div>
+                </div>
+              ))}
+            </div>
+            <button className={styles.upgradeBtn} onClick={() => window.location.href='/premium'}>
+              ✨ Get Premium
+            </button>
+            <button className={styles.upgradeSkip} onClick={() => setShowUpgrade(false)}>
+              Watch later
+            </button>
           </div>
         </div>
       )}

@@ -3,12 +3,13 @@ import { useState, useEffect } from 'react';
 import styles from './admin.module.css';
 
 const NAV = [
-  { id: 'dashboard',  icon: IconDash,    label: 'Dashboard'   },
-  { id: 'curated',    icon: IconCurated, label: 'Curated'     },
-  { id: 'thumbnails', icon: IconThumb,   label: 'Thumbnails'  },
-  { id: 'users',      icon: IconUsers,   label: 'Users'       },
-  { id: 'analytics',  icon: IconChart,   label: 'Analytics'   },
-  { id: 'settings',   icon: IconSettings,label: 'Settings'    },
+  { id: 'dashboard',     icon: IconDash,    label: 'Dashboard'      },
+  { id: 'curated',       icon: IconCurated, label: 'Curated'        },
+  { id: 'thumbnails',    icon: IconThumb,   label: 'Thumbnails'     },
+  { id: 'users',         icon: IconUsers,   label: 'Users'          },
+  { id: 'subscriptions', icon: IconPremium, label: 'Subscriptions'  },
+  { id: 'analytics',     icon: IconChart,   label: 'Analytics'      },
+  { id: 'settings',      icon: IconSettings,label: 'Settings'       },
 ];
 
 export default function AdminPage() {
@@ -36,8 +37,14 @@ export default function AdminPage() {
   const [genProgress,  setGenProgress]  = useState(0);
   const [genTotal,     setGenTotal]     = useState(0);
   const [genStatus,    setGenStatus]    = useState('');
+  const [captureAt,    setCaptureAt]    = useState(1.5);   // seconds to seek before capture
+  const [regenIds,     setRegenIds]     = useState('');    // comma-separated IDs to re-generate
   const genStopRef = { current: false };
   const [showPass,    setShowPass]    = useState(false);
+
+  // Subscription state
+  const [premiumUsers, setPremiumUsers] = useState([]);
+  const [grantForm,    setGrantForm]    = useState({ userId: '', plan: 'basic', days: '' });
 
   useEffect(() => {
     async function init() {
@@ -51,18 +58,20 @@ export default function AdminPage() {
   }, []);
 
   async function loadAll() {
-    const [s, c, u, h, t] = await Promise.all([
+    const [s, c, u, h, t, p] = await Promise.all([
       fetch('/api/hwasi/settings').then(x=>x.json()),
       fetch('/api/hwasi/curated').then(x=>x.json()),
       fetch('/api/hwasi/users').then(x=>x.json()),
       fetch('/api/hwasi/history').then(x=>x.json()),
       fetch('/api/hwasi/thumbnails').then(x=>x.json()),
+      fetch('/api/hwasi/premium').then(x=>x.json()).catch(()=>({})),
     ]);
     if (!s.error) setSettings(s);
     if (!c.error) setCurated(c);
     setUsers(Array.isArray(u) ? u : []);
     setHistory(Array.isArray(h) ? h : []);
     setThumbCount((t.ids || []).length);
+    if (p.users) setPremiumUsers(p.users);
   }
 
   function flash(text, type='ok') { setMsg({ text, type }); setTimeout(() => setMsg({ text:'', type:'' }), 3500); }
@@ -142,7 +151,7 @@ export default function AdminPage() {
   }
 
   // ── Thumbnail generator (Blob URL trick — no CORS taint!) ──────────────────
-  async function runGenerator(start, end) {
+  async function runGenerator(start, end, specificIds = null) {
     genStopRef.current = false;
 
     // 1. Test connectivity first
@@ -156,13 +165,12 @@ export default function AdminPage() {
       return;
     }
 
-    const total = end - start + 1;
-    setGenTotal(total);
+    const ids = specificIds ? specificIds : Array.from({ length: end - start + 1 }, (_, i) => i + start);
+    setGenTotal(ids.length);
     setGenProgress(0);
     let saved = 0;
     let done  = 0;
     const CONCURRENT = 3;
-    const ids = Array.from({ length: total }, (_, i) => i + start);
 
     async function captureViaServerBlob(id) {
       // PUT /api/hwasi/thumbnail/[id] fetches the video SERVER-SIDE from CDN (no CORS issue),
@@ -216,9 +224,9 @@ export default function AdminPage() {
         };
 
         vid.addEventListener('loadedmetadata', () => {
-          // Seek to a point with actual content (skip black intro)
-          const seekTo = Math.min(2, (vid.duration || 6) * 0.15);
-          vid.currentTime = isFinite(seekTo) && seekTo > 0 ? seekTo : 0.5;
+          // Seek to admin-configured captureAt time
+          const seekTo = Math.min(captureAt, vid.duration || captureAt);
+          vid.currentTime = isFinite(seekTo) && seekTo >= 0 ? seekTo : 0.5;
         }, { once: true });
         vid.addEventListener('seeked',  () => finish(true),  { once: true });
         vid.addEventListener('error',   () => finish(false), { once: true });
@@ -547,13 +555,149 @@ export default function AdminPage() {
                   )}
                 </div>
 
-                {/* Status grid */}
-                {thumbCount > 0 && (
-                  <div style={{marginTop:20,padding:'14px 16px',background:'rgba(34,197,94,.06)',border:'1px solid rgba(34,197,94,.15)',borderRadius:10}}>
-                    <div style={{fontSize:13,color:'#4ade80',fontWeight:600,marginBottom:4}}>✅ {thumbCount} thumbnails ready</div>
-                    <div style={{fontSize:12,color:'var(--text3)'}}>Viewers now see instant image thumbnails instead of loading videos. Gallery loads in &lt;1s on any connection.</div>
+                {/* Specific ID regen + timer */}
+                <div className={styles.card} style={{marginTop:20}}>
+                  <h4 className={styles.cardTitle} style={{marginBottom:14}}>Advanced Options</h4>
+
+                  {/* Capture timestamp */}
+                  <div style={{marginBottom:20}}>
+                    <label className={styles.fieldLabel}>
+                      Capture Timestamp: <strong>{captureAt}s</strong>
+                    </label>
+                    <div style={{display:'flex',gap:10,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+                      <input type="range" min="0" max="30" step="0.5"
+                        value={captureAt} onChange={e => setCaptureAt(Number(e.target.value))}
+                        style={{flex:1,minWidth:160,accentColor:'#7c3aed'}}/>
+                      <input type="number" min="0" max="60" step="0.5"
+                        value={captureAt} onChange={e => setCaptureAt(Number(e.target.value))}
+                        className="input" style={{width:80}}/>
+                      <span style={{fontSize:12,color:'var(--text3)'}}>seconds</span>
+                    </div>
+                    <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>
+                      {[0.5, 1, 2, 3, 5, 10].map(t => (
+                        <button key={t} className="btn btn-ghost btn-sm"
+                          style={captureAt===t?{borderColor:'#7c3aed',color:'#a78bfa'}:{}}
+                          onClick={() => setCaptureAt(t)}>{t}s</button>
+                      ))}
+                    </div>
                   </div>
-                )}
+
+                  {/* Specific IDs regen */}
+                  <label className={styles.fieldLabel}>Re-generate Specific Video IDs</label>
+                  <p style={{fontSize:12,color:'var(--text3)',margin:'4px 0 10px'}}>Enter comma-separated IDs (e.g. 72, 130, 245) to re-capture only those thumbnails</p>
+                  <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                    <input className="input" style={{flex:1,minWidth:180}}
+                      placeholder="e.g. 72, 130, 245, 388"
+                      value={regenIds} onChange={e => setRegenIds(e.target.value)}
+                      disabled={genRunning}/>
+                    <button className="btn btn-primary"
+                      disabled={genRunning || !regenIds.trim()}
+                      onClick={() => {
+                        const ids = regenIds.split(',').map(s=>s.trim()).filter(s=>/^\d+$/.test(s)).map(Number);
+                        if (!ids.length) { flash('❌ Enter valid IDs', 'err'); return; }
+                        const min = Math.min(...ids);
+                        const max = Math.max(...ids);
+                        runGenerator(min, max, ids);
+                      }}>⚡ Regen Selected</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ SUBSCRIPTIONS ══ */}
+          {tab==='subscriptions' && (
+            <div className={styles.fadeIn}>
+              {/* Grant subscription */}
+              <div className={styles.card} style={{marginBottom:20}}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>✨</span>
+                  <div><h3 className={styles.cardTitle}>Grant Subscription</h3><p className={styles.cardSub}>Manually activate premium for a user after payment</p></div>
+                </div>
+                <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-end'}}>
+                  <div style={{flex:1,minWidth:160}}>
+                    <label className={styles.fieldLabel}>User</label>
+                    <select className="input" value={grantForm.userId} onChange={e=>setGrantForm(p=>({...p,userId:e.target.value}))}>
+                      <option value="">Select user...</option>
+                      {users.map(u=><option key={u.id} value={u.id}>{u.displayName} ({u.username})</option>)}
+                    </select>
+                  </div>
+                  <div style={{minWidth:130}}>
+                    <label className={styles.fieldLabel}>Plan</label>
+                    <select className="input" value={grantForm.plan} onChange={e=>setGrantForm(p=>({...p,plan:e.target.value}))}>
+                      <option value="basic">₹100 — Basic (14 days)</option>
+                      <option value="plus">₹300 — Plus (60 days)</option>
+                      <option value="pro">₹599 — Pro (3 years)</option>
+                    </select>
+                  </div>
+                  <div style={{minWidth:100}}>
+                    <label className={styles.fieldLabel}>Custom Days (opt)</label>
+                    <input className="input" type="number" placeholder="auto" value={grantForm.days}
+                      onChange={e=>setGrantForm(p=>({...p,days:e.target.value}))}/>
+                  </div>
+                  <button className="btn btn-primary" disabled={!grantForm.userId} onClick={async () => {
+                    const r = await fetch('/api/hwasi/premium', {
+                      method:'POST', headers:{'Content-Type':'application/json'},
+                      body: JSON.stringify({ userId:grantForm.userId, plan:grantForm.plan, days:grantForm.days ? Number(grantForm.days) : undefined })
+                    });
+                    if (r.ok) { flash('✅ Premium granted!'); loadAll(); setGrantForm({userId:'',plan:'basic',days:''}); }
+                    else flash('❌ Failed to grant', 'err');
+                  }}>✨ Grant</button>
+                </div>
+              </div>
+
+              {/* Users list with premium status */}
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>👥</span>
+                  <div><h3 className={styles.cardTitle}>All Users</h3><p className={styles.cardSub}>Manage subscription status</p></div>
+                </div>
+                <div style={{overflowX:'auto'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                    <thead>
+                      <tr style={{borderBottom:'1px solid rgba(255,255,255,.08)'}}>
+                        {['User','Role','Plan','Expires','Actions'].map(h=>(
+                          <th key={h} style={{textAlign:'left',padding:'10px 12px',color:'var(--text3)',fontWeight:600,whiteSpace:'nowrap'}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {premiumUsers.map(u => {
+                        const planColors = {basic:'#7c3aed',plus:'#0ea5e9',pro:'#f59e0b'};
+                        const pc = planColors[u.premium?.plan] || 'transparent';
+                        return (
+                          <tr key={u.id} style={{borderBottom:'1px solid rgba(255,255,255,.04)'}}>
+                            <td style={{padding:'12px'}}>
+                              <div style={{fontWeight:600,color:'#f1f5f9'}}>{u.displayName}</div>
+                              <div style={{fontSize:11,color:'var(--text3)'}}>@{u.username}</div>
+                            </td>
+                            <td style={{padding:'12px'}}>
+                              <span style={{background:u.role==='admin'?'rgba(236,72,153,.15)':'rgba(255,255,255,.06)',color:u.role==='admin'?'#ec4899':'var(--text2)',padding:'2px 8px',borderRadius:6,fontSize:11,fontWeight:600}}>{u.role}</span>
+                            </td>
+                            <td style={{padding:'12px'}}>
+                              {u.premium ? (
+                                <span style={{background:`${pc}22`,color:pc,border:`1px solid ${pc}44`,padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:700,textTransform:'uppercase'}}>{u.premium.plan}</span>
+                              ) : (
+                                <span style={{color:'var(--text3)',fontSize:12}}>Free</span>
+                              )}
+                            </td>
+                            <td style={{padding:'12px',fontSize:12,color:'var(--text2)'}}>
+                              {u.premium ? new Date(u.premium.expiresAt).toLocaleDateString('en-IN') : '—'}
+                            </td>
+                            <td style={{padding:'12px'}}>
+                              {u.premium && (
+                                <button className="btn btn-ghost btn-sm" style={{color:'#f87171'}} onClick={async () => {
+                                  await fetch(`/api/hwasi/premium?userId=${u.id}`, {method:'DELETE'});
+                                  flash('🗑 Subscription revoked'); loadAll();
+                                }}>Revoke</button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -771,4 +915,4 @@ function IconLogout()   { return <svg width="14" height="14" viewBox="0 0 24 24"
 function IconEdit()     { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>; }
 function IconTrash()    { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>; }
 function IconThumb()    { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>; }
-
+function IconPremium()  { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>; }
