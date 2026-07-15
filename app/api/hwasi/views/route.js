@@ -12,8 +12,8 @@ export async function POST(req) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Admin always allowed
-  if (session.role === 'admin') return NextResponse.json({ allowed: true, isPremium: true });
+  // Admin + Advisor always allowed
+  if (['admin','advisor'].includes(session.role)) return NextResponse.json({ allowed: true, isPremium: true });
 
   // Check premium status
   const sub = await getPremium(session.sub);
@@ -57,7 +57,7 @@ export async function POST(req) {
 export async function GET(req) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.role === 'admin') return NextResponse.json({ allowed: true, isPremium: true });
+  if (['admin','advisor'].includes(session.role)) return NextResponse.json({ allowed: true, isPremium: true });
 
   const sub = await getPremium(session.sub);
   if (sub) return NextResponse.json({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt });
