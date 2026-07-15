@@ -55,30 +55,39 @@
 
 .card {
   width: 100%;
-  max-width: 400px;
+  max-width: 480px; /* Bigger on PC */
   background: linear-gradient(145deg, rgba(20, 15, 30, 0.6), rgba(10, 5, 15, 0.8));
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-top-color: rgba(255, 100, 200, 0.2);
   border-left-color: rgba(139, 92, 246, 0.2);
   border-radius: 28px;
-  padding: 44px;
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
+  padding: 50px 44px; /* Larger padding */
+  backdrop-filter: blur(20px); /* Reduced blur to prevent glitches */
+  -webkit-backdrop-filter: blur(20px);
   box-shadow: 
     0 30px 80px rgba(0,0,0,0.8), 
     inset 0 1px 0 rgba(255,255,255,0.1),
     0 0 40px rgba(236, 72, 153, 0.05);
   position: relative;
   z-index: 1;
-  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  will-change: transform;
 }
 
 .card:hover {
-  transform: translateY(-5px) scale(1.02) rotateX(2deg) rotateY(2deg);
+  transform: translateY(-5px) scale(1.01); /* Removed rotation to fix blur glitch in Chrome */
   box-shadow: 
     0 40px 100px rgba(0,0,0,0.9), 
     inset 0 1px 0 rgba(255,255,255,0.2),
     0 0 60px rgba(236, 72, 153, 0.15);
+}
+
+@media (max-width: 600px) {
+  .card {
+    max-width: 100%;
+    padding: 32px 24px;
+    border-radius: 20px;
+  }
 }
 
 .logo {

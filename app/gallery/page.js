@@ -622,33 +622,42 @@ export default function GalleryPage() {
         </div>
       )}
 
-      {/* ── UPGRADE MODAL ── */}
+      {/* ── UPGRADE MODAL (PREMIUM FOMO) ── */}
       {showUpgrade && (
         <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) setShowUpgrade(false); }}>
-          <div className={styles.upgradeBox}>
-            <div className={styles.upgradeLock}>🔒</div>
-            <h2 className={styles.upgradeTitle}>Daily Limit Reached</h2>
-            <p className={styles.upgradeSub}>
-              {upgradeInfo?.hoursLeft
-                ? `You've watched all 5 free videos. Come back in ${upgradeInfo.hoursLeft}h or upgrade.`
-                : "You've used all your free videos today. Upgrade to watch unlimited."}
-            </p>
-            <div className={styles.upgradeCards}>
-              {[{id:'basic',icon:'⚡',label:'Basic',price:100,period:'14 Days',color:'#7c3aed'},
-                {id:'plus',icon:'🚀',label:'Plus',price:300,period:'2 Months',color:'#0ea5e9',popular:true},
-                {id:'pro',icon:'👑',label:'Pro',price:599,period:'3 Years',color:'#f59e0b'}]
-                .map(p => (
-                <div key={p.id} className={styles.upgradeCard} style={{'--c': p.color}} onClick={() => window.location.href='/premium'}>
-                  {p.popular && <div className={styles.upgradeBest}>Best</div>}
-                  <div style={{fontSize:24}}>{p.icon}</div>
-                  <div className={styles.upgradeCardLabel}>{p.label}</div>
-                  <div className={styles.upgradeCardPrice}>₹{p.price}</div>
-                  <div className={styles.upgradeCardPeriod}>{p.period}</div>
-                </div>
-              ))}
+          <div className={styles.upgradeBox} style={{maxWidth: 480, background: 'linear-gradient(145deg, rgba(20, 15, 30, 0.9), rgba(10, 5, 15, 0.95))', border: '1px solid rgba(236,72,153,0.3)', backdropFilter: 'blur(20px)', boxShadow: '0 30px 100px rgba(236,72,153,0.2)'}}>
+            
+            <div style={{position:'absolute', top:-20, left:'50%', transform:'translateX(-50%)', background:'linear-gradient(90deg, #ec4899, #8b5cf6)', padding:'6px 16px', borderRadius:20, fontSize:12, fontWeight:800, color:'#fff', boxShadow:'0 10px 20px rgba(236,72,153,0.4)', letterSpacing:'0.05em', whiteSpace:'nowrap'}}>
+              🔥 LIMITED TIME OFFER: {globalTimer}
             </div>
-            <button className={styles.upgradeBtn} onClick={() => window.location.href='/premium'}>✨ Get Premium</button>
-            <button className={styles.upgradeSkip} onClick={() => setShowUpgrade(false)}>Watch later</button>
+
+            <div style={{fontSize:50, textAlign:'center', marginTop:10, animation:'pulse 2s infinite'}}>💎</div>
+            <h2 className={styles.upgradeTitle} style={{fontSize:28, background:'linear-gradient(to right, #fbcfe8, #ec4899)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>Premium Access</h2>
+            <p className={styles.upgradeSub} style={{fontSize:15, color:'rgba(255,255,255,0.7)', marginBottom:24}}>
+              {upgradeInfo?.hoursLeft
+                ? `You've watched all 5 free videos today. Come back in ${upgradeInfo.hoursLeft}h or upgrade now to unlock instantly.`
+                : "You've used all your free videos today. Upgrade now to watch unlimited videos instantly."}
+            </p>
+            
+            <div style={{background:'rgba(236,72,153,0.05)', border:'1px solid rgba(236,72,153,0.15)', borderRadius:20, padding:20, marginBottom:24, position:'relative', overflow:'hidden'}}>
+              <div style={{position:'absolute', top:0, right:0, background:'#ec4899', color:'#fff', fontSize:11, fontWeight:800, padding:'4px 12px', borderBottomLeftRadius:10}}>80% OFF</div>
+              <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginBottom:8}}>
+                <span style={{fontSize:24, color:'rgba(255,255,255,0.4)', textDecoration:'line-through', fontWeight:600}}>₹599</span>
+                <span style={{fontSize:42, color:'#fff', fontWeight:900, textShadow:'0 0 20px rgba(236,72,153,0.5)'}}>₹99</span>
+                <span style={{fontSize:14, color:'rgba(255,255,255,0.6)', alignSelf:'flex-end', paddingBottom:6}}>/ lifetime</span>
+              </div>
+              <ul style={{listStyle:'none', padding:0, margin:0, fontSize:14, color:'rgba(255,255,255,0.8)', display:'flex', flexDirection:'column', gap:8, textAlign:'left'}}>
+                <li>✨ <strong style={{color:'#fff'}}>Unlimited</strong> Video Watches</li>
+                <li>🚀 <strong style={{color:'#fff'}}>Zero</strong> Daily Limits</li>
+                <li>🔓 Access to <strong style={{color:'#fff'}}>Curated & Popular</strong></li>
+                <li>⚡ Instant Account Activation</li>
+              </ul>
+            </div>
+
+            <button style={{width:'100%', padding:18, background:'linear-gradient(45deg, #ec4899, #8b5cf6)', borderRadius:16, border:'none', color:'#fff', fontSize:18, fontWeight:800, cursor:'pointer', boxShadow:'0 10px 30px rgba(236,72,153,0.4)', transition:'transform 0.2s'}} onClick={() => window.location.href='/premium'} onMouseOver={e=>e.currentTarget.style.transform='scale(1.02)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
+              Claim Offer Now →
+            </button>
+            <button className={styles.upgradeSkip} style={{marginTop:16}} onClick={() => setShowUpgrade(false)}>Maybe Later</button>
           </div>
         </div>
       )}

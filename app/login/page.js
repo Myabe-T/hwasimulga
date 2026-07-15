@@ -111,6 +111,9 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
+              <div style={{textAlign:'right', marginTop:4}}>
+                <a href="/forgot-password" style={{fontSize:12, color:'rgba(255,255,255,0.5)', textDecoration:'none', transition:'color 0.2s'}}>Forgot Password?</a>
+              </div>
             </div>
 
             {error && (
