@@ -67,6 +67,8 @@ export default function AdminPage() {
   const [editTitleModal, setEditTitleModal] = useState(null);
   const [editTitleInput, setEditTitleInput] = useState('');
   const [editTitleSaving, setEditTitleSaving] = useState(false);
+  const [onlineUsers,   setOnlineUsers]   = useState([]);
+  const [showOnlineModal, setShowOnlineModal] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -77,6 +79,17 @@ export default function AdminPage() {
       loadAll(d.role);
     }
     init();
+  }, []);
+
+  // Poll online sessions every 30 sec
+  useEffect(() => {
+    async function fetchSessions() {
+      const r = await fetch('/api/hwasi/sessions').catch(() => null);
+      if (r?.ok) { const d = await r.json(); setOnlineUsers(d.online || []); }
+    }
+    fetchSessions();
+    const t = setInterval(fetchSessions, 30000);
+    return () => clearInterval(t);
   }, []);
 
   async function loadAll(role) {
@@ -394,8 +407,12 @@ export default function AdminPage() {
   // Stats for dashboard
   const deletedCount  = (settings.deletedIds || []).length;
   const totalVideos   = Math.max(0, (settings.end - settings.start + 1) - deletedCount);
-  const totalWatched = history.length;
-  const uniqueViewers = new Set(history.map(h=>h.userId)).size;
+  const totalWatched  = history.length;
+  const now = Date.now();
+  const startOfDay    = new Date(); startOfDay.setHours(0,0,0,0);
+  const watchesToday  = history.filter(h => new Date(h.watchedAt) >= startOfDay).length;
+  const watchesWeek   = history.filter(h => now - new Date(h.watchedAt).getTime() < 7*24*3600*1000).length;
+  const watchesMonth  = history.filter(h => now - new Date(h.watchedAt).getTime() < 30*24*3600*1000).length;
   const topVideo = history.length ? (() => {
     const counts = {}; history.forEach(h => { counts[h.videoId] = (counts[h.videoId]||0)+1; });
     const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
@@ -495,11 +512,35 @@ export default function AdminPage() {
           {/* ══ DASHBOARD ══ */}
           {tab==='dashboard' && (
             <div className={styles.fadeIn}>
+              {/* ── Stats Row 1: Videos + Top Video ── */}
               <div className={styles.statsGrid}>
                 <StatCard icon="🎬" label="Total Videos" value={totalVideos.toLocaleString()} sub={`#${settings.start}–#${settings.end}${deletedCount ? ` · ${deletedCount} deleted` : ''}`} color="purple"/>
-                <StatCard icon="👁" label="Total Watches" value={totalWatched.toLocaleString()} sub="all time" color="pink"/>
-                <StatCard icon="👥" label="Active Viewers" value={uniqueViewers} sub="unique users" color="blue"/>
                 <StatCard icon="🏆" label="Top Video" value={topVideo} sub="most watched" color="green"/>
+                <div
+                  style={{background:'rgba(124,58,237,.1)',border:'1px solid rgba(124,58,237,.2)',borderRadius:14,padding:'16px 20px',cursor:'pointer',transition:'transform .2s,box-shadow .2s',position:'relative',overflow:'hidden'}}
+                  onClick={() => setShowOnlineModal(true)}
+                  onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-3px)';e.currentTarget.style.boxShadow='0 12px 40px rgba(0,0,0,.4)'}}
+                  onMouseLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=''}}
+                >
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                    <span style={{fontSize:22}}>🟢</span>
+                    <span style={{width:8,height:8,borderRadius:'50%',background:onlineUsers.length>0?'#4ade80':'#6b7280',boxShadow:onlineUsers.length>0?'0 0 8px #4ade80':'none',display:'inline-block'}} />
+                  </div>
+                  <div style={{fontSize:30,fontWeight:900,color:'var(--text)',fontFamily:"'Space Grotesk',sans-serif"}}>{onlineUsers.length}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:'var(--text2)'}}>Online Now</div>
+                  <div style={{fontSize:11,color:'var(--text3)'}}>click to see who</div>
+                </div>
+                <StatCard icon="👁" label="All Time" value={totalWatched.toLocaleString()} sub="total watches" color="pink"/>
+              </div>
+              {/* ── Stats Row 2: Watch Breakdown ── */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginTop:16,marginBottom:4}}>
+                {[{label:'Today',val:watchesToday,color:'#f59e0b',bg:'rgba(245,158,11,.1)',border:'rgba(245,158,11,.2)'},{label:'This Week',val:watchesWeek,color:'#06b6d4',bg:'rgba(6,182,212,.1)',border:'rgba(6,182,212,.2)'},{label:'This Month',val:watchesMonth,color:'#a78bfa',bg:'rgba(167,139,250,.1)',border:'rgba(167,139,250,.2)'}].map(({label,val,color,bg,border}) => (
+                  <div key={label} style={{background:bg,border:`1px solid ${border}`,borderRadius:12,padding:'14px 18px',display:'flex',flexDirection:'column',gap:4}}>
+                    <div style={{fontSize:11,color:'rgba(255,255,255,.5)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.05em'}}>{label}</div>
+                    <div style={{fontSize:26,fontWeight:800,color,fontFamily:"'Space Grotesk',sans-serif"}}>{val.toLocaleString()}</div>
+                    <div style={{fontSize:11,color:'rgba(255,255,255,.4)'}}>watches</div>
+                  </div>
+                ))}
               </div>
 
               {/* Quick Watch */}
@@ -550,28 +591,81 @@ export default function AdminPage() {
                     </div>
                   )}
                 </div>
-                {/* Users summary */}
+                {/* Who's Online */}
                 <div className={styles.dashCard} style={{flex:1}}>
                   <div className={styles.dashCardHeader}>
-                    <span className={styles.dashCardTitle}>Users ({users.length})</span>
-                    <button className="btn btn-ghost btn-sm" onClick={()=>setTab('users')}>Manage</button>
+                    <span className={styles.dashCardTitle} style={{display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{width:8,height:8,borderRadius:'50%',background:onlineUsers.length>0?'#4ade80':'#6b7280',boxShadow:onlineUsers.length>0?'0 0 6px #4ade80':'none',display:'inline-block',flexShrink:0}} />
+                      Online ({onlineUsers.length})
+                    </span>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowOnlineModal(true)}>Details</button>
                   </div>
-                  <div className={styles.usersMini}>
-                    {users.map(u=>(
-                      <div key={u.id} className={styles.userMiniRow}>
-                        <div className={styles.userMiniAvatar} style={{background:u.role==='admin'?'linear-gradient(135deg,#7c3aed,#9333ea)':'linear-gradient(135deg,#0f766e,#0d9488)'}}>
-                          {u.avatar||u.displayName?.slice(0,2)||'??'}
+                  {onlineUsers.length === 0 ? (
+                    <div className={styles.emptyState} style={{fontSize:13}}>No active users right now</div>
+                  ) : (
+                    <div className={styles.usersMini}>
+                      {onlineUsers.slice(0,6).map((u,i) => (
+                        <div key={i} className={styles.userMiniRow}>
+                          <div style={{position:'relative',flexShrink:0}}>
+                            <div className={styles.userMiniAvatar} style={{background:u.role==='admin'?'linear-gradient(135deg,#7c3aed,#9333ea)':u.role==='advisor'?'linear-gradient(135deg,#0ea5e9,#0284c7)':'linear-gradient(135deg,#0f766e,#0d9488)'}}>
+                              {u.avatar || u.displayName?.slice(0,2) || '??'}
+                            </div>
+                            <span style={{position:'absolute',bottom:-1,right:-1,width:7,height:7,borderRadius:'50%',background:'#4ade80',border:'1px solid #0a0015',boxShadow:'0 0 4px #4ade80'}} />
+                          </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div className={styles.userMiniName}>{u.displayName}</div>
+                            <div className={styles.userMiniRole} style={{fontSize:10}}>seen {Math.floor((Date.now()-new Date(u.lastSeen).getTime())/60000)}m ago</div>
+                          </div>
+                          <span className={`${styles.rolePill} ${u.role==='admin'?styles.roleAdmin:styles.roleViewer}`}>{u.role}</span>
                         </div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div className={styles.userMiniName}>{u.displayName}</div>
-                          <div className={styles.userMiniRole}>@{u.username}</div>
-                        </div>
-                        <span className={`${styles.rolePill} ${u.role==='admin'?styles.roleAdmin:styles.roleViewer}`}>{u.role}</span>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                      {onlineUsers.length > 6 && <div style={{fontSize:11,color:'rgba(255,255,255,.4)',textAlign:'center',paddingTop:4}}>+{onlineUsers.length-6} more</div>}
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {/* ── Online Users Detail Modal ── */}
+              {showOnlineModal && (
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}} onClick={e=>{if(e.target===e.currentTarget)setShowOnlineModal(false)}}>
+                  <div style={{background:'linear-gradient(145deg,rgba(20,15,30,.97),rgba(10,5,15,.99))',border:'1px solid rgba(124,58,237,.3)',borderRadius:24,padding:28,width:'90%',maxWidth:500,maxHeight:'80vh',display:'flex',flexDirection:'column',gap:0}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+                      <div>
+                        <h3 style={{fontWeight:800,fontSize:18,margin:0,display:'flex',alignItems:'center',gap:8}}>
+                          <span style={{width:10,height:10,borderRadius:'50%',background:onlineUsers.length>0?'#4ade80':'#6b7280',boxShadow:onlineUsers.length>0?'0 0 8px #4ade80':'none',display:'inline-block'}} />
+                          {onlineUsers.length} User{onlineUsers.length!==1?'s':''} Online
+                        </h3>
+                        <p style={{margin:0,fontSize:12,color:'rgba(255,255,255,.4)'}}>Active in last 15 minutes · refreshes every 30s</p>
+                      </div>
+                      <button onClick={()=>setShowOnlineModal(false)} style={{background:'none',border:'none',color:'rgba(255,255,255,.5)',fontSize:22,cursor:'pointer',lineHeight:1}}>✕</button>
+                    </div>
+                    <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:10}}>
+                      {onlineUsers.length===0 ? (
+                        <div style={{textAlign:'center',padding:40,color:'rgba(255,255,255,.4)',fontSize:14}}>Nobody's online right now</div>
+                      ) : onlineUsers.map((u,i) => {
+                        const idleMins = Math.floor((Date.now()-new Date(u.lastSeen).getTime())/60000);
+                        return (
+                          <div key={i} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',background:'rgba(255,255,255,.04)',borderRadius:14,border:'1px solid rgba(255,255,255,.06)'}}>
+                            <div style={{position:'relative',flexShrink:0}}>
+                              <div style={{width:44,height:44,borderRadius:'50%',background:u.role==='admin'?'linear-gradient(135deg,#7c3aed,#ec4899)':u.role==='advisor'?'linear-gradient(135deg,#0ea5e9,#0284c7)':'linear-gradient(135deg,#0f766e,#0d9488)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'#fff'}}>
+                                {u.avatar || u.displayName?.slice(0,2) || '??'}
+                              </div>
+                              <span style={{position:'absolute',bottom:1,right:1,width:10,height:10,borderRadius:'50%',background:'#4ade80',border:'2px solid #0a0015',boxShadow:'0 0 6px #4ade80'}} />
+                            </div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{u.displayName || u.username}</div>
+                              {u.email && <div style={{fontSize:12,color:'rgba(255,255,255,.5)',marginTop:2}}>✉ {u.email}</div>}
+                              <div style={{fontSize:11,color:'rgba(255,255,255,.35)',marginTop:2}}>@{u.username} · last seen {idleMins===0?'just now':`${idleMins}m ago`}</div>
+                            </div>
+                            <span style={{padding:'4px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:u.role==='admin'?'rgba(124,58,237,.2)':u.role==='advisor'?'rgba(14,165,233,.2)':'rgba(16,185,129,.15)',color:u.role==='admin'?'#a78bfa':u.role==='advisor'?'#38bdf8':'#34d399',border:`1px solid ${u.role==='admin'?'rgba(124,58,237,.3)':u.role==='advisor'?'rgba(14,165,233,.3)':'rgba(16,185,129,.25)'}`}}>{u.role}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
 

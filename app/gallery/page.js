@@ -132,6 +132,42 @@ export default function GalleryPage() {
     init();
   }, []);
 
+  // ── Heartbeat + 15-min idle auto-logout ──────────────────────────────────────
+  useEffect(() => {
+    if (!user) return; // guests don't need heartbeat
+    const IDLE_LIMIT  = 15 * 60 * 1000; // 15 min
+    const HEARTBEAT   =  2 * 60 * 1000; //  2 min
+    let lastActivity  = Date.now();
+
+    const resetIdle = () => { lastActivity = Date.now(); };
+    const events = ['mousemove','mousedown','keydown','scroll','touchstart','click'];
+    events.forEach(e => window.addEventListener(e, resetIdle, { passive: true }));
+
+    async function beat() {
+      const idle = Date.now() - lastActivity;
+      if (idle >= IDLE_LIMIT) {
+        // Auto-logout
+        await fetch('/api/logout', { method: 'POST' });
+        window.location.href = '/login';
+        return;
+      }
+      // Active — ping server
+      fetch('/api/hwasi/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email || null }),
+      }).catch(() => {});
+    }
+
+    beat(); // immediate first beat
+    const timer = setInterval(beat, HEARTBEAT);
+
+    return () => {
+      clearInterval(timer);
+      events.forEach(e => window.removeEventListener(e, resetIdle));
+    };
+  }, [user]);
+
   const totalPages = Math.max(1, Math.ceil(allIds.length / PER_PAGE));
   const pageIds    = allIds.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
 
