@@ -138,7 +138,7 @@ export default function GalleryPage() {
 
   function tabIds() {
     if (homeTab === 'trending') return trendingIds.length ? trendingIds : allIds.slice(0, 24);
-    if (homeTab === 'foryou')   return forYouIds;
+    if (homeTab === 'foryou')   return pageIds;
     if (homeTab === 'popular')  return popularIds;
     if (homeTab === 'recent')   return historyIds.length ? historyIds : [...allIds].reverse().slice(0, 24);
     return [];

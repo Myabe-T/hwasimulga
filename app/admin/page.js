@@ -6,13 +6,13 @@ const BOTH = ['admin','advisor'];
 const NAV = [
   { id: 'dashboard',     icon: IconDash,    label: 'Dashboard',     roles: BOTH },
   { id: 'curated',       icon: IconCurated, label: 'Curated',       roles: BOTH },
-  { id: 'thumbnails',    icon: IconThumb,   label: 'Thumbnails',    roles: BOTH },
+  { id: 'thumbnails',    icon: IconThumb,   label: 'Thumbnails',    roles: ['admin'] },
   { id: 'users',         icon: IconUsers,   label: 'Users',         roles: BOTH },
   { id: 'subscriptions', icon: IconPremium, label: 'Subscriptions', roles: BOTH },
   { id: 'reports',       icon: IconFlag,    label: 'Reports',       roles: BOTH },
   { id: 'deleted',       icon: IconTrash,   label: 'Deleted',       roles: BOTH },
   { id: 'analytics',     icon: IconChart,   label: 'Analytics',     roles: BOTH },
-  { id: 'settings',      icon: IconSettings,label: 'Settings',      roles: BOTH },
+  { id: 'settings',      icon: IconSettings,label: 'Settings',      roles: ['admin'] },
 ];
 
 export default function AdminPage() {
@@ -62,6 +62,7 @@ export default function AdminPage() {
   const [deletedList,  setDeletedList]  = useState([]);
   const [directDelForm, setDirectDelForm] = useState({ id: '', reason: 'duplicate' });
   const [previewVideo,  setPreviewVideo]  = useState(null);
+  const [watchId,       setWatchId]       = useState('');
 
   useEffect(() => {
     async function init() {
@@ -476,6 +477,31 @@ export default function AdminPage() {
                 <StatCard icon="👥" label="Active Viewers" value={uniqueViewers} sub="unique users" color="blue"/>
                 <StatCard icon="🏆" label="Top Video" value={topVideo} sub="most watched" color="green"/>
               </div>
+
+              {/* Quick Watch */}
+              <div className={styles.card} style={{marginTop:20,marginBottom:20}}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>▶</span>
+                  <div><h3 className={styles.cardTitle}>Quick Watch</h3><p className={styles.cardSub}>Enter a video ID to instantly play it</p></div>
+                </div>
+                <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-end'}}>
+                  <div style={{flex:1,minWidth:160}}>
+                    <label className={styles.fieldLabel}>Video ID</label>
+                    <input className="input" type="number" placeholder="e.g. 142" value={watchId} onChange={e=>setWatchId(e.target.value)} onKeyDown={(e) => {
+                      if (e.key === 'Enter' && watchId) {
+                        setPreviewVideo({ id: watchId, loading: true, src: null });
+                        fetch(`/api/hwasi/sign/${watchId}`).then(x=>x.json()).then(sd => setPreviewVideo({ id: watchId, loading: false, src: sd.src })).catch(() => setPreviewVideo(null));
+                      }
+                    }}/>
+                  </div>
+                  <button className="btn btn-primary" disabled={!watchId} onClick={async () => {
+                    setPreviewVideo({ id: watchId, loading: true, src: null });
+                    const sd = await fetch(`/api/hwasi/sign/${watchId}`).then(x=>x.json()).catch(()=>({}));
+                    setPreviewVideo({ id: watchId, loading: false, src: sd.src });
+                  }}>▶ Play Video</button>
+                </div>
+              </div>
+
               <div className={styles.dashRow}>
                 {/* Recent watches */}
                 <div className={styles.dashCard} style={{flex:2}}>
