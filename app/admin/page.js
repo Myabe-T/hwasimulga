@@ -3,13 +3,15 @@ import { useState, useEffect } from 'react';
 import styles from './admin.module.css';
 
 const NAV = [
-  { id: 'dashboard',     icon: IconDash,    label: 'Dashboard'      },
-  { id: 'curated',       icon: IconCurated, label: 'Curated'        },
-  { id: 'thumbnails',    icon: IconThumb,   label: 'Thumbnails'     },
-  { id: 'users',         icon: IconUsers,   label: 'Users'          },
-  { id: 'subscriptions', icon: IconPremium, label: 'Subscriptions'  },
-  { id: 'analytics',     icon: IconChart,   label: 'Analytics'      },
-  { id: 'settings',      icon: IconSettings,label: 'Settings'       },
+  { id: 'dashboard',     icon: IconDash,    label: 'Dashboard',     roles: ['admin','advisor'] },
+  { id: 'curated',       icon: IconCurated, label: 'Curated',       roles: ['admin']           },
+  { id: 'thumbnails',    icon: IconThumb,   label: 'Thumbnails',    roles: ['admin']           },
+  { id: 'users',         icon: IconUsers,   label: 'Users',         roles: ['admin']           },
+  { id: 'subscriptions', icon: IconPremium, label: 'Subscriptions', roles: ['admin']           },
+  { id: 'reports',       icon: IconFlag,    label: 'Reports',       roles: ['admin','advisor'] },
+  { id: 'deleted',       icon: IconTrash,   label: 'Deleted',       roles: ['admin','advisor'] },
+  { id: 'analytics',     icon: IconChart,   label: 'Analytics',     roles: ['admin','advisor'] },
+  { id: 'settings',      icon: IconSettings,label: 'Settings',      roles: ['admin']           },
 ];
 
 export default function AdminPage() {
@@ -49,34 +51,45 @@ export default function AdminPage() {
   const [premiumUsers, setPremiumUsers] = useState([]);
   const [grantForm,    setGrantForm]    = useState({ userId: '', plan: 'basic', days: '' });
 
+  // Reports + Deleted state (advisor + admin)
+  const [reportsList,  setReportsList]  = useState([]);
+  const [deletedList,  setDeletedList]  = useState([]);
+
   useEffect(() => {
     async function init() {
       const r = await fetch('/api/verify');
       const d = await r.json();
-      if (!d.auth || d.role !== 'admin') { window.location.href = '/gallery'; return; }
+      if (!d.auth || !['admin','advisor'].includes(d.role)) { window.location.href = '/gallery'; return; }
       setUser(d);
-      loadAll();
+      loadAll(d.role);
     }
     init();
   }, []);
 
-  async function loadAll() {
-    const [s, c, u, h, t, p] = await Promise.all([
+  async function loadAll(role) {
+    const userRole = role || user?.role || 'admin';
+    const isAdmin = userRole === 'admin';
+    const fetches = [
       fetch('/api/hwasi/settings').then(x=>x.json()),
-      fetch('/api/hwasi/curated').then(x=>x.json()),
-      fetch('/api/hwasi/users').then(x=>x.json()),
+      isAdmin ? fetch('/api/hwasi/curated').then(x=>x.json()) : Promise.resolve({}),
+      isAdmin ? fetch('/api/hwasi/users').then(x=>x.json()) : Promise.resolve([]),
       fetch('/api/hwasi/history').then(x=>x.json()),
       fetch('/api/hwasi/thumbnails').then(x=>x.json()),
-      fetch('/api/hwasi/premium').then(x=>x.json()).catch(()=>({})),
-    ]);
-    if (!s.error) setSettings(s);
-    if (!c.error) setCurated(c);
+      isAdmin ? fetch('/api/hwasi/premium').then(x=>x.json()).catch(()=>({})) : Promise.resolve({}),
+      fetch('/api/hwasi/reports').then(x=>x.json()).catch(()=>({ reports:[] })),
+      fetch('/api/hwasi/deleted').then(x=>x.json()).catch(()=>({ deleted:[] })),
+    ];
+    const [s, c, u, h, t, p, rep, del] = await Promise.all(fetches);
+    if (s && !s.error) setSettings(s);
+    if (c && !c.error) setCurated(c);
     setUsers(Array.isArray(u) ? u : []);
     setHistory(Array.isArray(h) ? h : []);
     const ids = (t.ids || []).map(Number);
     setThumbCount(ids.length);
     setAllThumbIds(new Set(ids));
     if (p.users) setPremiumUsers(p.users);
+    setReportsList(rep.reports || []);
+    setDeletedList(del.deleted || []);
   }
 
   function flash(text, type='ok') { setMsg({ text, type }); setTimeout(() => setMsg({ text:'', type:'' }), 3500); }
@@ -377,8 +390,8 @@ export default function AdminPage() {
         {/* Section label */}
         {!collapsed && <div className={styles.navSection}>NAVIGATION</div>}
 
-        {/* Nav items */}
-        {NAV.map(({ id, icon: Icon, label }) => (
+        {/* Nav items — filtered by role */}
+        {NAV.filter(n => n.roles.includes(user.role)).map(({ id, icon: Icon, label }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`${styles.navItem} ${tab===id ? styles.navItemActive : ''}`}
             title={collapsed ? label : undefined}>
@@ -400,7 +413,7 @@ export default function AdminPage() {
           {!collapsed && (
             <div className={styles.sidebarUserInfo}>
               <div className={styles.sidebarUserName}>{user.displayName||user.username}</div>
-              <div className={styles.sidebarUserRole}>Administrator</div>
+              <div className={styles.sidebarUserRole}>{user.role === 'advisor' ? 'Advisor' : 'Administrator'}</div>
             </div>
           )}
           {!collapsed && (
@@ -882,6 +895,7 @@ export default function AdminPage() {
                     <label className={styles.fieldLabel}>Role</label>
                     <select className="input" value={newUser.role} onChange={e=>setNewUser(p=>({...p,role:e.target.value}))}>
                       <option value="viewer">Viewer</option>
+                      <option value="advisor">Advisor</option>
                       <option value="admin">Admin</option>
                     </select>
                   </div>
@@ -913,6 +927,94 @@ export default function AdminPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ REPORTS ══ */}
+          {tab==='reports' && (
+            <div className={styles.fadeIn}>
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>🚩</span>
+                  <div><h3 className={styles.cardTitle}>Reported Videos</h3><p className={styles.cardSub}>{reportsList.length} video(s) reported</p></div>
+                  <button className="btn btn-ghost btn-sm" style={{marginLeft:'auto'}} onClick={loadAll}>↻ Refresh</button>
+                </div>
+                {reportsList.length === 0 ? (
+                  <p style={{color:'var(--text3)',textAlign:'center',padding:'32px 0'}}>No reports yet 🎉</p>
+                ) : (
+                  <div style={{display:'flex',flexDirection:'column',gap:12,marginTop:12}}>
+                    {reportsList.map(r => (
+                      <div key={r.videoId} style={{padding:16,background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.15)',borderRadius:14}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8,flexWrap:'wrap'}}>
+                          <strong style={{color:'#f87171',fontSize:15}}>Video #{r.videoId}</strong>
+                          <span style={{fontSize:12,color:'rgba(255,255,255,.4)',background:'rgba(255,255,255,.06)',padding:'2px 10px',borderRadius:100}}>{r.reports.length} report{r.reports.length!==1?'s':''}</span>
+                          <div style={{marginLeft:'auto',display:'flex',gap:8}}>
+                            <button className="btn btn-ghost btn-sm" style={{fontSize:11}} onClick={() => {
+                              fetch(`/api/hwasi/reports`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoId:r.videoId})})
+                                .then(()=>{ flash('✅ Reports cleared'); loadAll(); });
+                            }}>✓ Clear Reports</button>
+                            <button className="btn btn-ghost btn-sm" style={{fontSize:11,color:'#f87171'}} onClick={async () => {
+                              const reason = prompt('Delete reason: duplicate/fake/nothing/broken/restricted','broken');
+                              if (!reason) return;
+                              await fetch(`/api/hwasi/video/${r.videoId}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})});
+                              await fetch(`/api/hwasi/reports`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoId:r.videoId})});
+                              flash('🗑 Video deleted & reports cleared'); loadAll();
+                            }}>🗑 Delete Video</button>
+                          </div>
+                        </div>
+                        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                          {r.reports.map((rep,i) => (
+                            <div key={i} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,color:'rgba(255,255,255,.6)'}}>
+                              <span style={{color:'#a78bfa',fontWeight:700}}>@{rep.username}</span>
+                              <span style={{background:'rgba(239,68,68,.12)',border:'1px solid rgba(239,68,68,.2)',color:'#f87171',padding:'1px 8px',borderRadius:100,fontSize:11}}>{rep.reason}</span>
+                              <span>{new Date(rep.timestamp).toLocaleString('en-IN')}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ══ DELETED VIDEOS ══ */}
+          {tab==='deleted' && (
+            <div className={styles.fadeIn}>
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>🗑</span>
+                  <div><h3 className={styles.cardTitle}>Deleted Videos Audit</h3><p className={styles.cardSub}>{deletedList.length} deletion(s) logged</p></div>
+                  <button className="btn btn-ghost btn-sm" style={{marginLeft:'auto'}} onClick={loadAll}>↻ Refresh</button>
+                </div>
+                {deletedList.length === 0 ? (
+                  <p style={{color:'var(--text3)',textAlign:'center',padding:'32px 0'}}>No deletions yet</p>
+                ) : (
+                  <table style={{width:'100%',borderCollapse:'collapse',marginTop:12,fontSize:13}}>
+                    <thead>
+                      <tr style={{color:'var(--text3)',fontSize:11,textTransform:'uppercase',letterSpacing:'.05em'}}>
+                        <th style={{padding:'8px 12px',textAlign:'left'}}>Video #</th>
+                        <th style={{padding:'8px 12px',textAlign:'left'}}>Reason</th>
+                        <th style={{padding:'8px 12px',textAlign:'left'}}>Deleted By</th>
+                        <th style={{padding:'8px 12px',textAlign:'left'}}>Role</th>
+                        <th style={{padding:'8px 12px',textAlign:'left'}}>When</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deletedList.map((d,i) => (
+                        <tr key={i} style={{borderTop:'1px solid rgba(255,255,255,.05)'}}>
+                          <td style={{padding:'10px 12px',fontWeight:700,color:'#a78bfa'}}>#{d.id}</td>
+                          <td style={{padding:'10px 12px'}}><span style={{background:'rgba(239,68,68,.12)',border:'1px solid rgba(239,68,68,.2)',color:'#f87171',padding:'2px 10px',borderRadius:100,fontSize:11,fontWeight:700}}>{d.reason}</span></td>
+                          <td style={{padding:'10px 12px',color:'rgba(255,255,255,.7)'}}>@{d.deletedBy}</td>
+                          <td style={{padding:'10px 12px'}}><span style={{fontSize:11,padding:'2px 8px',borderRadius:6,background:d.role==='admin'?'rgba(236,72,153,.15)':'rgba(59,130,246,.15)',color:d.role==='admin'?'#ec4899':'#60a5fa'}}>{d.role}</span></td>
+                          <td style={{padding:'10px 12px',fontSize:11,color:'rgba(255,255,255,.4)'}}>{new Date(d.timestamp).toLocaleString('en-IN')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           )}
@@ -1069,3 +1171,4 @@ function IconEdit()     { return <svg width="11" height="11" viewBox="0 0 24 24"
 function IconTrash()    { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>; }
 function IconThumb()    { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>; }
 function IconPremium()  { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>; }
+function IconFlag()     { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>; }
