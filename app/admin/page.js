@@ -50,6 +50,11 @@ export default function AdminPage() {
   // Subscription state
   const [premiumUsers, setPremiumUsers] = useState([]);
   const [grantForm,    setGrantForm]    = useState({ userId: '', plan: 'basic', days: '' });
+  const [subRequests,  setSubRequests]  = useState([]); // advisor → admin requests
+
+  // Registration approval state (admin only)
+  const [regApproval,  setRegApproval]  = useState(false); // toggle
+  const [pendingUsers, setPendingUsers] = useState([]);    // pending registrations
 
   // Reports + Deleted state (advisor + admin)
   const [reportsList,  setReportsList]  = useState([]);
@@ -78,8 +83,11 @@ export default function AdminPage() {
       isAdmin ? fetch('/api/hwasi/premium').then(x=>x.json()).catch(()=>({})) : Promise.resolve({}),
       fetch('/api/hwasi/reports').then(x=>x.json()).catch(()=>({ reports:[] })),
       fetch('/api/hwasi/deleted').then(x=>x.json()).catch(()=>({ deleted:[] })),
+      isAdmin ? fetch('/api/hwasi/pending-users').then(x=>x.json()).catch(()=>({ users:[] })) : Promise.resolve({ users:[] }),
+      isAdmin ? fetch('/api/hwasi/reg-approval').then(x=>x.json()).catch(()=>({ required:false })) : Promise.resolve({ required:false }),
+      fetch('/api/hwasi/sub-requests').then(x=>x.json()).catch(()=>({ requests:[] })),
     ];
-    const [s, c, u, h, t, p, rep, del] = await Promise.all(fetches);
+    const [s, c, u, h, t, p, rep, del, pu, ra, sr] = await Promise.all(fetches);
     if (s && !s.error) setSettings(s);
     if (c && !c.error) setCurated(c);
     setUsers(Array.isArray(u) ? u : []);
@@ -90,6 +98,9 @@ export default function AdminPage() {
     if (p.users) setPremiumUsers(p.users);
     setReportsList(rep.reports || []);
     setDeletedList(del.deleted || []);
+    setPendingUsers(pu.users || []);
+    setRegApproval(ra.required || false);
+    setSubRequests(sr.requests || []);
   }
 
   function flash(text, type='ok') { setMsg({ text, type }); setTimeout(() => setMsg({ text:'', type:'' }), 3500); }
@@ -774,7 +785,102 @@ export default function AdminPage() {
           {/* ══ SUBSCRIPTIONS ══ */}
           {tab==='subscriptions' && (
             <div className={styles.fadeIn}>
-              {/* Grant subscription */}
+
+              {/* ─ For ADVISORS: request form ─ */}
+              {user.role === 'advisor' && (
+                <div className={styles.card} style={{marginBottom:20}}>
+                  <div className={styles.cardHeader}>
+                    <span style={{fontSize:22}}>📝</span>
+                    <div><h3 className={styles.cardTitle}>Request Subscription for User</h3><p className={styles.cardSub}>Admin will review and approve this request</p></div>
+                  </div>
+                  <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-end'}}>
+                    <div style={{flex:1,minWidth:160}}>
+                      <label className={styles.fieldLabel}>User ID or Username</label>
+                      <input className="input" placeholder="User ID or username" value={grantForm.userId} onChange={e=>setGrantForm(p=>({...p,userId:e.target.value}))} />
+                    </div>
+                    <div style={{flex:1,minWidth:160}}>
+                      <label className={styles.fieldLabel}>Display Name (optional)</label>
+                      <input className="input" placeholder="For reference" value={grantForm.displayName||''} onChange={e=>setGrantForm(p=>({...p,displayName:e.target.value}))} />
+                    </div>
+                    <div style={{minWidth:130}}>
+                      <label className={styles.fieldLabel}>Plan</label>
+                      <select className="input" value={grantForm.plan} onChange={e=>setGrantForm(p=>({...p,plan:e.target.value}))}>
+                        <option value="basic">₹100 — Basic (14d)</option>
+                        <option value="plus">₹300 — Plus (60d)</option>
+                        <option value="pro">₹599 — Pro (3yr)</option>
+                      </select>
+                    </div>
+                    <div style={{minWidth:100}}>
+                      <label className={styles.fieldLabel}>Days</label>
+                      <input className="input" type="number" min="1" placeholder="Days" value={grantForm.days} onChange={e=>setGrantForm(p=>({...p,days:e.target.value}))} />
+                    </div>
+                    <button className="btn btn-primary" onClick={async () => {
+                      if (!grantForm.userId || !grantForm.days) { flash('❌ Fill all fields', 'err'); return; }
+                      const r = await fetch('/api/hwasi/sub-requests', { method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({ userId: grantForm.userId, userDisplayName: grantForm.displayName, plan: grantForm.plan, days: Number(grantForm.days) }) });
+                      if (r.ok) { flash('📤 Request sent to admin for approval'); setGrantForm({userId:'',plan:'basic',days:'',displayName:''}); }
+                      else flash('❌ Failed to send request', 'err');
+                    }}>📤 Send Request</button>
+                  </div>
+                  {/* Show advisor's past requests */}
+                  {subRequests.filter(sr => sr.requestedBy === user.username).length > 0 && (
+                    <div style={{marginTop:16}}>
+                      <div style={{fontSize:12,color:'var(--text3)',marginBottom:8,fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em'}}>My Requests</div>
+                      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                        {subRequests.filter(sr => sr.requestedBy === user.username).slice(0,5).map(sr => (
+                          <div key={sr.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'rgba(255,255,255,.04)',borderRadius:10,fontSize:13,flexWrap:'wrap'}}>
+                            <span style={{color:'#a78bfa',fontWeight:700}}>@{sr.requestedFor}</span>
+                            <span style={{background:'rgba(124,58,237,.2)',color:'#a78bfa',padding:'2px 8px',borderRadius:100,fontSize:11}}>{sr.plan}</span>
+                            <span style={{color:'rgba(255,255,255,.4)'}}>{sr.days}d</span>
+                            <span style={{marginLeft:'auto',fontSize:11,padding:'2px 10px',borderRadius:100,fontWeight:700,
+                              background: sr.status==='approved'?'rgba(16,185,129,.15)':sr.status==='rejected'?'rgba(239,68,68,.15)':'rgba(245,158,11,.15)',
+                              color: sr.status==='approved'?'#34d399':sr.status==='rejected'?'#f87171':'#fbbf24'
+                            }}>{sr.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ─ For ADMIN: pending sub-requests to approve ─ */}
+              {user.role === 'admin' && subRequests.filter(sr => sr.status === 'pending').length > 0 && (
+                <div className={styles.card} style={{marginBottom:20,borderColor:'rgba(245,158,11,.2)',background:'rgba(245,158,11,.04)'}}>
+                  <div className={styles.cardHeader}>
+                    <span style={{fontSize:22}}>⏳</span>
+                    <div><h3 className={styles.cardTitle}>Pending Subscription Requests</h3><p className={styles.cardSub}>{subRequests.filter(sr => sr.status === 'pending').length} request(s) from advisors</p></div>
+                    <button className="btn btn-ghost btn-sm" style={{marginLeft:'auto'}} onClick={loadAll}>↻ Refresh</button>
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:10,marginTop:12}}>
+                    {subRequests.filter(sr => sr.status === 'pending').map(sr => (
+                      <div key={sr.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:'rgba(245,158,11,.06)',border:'1px solid rgba(245,158,11,.15)',borderRadius:12,flexWrap:'wrap'}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:700,fontSize:14}}>Subscription for: <span style={{color:'#a78bfa'}}>{sr.requestedForDisplay || sr.requestedFor}</span></div>
+                          <div style={{fontSize:12,color:'rgba(255,255,255,.5)'}}>
+                            Plan: <strong style={{color:'#f59e0b'}}>{sr.plan}</strong> · {sr.days} days ·
+                            Requested by: <strong style={{color:'#60a5fa'}}>@{sr.requestedBy}</strong> ({sr.requestedByRole})
+                          </div>
+                          <div style={{fontSize:11,color:'rgba(255,255,255,.3)'}}>{new Date(sr.timestamp).toLocaleString('en-IN')}</div>
+                        </div>
+                        <div style={{display:'flex',gap:8,flexShrink:0}}>
+                          <button className="btn btn-primary btn-sm" onClick={async () => {
+                            await fetch('/api/hwasi/sub-requests', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ requestId: sr.id, action: 'approve' }) });
+                            flash('✅ Subscription approved & activated'); loadAll();
+                          }}>✓ Approve</button>
+                          <button className="btn btn-ghost btn-sm" style={{color:'#f87171'}} onClick={async () => {
+                            await fetch('/api/hwasi/sub-requests', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ requestId: sr.id, action: 'reject' }) });
+                            flash('✕ Request rejected'); loadAll();
+                          }}>✕ Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Grant subscription (admin direct) */}
+              {user.role === 'admin' && (
               <div className={styles.card} style={{marginBottom:20}}>
                 <div className={styles.cardHeader}>
                   <span style={{fontSize:22}}>✨</span>
@@ -865,6 +971,8 @@ export default function AdminPage() {
                   </table>
                 </div>
               </div>
+              )} {/* end admin-only grant section */}
+
             </div>
           )}
 
@@ -872,6 +980,73 @@ export default function AdminPage() {
           {tab==='users' && (
 
             <div className={styles.fadeIn}>
+
+              {/* ─ Registration Approval Toggle ─ */}
+              <div className={styles.card} style={{marginBottom:20}}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>🔐</span>
+                  <div style={{flex:1}}>
+                    <h3 className={styles.cardTitle}>Registration Approval</h3>
+                    <p className={styles.cardSub}>When ON, new registrations require admin approval before they can log in</p>
+                  </div>
+                  <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+                    <span style={{fontSize:13,color:'var(--text2)',fontWeight:600}}>{regApproval ? '🟢 ON' : '⚫ OFF'}</span>
+                    <div style={{position:'relative',width:44,height:24}} onClick={async () => {
+                      const next = !regApproval;
+                      setRegApproval(next);
+                      await fetch('/api/hwasi/reg-approval', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ required: next }) });
+                      flash(next ? '🔐 Approval mode ON — new users need admin approval' : '🔓 Open mode — anyone can register instantly');
+                    }}>
+                      <div style={{
+                        position:'absolute',inset:0,borderRadius:12,
+                        background: regApproval ? 'linear-gradient(135deg,#7c3aed,#4f46e5)' : 'rgba(255,255,255,.15)',
+                        transition:'background .2s'
+                      }} />
+                      <div style={{
+                        position:'absolute',top:3,width:18,height:18,borderRadius:'50%',background:'#fff',
+                        left: regApproval ? 23 : 3,
+                        transition:'left .2s',boxShadow:'0 1px 4px rgba(0,0,0,.3)'
+                      }} />
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* ─ Pending Registrations ─ */}
+              {pendingUsers.length > 0 && (
+                <div className={styles.card} style={{marginBottom:20}}>
+                  <div className={styles.cardHeader}>
+                    <span style={{fontSize:22}}>⏳</span>
+                    <div><h3 className={styles.cardTitle}>Pending Registrations</h3><p className={styles.cardSub}>{pendingUsers.length} user(s) waiting for approval</p></div>
+                    <button className="btn btn-ghost btn-sm" style={{marginLeft:'auto'}} onClick={loadAll}>↻ Refresh</button>
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:10,marginTop:12}}>
+                    {pendingUsers.map(pu => (
+                      <div key={pu.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:'rgba(124,58,237,.06)',border:'1px solid rgba(124,58,237,.15)',borderRadius:12,flexWrap:'wrap'}}>
+                        <div style={{width:38,height:38,borderRadius:'50%',background:'linear-gradient(135deg,#7c3aed,#ec4899)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:13,flexShrink:0}}>
+                          {pu.avatar || pu.displayName?.slice(0,2)}
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:700,fontSize:14}}>{pu.displayName}</div>
+                          <div style={{fontSize:12,color:'rgba(255,255,255,.5)'}}>@{pu.username} · {pu.email}</div>
+                          <div style={{fontSize:11,color:'rgba(255,255,255,.3)'}}>{new Date(pu.createdAt).toLocaleString('en-IN')}</div>
+                        </div>
+                        <div style={{display:'flex',gap:8,flexShrink:0}}>
+                          <button className="btn btn-primary btn-sm" onClick={async () => {
+                            await fetch('/api/hwasi/pending-users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId: pu.id, action: 'approve' }) });
+                            flash('✅ User approved & can now log in'); loadAll();
+                          }}>✓ Approve</button>
+                          <button className="btn btn-ghost btn-sm" style={{color:'#f87171'}} onClick={async () => {
+                            await fetch('/api/hwasi/pending-users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId: pu.id, action: 'reject' }) });
+                            flash('🗑 Registration rejected'); loadAll();
+                          }}>✕ Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Create form */}
               <div className={styles.card} style={{marginBottom:20}}>
                 <div className={styles.cardHeader}>

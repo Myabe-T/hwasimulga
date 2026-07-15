@@ -69,6 +69,10 @@ export default function GalleryPage() {
   const [premiumInfo, setPremiumInfo] = useState(null);
   const [deleteModal, setDeleteModal] = useState(null); // { id }
   const [deleteReason, setDeleteReason] = useState('duplicate');
+  const [changePwdModal, setChangePwdModal] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ old: '', new: '', confirm: '' });
+  const [pwdMsg, setPwdMsg] = useState('');
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -175,6 +179,24 @@ export default function GalleryPage() {
     window.location.href = '/login';
   }
 
+  async function changePassword() {
+    setPwdMsg('');
+    if (pwdForm.new !== pwdForm.confirm) { setPwdMsg('New passwords do not match'); return; }
+    if (pwdForm.new.length < 6) { setPwdMsg('New password must be at least 6 characters'); return; }
+    try {
+      const r = await fetch('/api/hwasi/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: pwdForm.old, newPassword: pwdForm.new }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setPwdMsg(d.error || 'Failed'); return; }
+      setPwdMsg('✓ Password changed successfully!');
+      setPwdForm({ old: '', new: '', confirm: '' });
+      setTimeout(() => setChangePwdModal(false), 1500);
+    } catch { setPwdMsg('Network error. Try again.'); }
+  }
+
   async function handleDownload(e, id) {
     e && e.stopPropagation();
     try {
@@ -237,39 +259,62 @@ export default function GalleryPage() {
       {/* ── HEADER ── */}
       <header className={styles.header}>
         <div className={styles.headerInner}>
+          {/* Left: Logo */}
           <div className={styles.brand}>
-            <Logo size={20} /><span className={styles.brandName}>Hwasimulga</span>
+            <img src="/logo.png" alt="" className={styles.brandLogo} />
+            <span className={styles.brandName}>Hwasimulga</span>
           </div>
 
-          {/* Desktop nav */}
+          {/* Center: Nav (desktop only) */}
           <nav className={styles.desktopNav}>
             <button onClick={() => setView('gallery')} className={`${styles.navBtn} ${view==='gallery'?styles.navActive:''}`}>🏠 Home</button>
             <button onClick={() => setView('bookmarks')} className={`${styles.navBtn} ${view==='bookmarks'?styles.navActive:''}`}>🔖 Bookmarks</button>
-            {(user.role === 'admin' || user.role === 'advisor') && (
-              <a href="/admin" className={styles.navBtn}>🛡 Admin</a>
-            )}
+            {isAdminOrAdvisor && <a href="/admin" className={styles.navBtn}>🛡 Admin</a>}
           </nav>
 
+          {/* Right: chips + user */}
           <div className={styles.headerRight}>
-            {/* Free counter */}
             {viewStatus && !viewStatus.isPremium && user.role === 'viewer' && (
               <div className={styles.freeChip} onClick={() => window.location.href='/premium'}>
                 {viewStatus.remaining ?? 5}/5 free
               </div>
             )}
-            {/* Premium badge — clickable */}
             {viewStatus?.isPremium && (
               <button className={styles.premiumBadge} onClick={() => setPremiumInfo(viewStatus)}>
                 👑 Premium
               </button>
             )}
-            {/* User chip */}
-            <div className={styles.userChip}>
-              <div className={styles.avatar}>{(user.avatar || user.username?.slice(0,2) || 'U').toUpperCase()}</div>
-              <span className={styles.userName}>{user.displayName || user.username}</span>
+
+            {/* User avatar — click to show dropdown */}
+            <div className={styles.userChipWrap}>
+              <div className={styles.userChip} onClick={() => setUserMenuOpen(o => !o)}>
+                <div className={styles.avatar}>{(user.avatar || user.username?.slice(0,2) || 'U').toUpperCase()}</div>
+                <span className={styles.userName}>{user.displayName || user.username}</span>
+                <span style={{fontSize:10,opacity:.5,marginLeft:2}}>▾</span>
+              </div>
+              {userMenuOpen && (
+                <div className={styles.userDropdown}>
+                  <div className={styles.userDropdownHeader}>
+                    <div className={styles.userDropdownAvatar}>{(user.avatar || user.username?.slice(0,2) || 'U').toUpperCase()}</div>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:13}}>{user.displayName || user.username}</div>
+                      <div style={{fontSize:11,color:'rgba(255,255,255,.4)',textTransform:'capitalize'}}>{user.role}</div>
+                    </div>
+                  </div>
+                  <div className={styles.userDropdownDivider} />
+                  <button className={styles.userDropdownItem} onClick={() => { setChangePwdModal(true); setUserMenuOpen(false); }}>
+                    🔑 Change Password
+                  </button>
+                  <button className={styles.userDropdownItem} onClick={() => { logout(); }}>
+                    🚪 Sign Out
+                  </button>
+                </div>
+              )}
             </div>
-            <button className={styles.signOutBtn} onClick={logout}>Sign out</button>
-            <button className={styles.hamburger} onClick={() => setMobileMenuOpen(o => !o)}>☰</button>
+
+            <button className={styles.hamburger} onClick={() => setMobileMenuOpen(o => !o)}>
+              {mobileMenuOpen ? '✕' : '☰'}
+            </button>
           </div>
         </div>
 
@@ -279,7 +324,8 @@ export default function GalleryPage() {
             <button onClick={() => { setView('gallery'); setMobileMenuOpen(false); }}>🏠 Home</button>
             <button onClick={() => { setView('bookmarks'); setMobileMenuOpen(false); }}>🔖 Bookmarks</button>
             {isAdminOrAdvisor && <a href="/admin">🛡 Admin</a>}
-            <button onClick={logout}>🚪 Sign Out</button>
+            <button onClick={() => { setChangePwdModal(true); setMobileMenuOpen(false); }}>🔑 Change Password</button>
+            <button onClick={logout} style={{color:'#f87171'}}>🚪 Sign Out</button>
           </div>
         )}
       </header>
@@ -487,6 +533,36 @@ export default function GalleryPage() {
             )}
             <button className={styles.btnPrimary} onClick={() => window.location.href='/premium'}>Extend Plan →</button>
             <button className={styles.cancelBtn} onClick={() => setPremiumInfo(null)} style={{marginTop:8}}>Close</button>
+          </div>
+        </div>
+      )}
+      {/* ── CHANGE PASSWORD MODAL ── */}
+      {changePwdModal && (
+        <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) setChangePwdModal(false); }}>
+          <div className={styles.smallModal}>
+            <h3 style={{marginBottom:4,fontWeight:800,fontSize:16}}>🔑 Change Password</h3>
+            <p style={{fontSize:12,color:'rgba(255,255,255,.4)',marginBottom:18}}>Update your account password</p>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <input className="input" type="password" placeholder="Current password"
+                value={pwdForm.old} onChange={e => setPwdForm(p => ({...p, old: e.target.value}))} />
+              <input className="input" type="password" placeholder="New password (min 6 chars)"
+                value={pwdForm.new} onChange={e => setPwdForm(p => ({...p, new: e.target.value}))} />
+              <input className="input" type="password" placeholder="Confirm new password"
+                value={pwdForm.confirm} onChange={e => setPwdForm(p => ({...p, confirm: e.target.value}))} />
+            </div>
+            {pwdMsg && (
+              <div style={{marginTop:10,padding:'8px 12px',borderRadius:10,fontSize:13,
+                background: pwdMsg.startsWith('\u2713') ? 'rgba(16,185,129,.15)' : 'rgba(239,68,68,.12)',
+                border: `1px solid ${pwdMsg.startsWith('\u2713') ? 'rgba(16,185,129,.3)' : 'rgba(239,68,68,.25)'}`,
+                color: pwdMsg.startsWith('\u2713') ? '#34d399' : '#f87171'}}>
+                {pwdMsg}
+              </div>
+            )}
+            <div style={{display:'flex',gap:10,marginTop:14}}>
+              <button style={{flex:1,padding:'11px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#7c3aed,#4f46e5)',color:'#fff',fontWeight:700,cursor:'pointer'}}
+                onClick={changePassword}>Save Password</button>
+              <button className={styles.cancelBtn} style={{flex:1}} onClick={() => { setChangePwdModal(false); setPwdMsg(''); setPwdForm({old:'',new:'',confirm:''}); }}>Cancel</button>
+            </div>
           </div>
         </div>
       )}
