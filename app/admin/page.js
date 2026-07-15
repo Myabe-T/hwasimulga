@@ -224,6 +224,13 @@ export default function AdminPage() {
             const ox    = Math.round((320 - drawW) / 2);
             const oy    = Math.round((180 - drawH) / 2);
             ctx.drawImage(vid, ox, oy, drawW, drawH);
+            // Quick black-frame check: sample center pixels
+            const sample = ctx.getImageData(80, 45, 160, 90);
+            let brightness = 0;
+            for (let i = 0; i < sample.data.length; i += 4)
+              brightness += sample.data[i] + sample.data[i+1] + sample.data[i+2];
+            const avgBright = brightness / (sample.data.length / 4 * 3);
+            if (avgBright < 6) { resolve(null); return; } // black frame — skip
             resolve(canvas.toDataURL('image/jpeg', 0.78));
           } catch { resolve(null); }
           finally { cleanup(); }
@@ -241,6 +248,9 @@ export default function AdminPage() {
             const seekTo = Math.min(captureAt, vid.duration * 0.9);
             seekPending = true;
             vid.currentTime = seekTo;
+          } else {
+            // No duration — capture whatever frame is loaded
+            finish(true);
           }
         }, { once: true });
 
@@ -251,10 +261,14 @@ export default function AdminPage() {
           finish(true);
         }, { once: true });
 
-        // loadeddata fallback: if metadata arrived but seek somehow skipped
+        // loadeddata fallback: fires when FIRST frame is decodable
+        // Only act if seekPending hasn't started (avoids race with seeked)
         vid.addEventListener('loadeddata', () => {
-          if (settled || seekPending) return;
-          finish(true); // capture whatever frame is loaded
+          // Use setTimeout(0) to yield — let loadedmetadata/seeked handle it first
+          setTimeout(() => {
+            if (settled || seekPending) return;
+            finish(true); // capture whatever frame is loaded
+          }, 0);
         }, { once: true });
 
         vid.addEventListener('error', () => finish(false), { once: true });
@@ -273,6 +287,7 @@ export default function AdminPage() {
         vid.load();
       });
     }
+
 
     async function processOne(id) {
       if (genStopRef.current) return;
