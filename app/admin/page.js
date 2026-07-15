@@ -33,12 +33,14 @@ export default function AdminPage() {
 
   // Thumbnail generator state
   const [thumbCount,   setThumbCount]   = useState(0);
+  const [allThumbIds,  setAllThumbIds]  = useState(new Set());  // IDs that have thumbnails
   const [genRunning,   setGenRunning]   = useState(false);
   const [genProgress,  setGenProgress]  = useState(0);
   const [genTotal,     setGenTotal]     = useState(0);
   const [genStatus,    setGenStatus]    = useState('');
-  const [captureAt,    setCaptureAt]    = useState(1.5);   // seconds to seek before capture
-  const [regenIds,     setRegenIds]     = useState('');    // comma-separated IDs to re-generate
+  const [captureAt,    setCaptureAt]    = useState(1.5);
+  const [regenIds,     setRegenIds]     = useState('');
+  const [showThumbGrid, setShowThumbGrid] = useState(false);
   const genStopRef = { current: false };
   const [showPass,    setShowPass]    = useState(false);
 
@@ -70,7 +72,9 @@ export default function AdminPage() {
     if (!c.error) setCurated(c);
     setUsers(Array.isArray(u) ? u : []);
     setHistory(Array.isArray(h) ? h : []);
-    setThumbCount((t.ids || []).length);
+    const ids = (t.ids || []).map(Number);
+    setThumbCount(ids.length);
+    setAllThumbIds(new Set(ids));
     if (p.users) setPremiumUsers(p.users);
   }
 
@@ -601,6 +605,51 @@ export default function AdminPage() {
                       }}>⚡ Regen Selected</button>
                   </div>
                 </div>
+              </div>
+
+              {/* ── Thumbnail Review Grid ─────────────────────────────── */}
+              <div className={styles.card} style={{marginTop:20}}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>🔍</span>
+                  <div>
+                    <h3 className={styles.cardTitle}>Thumbnail Review</h3>
+                    <p className={styles.cardSub}>See all videos — ID overlaid so you can spot black thumbnails</p>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowThumbGrid(g => !g)}>
+                    {showThumbGrid ? '▲ Hide' : '▼ Show Grid'}
+                  </button>
+                </div>
+                {showThumbGrid && (
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:8,marginTop:12}}>
+                    {Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start).map(id => (
+                      <div key={id} style={{position:'relative',borderRadius:8,overflow:'hidden',background:'#0a0010',
+                        border: allThumbIds.has(id) ? '1px solid rgba(124,58,237,.3)' : '1px solid rgba(239,68,68,.3)',
+                        cursor:'pointer'}} onClick={() => setRegenIds(String(id))}>
+                        {allThumbIds.has(id) ? (
+                          <img src={`/api/hwasi/thumbnail/${id}`}
+                            style={{width:'100%',aspectRatio:'16/9',objectFit:'cover',display:'block'}}
+                            loading="lazy" alt={`#${id}`}
+                            onError={e => { e.target.style.display='none'; }}/>
+                        ) : (
+                          <div style={{width:'100%',aspectRatio:'16/9',display:'flex',alignItems:'center',justifyContent:'center',
+                            background:'rgba(239,68,68,.1)',fontSize:18}}>❌</div>
+                        )}
+                        {/* Video ID overlay */}
+                        <div style={{position:'absolute',bottom:0,left:0,right:0,
+                          background:'linear-gradient(transparent,rgba(0,0,0,.85))',
+                          padding:'12px 4px 4px',textAlign:'center',
+                          fontSize:11,fontWeight:700,color:allThumbIds.has(id)?'#a78bfa':'#f87171'}}>
+                          #{id}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {showThumbGrid && (
+                  <p style={{fontSize:11,color:'var(--text3)',marginTop:10,textAlign:'center'}}>
+                    Click any thumbnail to prefill its ID in the "Re-generate" field above
+                  </p>
+                )}
               </div>
             </div>
           )}
