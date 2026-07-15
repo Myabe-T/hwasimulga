@@ -154,58 +154,59 @@ export default function AdminPage() {
     else flash('❌ '+d.error,'err');
   }
 
-  // ── Thumbnail generator (Blob URL trick — no CORS taint!) ──────────────────
+  // ── Thumbnail generator (CORS streaming proxy — correct approach!) ─────────
   async function runGenerator(start, end, specificIds = null) {
     genStopRef.current = false;
 
-    // 1. Test connectivity first
+    // 1. Test connectivity
     setGenStatus('Testing connection…');
     setGenRunning(true);
     const testR = await fetch('/api/hwasi/thumbnails').catch(() => null);
     if (!testR || !testR.ok) {
       setGenRunning(false);
       setGenStatus('❌ Redis connection failed!');
-      flash('❌ Redis unreachable — check your Secrets in Cloudflare Pages settings', 'err');
+      flash('❌ Redis unreachable — check your Secrets', 'err');
       return;
     }
 
-    const ids = specificIds ? specificIds : Array.from({ length: end - start + 1 }, (_, i) => i + start);
+    const ids = specificIds
+      ? specificIds
+      : Array.from({ length: end - start + 1 }, (_, i) => i + start);
     setGenTotal(ids.length);
     setGenProgress(0);
     let saved = 0;
     let done  = 0;
-    const CONCURRENT = 4;
+    const CONCURRENT = 3;
 
-    async function captureViaServerBlob(id) {
-      // PUT /api/hwasi/thumbnail/[id] fetches video bytes SERVER-SIDE from CDN (no CORS!).
-      // We get back raw MP4 bytes and turn them into a same-origin blob URL so
-      // canvas.toDataURL() works without CORS taint.
-      //
-      // KEY FIX: Many MP4s have their moov atom at the END of the file.
-      // Fetching only the first 3MB means duration=NaN → seek never fires → timeout.
-      // Solution: use 'loadeddata' (fires when first FRAME is decodable, no seek needed)
-      // as the primary trigger. Only try seeking if duration is known finite.
-      let blobUrl = null;
-      try {
-        const resp = await fetch(`/api/hwasi/thumbnail/${id}`, { method: 'PUT' });
-        if (!resp.ok) return null;
-        const blob = await resp.blob();
-        if (!blob || blob.size < 1000) return null;
-        blobUrl = URL.createObjectURL(new Blob([blob], { type: 'video/mp4' }));
-      } catch { return null; }
+    // ── Why this works when partial-blob approach failed ──────────────────────
+    // Partial blob: we combine first 2MB + last 3MB bytes into one buffer.
+    //   Problem: moov atom contains byte-offset tables (stco/co64) pointing to
+    //   positions in the ORIGINAL full file. In our combined buffer, those positions
+    //   are wrong → browser can't decode any frames → loadeddata never fires.
+    //
+    // CORS streaming proxy (/api/hwasi/thumb-stream/[id]):
+    //   Browser loads video via crossOrigin='anonymous' from our proxy which adds
+    //   Access-Control-Allow-Origin:* and forwards Range requests to CDN.
+    //   Chrome automatically handles non-faststart (moov-at-end) MP4s by:
+    //     1. Initial request → finds ftyp + mdat header
+    //     2. Uses Content-Length to peek at file end
+    //     3. Second range request → gets moov from end of file
+    //     4. Fires loadedmetadata with correct duration → seek works perfectly
+    //   Canvas capture works because of crossOrigin + our CORS header. ✅
+    // ─────────────────────────────────────────────────────────────────────────
 
+    async function captureViaStream(id) {
       return await new Promise((resolve) => {
         const vid = document.createElement('video');
-        vid.muted = true; vid.playsInline = true; vid.preload = 'auto';
-        // No crossOrigin — blob URLs are same-origin, canvas capture always works ✅
-        let settled = false;
+        vid.muted       = true;
+        vid.playsInline = true;
+        vid.preload     = 'auto';        // tells browser to fetch enough to play
+        vid.crossOrigin = 'anonymous';   // CRITICAL: allows canvas capture from CORS URL
+
+        let settled     = false;
         let seekPending = false;
 
-        const cleanup = () => {
-          vid.src = '';
-          vid.load();
-          if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
-        };
+        const cleanup = () => { vid.src = ''; vid.load(); };
 
         const capture = () => {
           try {
@@ -233,61 +234,51 @@ export default function AdminPage() {
           if (ok) capture(); else { cleanup(); resolve(null); }
         };
 
-        // PRIMARY: loadeddata fires when first frame bytes are decoded.
-        // With start+end combined blob: browser finds moov at end → initialises → decodes frame.
-        vid.addEventListener('loadeddata', () => {
+        // loadedmetadata: browser has found moov, knows duration — seek to captureAt
+        vid.addEventListener('loadedmetadata', () => {
           if (settled) return;
-          if (isFinite(vid.duration) && vid.duration > 0.5 && captureAt > 0 && captureAt < vid.duration) {
-            // Duration known → seek to configured captureAt time for a better frame
+          if (isFinite(vid.duration) && vid.duration > 0) {
+            const seekTo = Math.min(captureAt, vid.duration * 0.9);
             seekPending = true;
-            vid.currentTime = captureAt;
-          } else {
-            // Duration unknown (moov still being parsed) — play briefly to advance past black frame
-            vid.play().then(() => {
-              setTimeout(() => {
-                vid.pause();
-                if (!settled) finish(true);
-              }, 800);
-            }).catch(() => finish(true)); // play blocked → capture frame 0
+            vid.currentTime = seekTo;
           }
         }, { once: true });
 
-        // canplay fires when enough data to play — extra safety net
-        vid.addEventListener('canplay', () => {
-          if (settled || seekPending) return;
-          if (isFinite(vid.duration) && vid.duration > 0.5 && captureAt < vid.duration) {
-            seekPending = true;
-            vid.currentTime = captureAt;
-          }
-        }, { once: true });
-
-        // SECONDARY: seeked fires after successful seek
+        // seeked: frame at captureAt is ready — capture it
         vid.addEventListener('seeked', () => {
-          if (seekPending) { seekPending = false; finish(true); }
+          if (!seekPending) return;
+          seekPending = false;
+          finish(true);
+        }, { once: true });
+
+        // loadeddata fallback: if metadata arrived but seek somehow skipped
+        vid.addEventListener('loadeddata', () => {
+          if (settled || seekPending) return;
+          finish(true); // capture whatever frame is loaded
         }, { once: true });
 
         vid.addEventListener('error', () => finish(false), { once: true });
 
-        // Timeout: 15s max — capture whatever frame is available
+        // 25s timeout per video (seeking requires fetching more data)
         setTimeout(() => {
           if (!settled) {
             settled = true;
             if (vid.readyState >= 2) capture();
             else { cleanup(); resolve(null); }
           }
-        }, 15000);
+        }, 25000);
 
-        vid.src = blobUrl;
+        // Load via CORS proxy — browser makes its own range requests naturally
+        vid.src = `/api/hwasi/thumb-stream/${id}`;
         vid.load();
       });
     }
-
 
     async function processOne(id) {
       if (genStopRef.current) return;
       setGenStatus(`Generating ${id}… (${saved} saved)`);
       try {
-        const dataUrl = await captureViaServerBlob(id);
+        const dataUrl = await captureViaStream(id);
         if (dataUrl) {
           const saveResp = await fetch(`/api/hwasi/thumbnail/${id}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -295,7 +286,7 @@ export default function AdminPage() {
           });
           if (saveResp.ok) { saved++; setThumbCount(c => c + 1); }
         }
-      } catch { /* skip */ }
+      } catch { /* skip this video */ }
       done++;
       setGenProgress(done);
     }
