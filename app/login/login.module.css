@@ -7,7 +7,7 @@
   position: relative;
   overflow: hidden;
   background: #020005;
-  perspective: 1500px;
+  /* NO perspective — it forces GPU compositing that causes blur repaints */
 }
 
 /* Flirty / Sexy Ambient Glows */
@@ -42,40 +42,50 @@
   50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
 }
 
-/* 3D Glassmorphism Card */
+/* Glassmorphism Card Wrapper */
 .cardWrap {
-  transform-style: preserve-3d;
+  /* flat — no preserve-3d which causes blur repaints */
   animation: cardEnter 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 @keyframes cardEnter {
-  0% { opacity: 0; transform: translateY(50px) translateZ(-200px) rotateX(10deg); }
-  100% { opacity: 1; transform: translateY(0) translateZ(0) rotateX(0deg); }
+  0% { opacity: 0; transform: translateY(40px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .card {
   width: 100%;
-  max-width: 480px; /* Bigger on PC */
-  background: linear-gradient(145deg, rgba(20, 15, 30, 0.6), rgba(10, 5, 15, 0.8));
+  max-width: 480px;
+  /* NO backdrop-filter here — moved to ::before pseudo to avoid blur repaint on transform */
+  background: linear-gradient(145deg, rgba(20, 15, 30, 0.75), rgba(10, 5, 15, 0.88));
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-top-color: rgba(255, 100, 200, 0.2);
   border-left-color: rgba(139, 92, 246, 0.2);
   border-radius: 28px;
-  padding: 50px 44px; /* Larger padding */
-  backdrop-filter: blur(20px); /* Reduced blur to prevent glitches */
-  -webkit-backdrop-filter: blur(20px);
+  padding: 50px 44px;
   box-shadow: 
     0 30px 80px rgba(0,0,0,0.8), 
     inset 0 1px 0 rgba(255,255,255,0.1),
     0 0 40px rgba(236, 72, 153, 0.05);
   position: relative;
   z-index: 1;
+  isolation: isolate;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
-  will-change: transform;
+}
+
+/* Blur lives here — pseudo element is NOT transformed so it never repaints */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  z-index: -1;
 }
 
 .card:hover {
-  transform: translateY(-5px) scale(1.01); /* Removed rotation to fix blur glitch in Chrome */
+  transform: translateY(-6px) scale(1.012);
   box-shadow: 
     0 40px 100px rgba(0,0,0,0.9), 
     inset 0 1px 0 rgba(255,255,255,0.2),

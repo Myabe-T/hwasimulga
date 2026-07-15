@@ -74,6 +74,10 @@ export default function GalleryPage() {
   const [pwdMsg, setPwdMsg] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [guestAuthModal, setGuestAuthModal] = useState(false);
+  const [videoTitles, setVideoTitles] = useState({});
+  const [editTitleModal, setEditTitleModal] = useState(null); // { id }
+  const [editTitleInput, setEditTitleInput] = useState('');
+  const [editTitleSaving, setEditTitleSaving] = useState(false);
 
   // Global epoch-based countdown (same for everyone)
   const EPOCH_START = 1704067200;
@@ -100,6 +104,8 @@ export default function GalleryPage() {
         setSettings(st);
         setThumbIds(new Set((t.ids || []).map(Number)));
         setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start).filter(id => !delSet.has(id)));
+        // Load custom titles for everyone (guests too)
+        fetch('/api/hwasi/titles').then(x=>x.json()).then(d=>setVideoTitles(d.titles||{})).catch(()=>{});
         return; // user stays null = guest
       }
       setUser(d);
@@ -120,6 +126,8 @@ export default function GalleryPage() {
       setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start).filter(id => !delSet.has(id)));
       setViewStatus(vs);
       setBookmarks(new Set((bm.ids || []).map(Number)));
+      // Load custom titles
+      fetch('/api/hwasi/titles').then(x=>x.json()).then(d=>setVideoTitles(d.titles||{})).catch(()=>{});
     }
     init();
   }, []);
@@ -207,6 +215,23 @@ export default function GalleryPage() {
   async function logout() {
     await fetch('/api/logout', { method: 'POST' });
     window.location.href = '/login';
+  }
+
+  async function saveVideoTitle() {
+    if (!editTitleModal) return;
+    setEditTitleSaving(true);
+    try {
+      const r = await fetch('/api/hwasi/titles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editTitleModal.id, title: editTitleInput }),
+      });
+      const d = await r.json();
+      if (d.ok) setVideoTitles(d.titles || {});
+      setEditTitleModal(null);
+      setEditTitleInput('');
+    } catch(e) { /* silent */ }
+    setEditTitleSaving(false);
   }
 
   async function changePassword() {
@@ -550,7 +575,20 @@ export default function GalleryPage() {
             <div className={styles.modalHeader}>
               <div className={styles.modalMeta}>
                 <span className={styles.modalBadge}>▶ Now Playing</span>
-                <span className={styles.modalTitle}>{videoTitle(modal.id)}</span>
+                <span className={styles.modalTitle}>
+                  {videoTitles[String(modal.id)] || videoTitle(modal.id)}
+                  {(user?.role === 'admin' || user?.role === 'advisor') && (
+                    <button
+                      title="Edit title"
+                      onClick={() => { setEditTitleModal({ id: modal.id }); setEditTitleInput(videoTitles[String(modal.id)] || ''); }}
+                      style={{marginLeft:8, background:'none', border:'none', cursor:'pointer', color:'rgba(255,255,255,0.4)', padding:'2px 4px', borderRadius:6, transition:'all 0.2s', verticalAlign:'middle'}}
+                      onMouseOver={e=>e.currentTarget.style.color='#f472b6'}
+                      onMouseOut={e=>e.currentTarget.style.color='rgba(255,255,255,0.4)'}
+                    >
+                      ✏️
+                    </button>
+                  )}
+                </span>
               </div>
               <div className={styles.modalActions}>
                 <button className={styles.btnGhost} onClick={(e) => handleDownload(e, modal.id)}>⬇ Download</button>
@@ -617,6 +655,52 @@ export default function GalleryPage() {
                 onClick={() => handleDelete(deleteModal.id)}>🗑 Delete</button>
               <button style={{flex:1,padding:'10px',borderRadius:10,border:'1px solid rgba(255,255,255,.1)',background:'transparent',color:'rgba(255,255,255,.6)',cursor:'pointer'}}
                 onClick={() => setDeleteModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT TITLE MODAL (admin/advisor) ── */}
+      {editTitleModal && (
+        <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) { setEditTitleModal(null); } }}>
+          <div className={styles.smallModal}>
+            <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:6}}>
+              <span style={{fontSize:22}}>✏️</span>
+              <div>
+                <h3 style={{fontWeight:800, fontSize:16, margin:0}}>Set Video Title</h3>
+                <p style={{fontSize:12, color:'rgba(255,255,255,.5)', margin:0}}>Video #{editTitleModal.id} · visible to all users</p>
+              </div>
+            </div>
+            <input
+              className="input"
+              style={{width:'100%', marginTop:16, marginBottom:16}}
+              placeholder={`e.g. ${videoTitle(editTitleModal.id)}`}
+              value={editTitleInput}
+              maxLength={80}
+              autoFocus
+              onChange={e => setEditTitleInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') saveVideoTitle(); if (e.key === 'Escape') { setEditTitleModal(null); } }}
+            />
+            <div style={{fontSize:11, color:'rgba(255,255,255,.35)', marginBottom:14, textAlign:'right'}}>{editTitleInput.length}/80</div>
+            <div style={{display:'flex', gap:10}}>
+              <button
+                style={{flex:1, padding:'11px', borderRadius:12, border:'none', background:'linear-gradient(135deg,#ec4899,#8b5cf6)', color:'#fff', fontWeight:700, cursor:'pointer', opacity: editTitleSaving ? 0.6 : 1}}
+                onClick={saveVideoTitle}
+                disabled={editTitleSaving}
+              >
+                {editTitleSaving ? 'Saving...' : '✓ Save Title'}
+              </button>
+              {videoTitles[String(editTitleModal.id)] && (
+                <button
+                  style={{padding:'11px 16px', borderRadius:12, border:'1px solid rgba(239,68,68,.3)', background:'rgba(239,68,68,.1)', color:'#f87171', fontWeight:600, cursor:'pointer'}}
+                  onClick={() => { setEditTitleInput(''); saveVideoTitle(); }}
+                  title="Remove custom title"
+                >🗑</button>
+              )}
+              <button
+                style={{padding:'11px 16px', borderRadius:12, border:'1px solid rgba(255,255,255,.1)', background:'transparent', color:'rgba(255,255,255,.6)', cursor:'pointer'}}
+                onClick={() => setEditTitleModal(null)}
+              >Cancel</button>
             </div>
           </div>
         </div>

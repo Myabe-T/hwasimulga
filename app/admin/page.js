@@ -63,6 +63,10 @@ export default function AdminPage() {
   const [directDelForm, setDirectDelForm] = useState({ id: '', reason: 'duplicate' });
   const [previewVideo,  setPreviewVideo]  = useState(null);
   const [watchId,       setWatchId]       = useState('');
+  const [videoTitles,   setVideoTitles]   = useState({});
+  const [editTitleModal, setEditTitleModal] = useState(null);
+  const [editTitleInput, setEditTitleInput] = useState('');
+  const [editTitleSaving, setEditTitleSaving] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -104,6 +108,25 @@ export default function AdminPage() {
     setPendingUsers(pu.users || []);
     setRegApproval(ra.required || false);
     setSubRequests(sr.requests || []);
+    // Load custom video titles
+    fetch('/api/hwasi/titles').then(x=>x.json()).then(d=>setVideoTitles(d.titles||{})).catch(()=>{});
+  }
+
+  async function saveVideoTitle() {
+    if (!editTitleModal) return;
+    setEditTitleSaving(true);
+    try {
+      const r = await fetch('/api/hwasi/titles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editTitleModal.id, title: editTitleInput }),
+      });
+      const d = await r.json();
+      if (d.ok) setVideoTitles(d.titles || {});
+      setEditTitleModal(null);
+      setEditTitleInput('');
+    } catch(e) { /* silent */ }
+    setEditTitleSaving(false);
   }
 
   function flash(text, type='ok') { setMsg({ text, type }); setTimeout(() => setMsg({ text:'', type:'' }), 3500); }
@@ -1380,7 +1403,16 @@ export default function AdminPage() {
         }}>
           <div style={{position:'relative', width:'90%', maxWidth:1000, margin:'40px auto', background:'#000', borderRadius:16, overflow:'hidden', boxShadow:'0 24px 60px rgba(0,0,0,.6)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 20px',background:'rgba(255,255,255,.05)',borderBottom:'1px solid rgba(255,255,255,.1)'}}>
-              <div style={{fontWeight:800,fontSize:16}}>Video #{previewVideo.id} Preview</div>
+              <div style={{fontWeight:800,fontSize:16,display:'flex',alignItems:'center',gap:8}}>
+                {videoTitles[String(previewVideo.id)] || `Video #${previewVideo.id} Preview`}
+                <button
+                  title="Edit title"
+                  onClick={() => { setEditTitleModal({ id: previewVideo.id }); setEditTitleInput(videoTitles[String(previewVideo.id)] || ''); }}
+                  style={{background:'none',border:'none',cursor:'pointer',color:'rgba(255,255,255,0.4)',fontSize:16,padding:'2px 4px',borderRadius:6,transition:'color 0.2s'}}
+                  onMouseOver={e=>e.currentTarget.style.color='#f472b6'}
+                  onMouseOut={e=>e.currentTarget.style.color='rgba(255,255,255,0.4)'}
+                >✏️</button>
+              </div>
               <button onClick={() => setPreviewVideo(null)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer',lineHeight:1}}>×</button>
             </div>
             <div style={{width:'100%', aspectRatio:'16/9', display:'flex', alignItems:'center', justifyContent:'center', position:'relative'}}>
@@ -1394,6 +1426,41 @@ export default function AdminPage() {
               ) : (
                 <div style={{color:'#f87171',fontWeight:700}}>Failed to load video stream</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT VIDEO TITLE MODAL (admin/advisor) ── */}
+      {editTitleModal && (
+        <div className={styles.modalBg} style={{zIndex:10000}} onClick={e => { if (e.target === e.currentTarget) setEditTitleModal(null); }}>
+          <div style={{background:'linear-gradient(145deg,rgba(20,15,30,.95),rgba(10,5,15,.98))',border:'1px solid rgba(236,72,153,.3)',borderRadius:20,padding:28,width:'90%',maxWidth:460,position:'relative'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+              <span style={{fontSize:22}}>✏️</span>
+              <div>
+                <h3 style={{fontWeight:800,fontSize:16,margin:0}}>Set Video Title</h3>
+                <p style={{fontSize:12,color:'rgba(255,255,255,.5)',margin:0}}>Video #{editTitleModal.id} · visible to all users</p>
+              </div>
+            </div>
+            <input
+              className="input"
+              style={{width:'100%',marginTop:16,marginBottom:4,boxSizing:'border-box'}}
+              placeholder={`Custom title...`}
+              value={editTitleInput}
+              maxLength={80}
+              autoFocus
+              onChange={e => setEditTitleInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') saveVideoTitle(); if (e.key === 'Escape') setEditTitleModal(null); }}
+            />
+            <div style={{fontSize:11,color:'rgba(255,255,255,.35)',marginBottom:16,textAlign:'right'}}>{editTitleInput.length}/80</div>
+            <div style={{display:'flex',gap:10}}>
+              <button style={{flex:1,padding:'11px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#ec4899,#8b5cf6)',color:'#fff',fontWeight:700,cursor:'pointer',opacity:editTitleSaving?.6:1}} onClick={saveVideoTitle} disabled={editTitleSaving}>
+                {editTitleSaving ? 'Saving...' : '✓ Save Title'}
+              </button>
+              {videoTitles[String(editTitleModal.id)] && (
+                <button style={{padding:'11px 14px',borderRadius:12,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.1)',color:'#f87171',fontWeight:600,cursor:'pointer'}} onClick={() => { setEditTitleInput(''); saveVideoTitle(); }} title="Remove custom title">🗑</button>
+              )}
+              <button style={{padding:'11px 14px',borderRadius:12,border:'1px solid rgba(255,255,255,.1)',background:'transparent',color:'rgba(255,255,255,.6)',cursor:'pointer'}} onClick={() => setEditTitleModal(null)}>Cancel</button>
             </div>
           </div>
         </div>
