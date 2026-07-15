@@ -95,10 +95,11 @@ export default function GalleryPage() {
           fetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:1, end:730 })),
           fetch('/api/hwasi/thumbnails').then(x => x.json()).catch(() => ({})),
         ]);
-        const st = s.error ? { start:1, end:730 } : s;
+        const st = s.error ? { start:1, end:730, deletedIds: [] } : s;
+        const delSet = new Set(st.deletedIds || []);
         setSettings(st);
         setThumbIds(new Set((t.ids || []).map(Number)));
-        setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start));
+        setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start).filter(id => !delSet.has(id)));
         return; // user stays null = guest
       }
       setUser(d);
@@ -110,12 +111,13 @@ export default function GalleryPage() {
         fetch('/api/hwasi/views').then(x => x.json()).catch(() => ({ allowed: true })),
         fetch('/api/hwasi/bookmarks').then(x => x.json()).catch(() => ({ ids: [] })),
       ]);
-      const st = s.error ? { start:1, end:730 } : s;
+      const st = s.error ? { start:1, end:730, deletedIds: [] } : s;
+      const delSet = new Set(st.deletedIds || []);
       setSettings(st);
       setCurated(c.error ? { trending:[], latest:[] } : c);
       setMyHistory(Array.isArray(h) ? h : []);
       setThumbIds(new Set((t.ids || []).map(Number)));
-      setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start));
+      setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start).filter(id => !delSet.has(id)));
       setViewStatus(vs);
       setBookmarks(new Set((bm.ids || []).map(Number)));
     }
@@ -403,7 +405,7 @@ export default function GalleryPage() {
           <nav className={styles.desktopNav}>
             <button onClick={() => setView('gallery')} className={`${styles.navBtn} ${view==='gallery'?styles.navActive:''}`}>🏠 Home</button>
             <button onClick={() => setView('bookmarks')} className={`${styles.navBtn} ${view==='bookmarks'?styles.navActive:''}`}>🔖 Bookmarks</button>
-            {isAdminOrAdvisor && <a href="/admin" className={styles.navBtn}>🛡 Admin</a>}
+            {isAdminOrAdvisor && <a href={user?.role === 'advisor' ? '/advisor' : '/admin'} className={styles.navBtn}>🛡 {user?.role === 'advisor' ? 'Advisor' : 'Admin'}</a>}
           </nav>
 
           {/* Right: chips + user */}
@@ -457,7 +459,7 @@ export default function GalleryPage() {
           <div className={styles.mobileMenu}>
             <button onClick={() => { setView('gallery'); setMobileMenuOpen(false); }}>🏠 Home</button>
             <button onClick={() => { setView('bookmarks'); setMobileMenuOpen(false); }}>🔖 Bookmarks</button>
-            {isAdminOrAdvisor && <a href="/admin">🛡 Admin</a>}
+            {isAdminOrAdvisor && <a href={user?.role === 'advisor' ? '/advisor' : '/admin'}>🛡 {user?.role === 'advisor' ? 'Advisor' : 'Admin'}</a>}
             <button onClick={() => { setChangePwdModal(true); setMobileMenuOpen(false); }}>🔑 Change Password</button>
             <button onClick={logout} style={{color:'#f87171'}}>🚪 Sign Out</button>
           </div>

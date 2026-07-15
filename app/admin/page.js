@@ -61,6 +61,7 @@ export default function AdminPage() {
   const [reportsList,  setReportsList]  = useState([]);
   const [deletedList,  setDeletedList]  = useState([]);
   const [directDelForm, setDirectDelForm] = useState({ id: '', reason: 'duplicate' });
+  const [previewVideo,  setPreviewVideo]  = useState(null);
 
   useEffect(() => {
     async function init() {
@@ -1123,7 +1124,20 @@ export default function AdminPage() {
                     {reportsList.map(r => (
                       <div key={r.videoId} style={{padding:16,background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.15)',borderRadius:14}}>
                         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8,flexWrap:'wrap'}}>
-                          <strong style={{color:'#f87171',fontSize:15}}>Video #{r.videoId}</strong>
+                          
+                          {/* Play Preview Button */}
+                          <button style={{
+                            background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.2)',
+                            color:'#f87171', fontSize:15, fontWeight:800, padding:'4px 10px', borderRadius:8,
+                            cursor:'pointer', display:'flex', alignItems:'center', gap:6
+                          }} onClick={async () => {
+                            setPreviewVideo({ id: r.videoId, loading: true, src: null });
+                            const sd = await fetch(`/api/hwasi/sign/${r.videoId}`).then(x=>x.json()).catch(()=>({}));
+                            setPreviewVideo({ id: r.videoId, loading: false, src: sd.src });
+                          }}>
+                            ▶ Video #{r.videoId}
+                          </button>
+
                           <span style={{fontSize:12,color:'rgba(255,255,255,.4)',background:'rgba(255,255,255,.06)',padding:'2px 10px',borderRadius:100}}>{r.reports.length} report{r.reports.length!==1?'s':''}</span>
                           <div style={{marginLeft:'auto',display:'flex',gap:8}}>
                             <button className="btn btn-ghost btn-sm" style={{fontSize:11}} onClick={() => {
@@ -1332,6 +1346,33 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* ── VIDEO PREVIEW MODAL ── */}
+      {previewVideo && (
+        <div className={styles.modalBg} style={{zIndex:9999}} onClick={(e) => {
+          if (e.target === e.currentTarget) setPreviewVideo(null);
+        }}>
+          <div style={{position:'relative', width:'90%', maxWidth:1000, margin:'40px auto', background:'#000', borderRadius:16, overflow:'hidden', boxShadow:'0 24px 60px rgba(0,0,0,.6)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 20px',background:'rgba(255,255,255,.05)',borderBottom:'1px solid rgba(255,255,255,.1)'}}>
+              <div style={{fontWeight:800,fontSize:16}}>Video #{previewVideo.id} Preview</div>
+              <button onClick={() => setPreviewVideo(null)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer',lineHeight:1}}>×</button>
+            </div>
+            <div style={{width:'100%', aspectRatio:'16/9', display:'flex', alignItems:'center', justifyContent:'center', position:'relative'}}>
+              {previewVideo.loading ? (
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12,color:'rgba(255,255,255,.5)'}}>
+                  <div className={styles.spinner} style={{width:30,height:30}} />
+                  <div>Loading secure stream...</div>
+                </div>
+              ) : previewVideo.src ? (
+                <video src={previewVideo.src} controls autoPlay style={{width:'100%',height:'100%',outline:'none'}} />
+              ) : (
+                <div style={{color:'#f87171',fontWeight:700}}>Failed to load video stream</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

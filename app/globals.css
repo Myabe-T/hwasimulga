@@ -121,6 +121,12 @@ body::before {
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
 .input::placeholder { color: var(--text3); }
 
+/* Fix select options on dark mode */
+select.input option {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
 /* ── Badge ── */
 .badge {
   display: inline-flex;

@@ -5,9 +5,9 @@ import { requireAuth, getSession } from '@/lib/auth';
 import { getSettings, redis, KEYS } from '@/lib/redis';
 
 export async function GET() {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  return NextResponse.json(await getSettings());
+  const settings = await getSettings();
+  const deletedIds = await redis.smembers('hwasi:deleted:index');
+  return NextResponse.json({ ...settings, deletedIds: Array.from(deletedIds || []).map(Number) });
 }
 
 export async function PUT(req) {
