@@ -164,18 +164,30 @@ export default function AdminPage() {
     const CONCURRENT = 3;
     const ids = Array.from({ length: total }, (_, i) => i + start);
 
-    async function captureWithSignedUrl(id) {
-      // Get a fresh signed URL for this video
-      const sr = await fetch(`/api/hwasi/sign/${id}`).catch(() => null);
-      if (!sr || !sr.ok) return null;
-      const sd = await sr.json().catch(() => null);
-      if (!sd?.src) return null;
+    async function captureViaServerBlob(id) {
+      // PUT /api/hwasi/thumbnail/[id] fetches the video SERVER-SIDE from CDN (no CORS issue),
+      // returns the first 512KB as raw bytes. We turn that into a same-origin blob URL
+      // so canvas.toDataURL() works without any CORS taint.
+      let blobUrl = null;
+      try {
+        const resp = await fetch(`/api/hwasi/thumbnail/${id}`, { method: 'PUT' });
+        if (!resp.ok) return null;
+        const blob = await resp.blob();
+        if (!blob || blob.size < 1000) return null;
+        blobUrl = URL.createObjectURL(new Blob([blob], { type: 'video/mp4' }));
+      } catch { return null; }
 
       return await new Promise((resolve) => {
         const vid = document.createElement('video');
         vid.muted = true; vid.playsInline = true; vid.preload = 'metadata';
-        vid.crossOrigin = 'anonymous';
+        // No crossOrigin needed — blob URLs are same-origin, canvas capture is safe ✅
         let settled = false;
+
+        const cleanup = () => {
+          vid.src = '';
+          vid.load();
+          if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
+        };
 
         const capture = () => {
           try {
@@ -187,40 +199,47 @@ export default function AdminPage() {
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#0a0010';
             ctx.fillRect(0, 0, 320, 180);
-            const scale  = Math.min(320 / vw, 180 / vh);
-            const drawW  = Math.round(vw * scale);
-            const drawH  = Math.round(vh * scale);
-            const ox     = Math.round((320 - drawW) / 2);
-            const oy     = Math.round((180 - drawH) / 2);
+            const scale = Math.min(320 / vw, 180 / vh);
+            const drawW = Math.round(vw * scale);
+            const drawH = Math.round(vh * scale);
+            const ox    = Math.round((320 - drawW) / 2);
+            const oy    = Math.round((180 - drawH) / 2);
             ctx.drawImage(vid, ox, oy, drawW, drawH);
-            resolve(canvas.toDataURL('image/jpeg', 0.72));
+            resolve(canvas.toDataURL('image/jpeg', 0.75));
           } catch { resolve(null); }
-          finally { vid.src = ''; vid.load(); }
+          finally { cleanup(); }
         };
 
         const finish = (ok) => {
           if (settled) return; settled = true;
-          if (ok) capture(); else { vid.src = ''; vid.load(); resolve(null); }
+          if (ok) capture(); else { cleanup(); resolve(null); }
         };
 
         vid.addEventListener('loadedmetadata', () => {
-          const seekTo = Math.min(3, (vid.duration || 10) * 0.1);
-          vid.currentTime = isFinite(seekTo) && seekTo > 0 ? seekTo : 1;
+          // Seek to a point with actual content (skip black intro)
+          const seekTo = Math.min(2, (vid.duration || 6) * 0.15);
+          vid.currentTime = isFinite(seekTo) && seekTo > 0 ? seekTo : 0.5;
         }, { once: true });
         vid.addEventListener('seeked',  () => finish(true),  { once: true });
         vid.addEventListener('error',   () => finish(false), { once: true });
-        setTimeout(() => finish(false), 30000); // 30s timeout
+        // The 512KB partial blob may not have the full moov atom for long videos —
+        // fall back to frame 0 if seeking fails
+        vid.addEventListener('stalled', () => {
+          if (!settled) { settled = true; capture(); }
+        }, { once: true });
+        setTimeout(() => finish(false), 20000); // 20s timeout per video
 
-        vid.src = sd.src;
+        vid.src = blobUrl;
         vid.load();
       });
     }
+
 
     async function processOne(id) {
       if (genStopRef.current) return;
       setGenStatus(`Generating ${id}… (${saved} saved)`);
       try {
-        const dataUrl = await captureWithSignedUrl(id);
+        const dataUrl = await captureViaServerBlob(id);
         if (dataUrl) {
           const saveResp = await fetch(`/api/hwasi/thumbnail/${id}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
