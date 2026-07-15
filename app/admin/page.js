@@ -41,6 +41,7 @@ export default function AdminPage() {
   const [captureAt,    setCaptureAt]    = useState(1.5);
   const [regenIds,     setRegenIds]     = useState('');
   const [showThumbGrid, setShowThumbGrid] = useState(false);
+  const [selectedGridIds, setSelectedGridIds] = useState(new Set()); // multi-select in grid
   const genStopRef = { current: false };
   const [showPass,    setShowPass]    = useState(false);
 
@@ -662,35 +663,96 @@ export default function AdminPage() {
                   </button>
                 </div>
                 {showThumbGrid && (
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:8,marginTop:12}}>
-                    {Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start).map(id => (
-                      <div key={id} style={{position:'relative',borderRadius:8,overflow:'hidden',background:'#0a0010',
-                        border: allThumbIds.has(id) ? '1px solid rgba(124,58,237,.3)' : '1px solid rgba(239,68,68,.3)',
-                        cursor:'pointer'}} onClick={() => setRegenIds(String(id))}>
-                        {allThumbIds.has(id) ? (
-                          <img src={`/api/hwasi/thumbnail/${id}`}
-                            style={{width:'100%',aspectRatio:'16/9',objectFit:'cover',display:'block'}}
-                            loading="lazy" alt={`#${id}`}
-                            onError={e => { e.target.style.display='none'; }}/>
-                        ) : (
-                          <div style={{width:'100%',aspectRatio:'16/9',display:'flex',alignItems:'center',justifyContent:'center',
-                            background:'rgba(239,68,68,.1)',fontSize:18}}>❌</div>
-                        )}
-                        {/* Video ID overlay */}
-                        <div style={{position:'absolute',bottom:0,left:0,right:0,
-                          background:'linear-gradient(transparent,rgba(0,0,0,.85))',
-                          padding:'12px 4px 4px',textAlign:'center',
-                          fontSize:11,fontWeight:700,color:allThumbIds.has(id)?'#a78bfa':'#f87171'}}>
-                          #{id}
-                        </div>
+                  <>
+                    {/* Selection toolbar */}
+                    {selectedGridIds.size > 0 && (
+                      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,
+                        padding:'8px 12px',background:'rgba(124,58,237,.15)',borderRadius:10,
+                        border:'1px solid rgba(124,58,237,.3)'}}>
+                        <span style={{fontSize:13,fontWeight:700,color:'#a78bfa'}}>
+                          ✓ {selectedGridIds.size} selected
+                        </span>
+                        <button className="btn btn-ghost btn-sm" style={{marginLeft:'auto',fontSize:11}}
+                          onClick={() => { setSelectedGridIds(new Set()); }}>✕ Clear</button>
+                        <button className="btn btn-primary btn-sm"
+                          onClick={() => {
+                            const sorted = Array.from(selectedGridIds).sort((a,b)=>a-b);
+                            setRegenIds(sorted.join(', '));
+                          }}>⬆ Fill Regen Field</button>
                       </div>
-                    ))}
-                  </div>
-                )}
-                {showThumbGrid && (
-                  <p style={{fontSize:11,color:'var(--text3)',marginTop:10,textAlign:'center'}}>
-                    Click any thumbnail to prefill its ID in the "Re-generate" field above
-                  </p>
+                    )}
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))',gap:6}}>
+                      {Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start).map(id => {
+                        const hasThumb = allThumbIds.has(id);
+                        const isSelected = selectedGridIds.has(id);
+                        return (
+                          <div key={id}
+                            style={{
+                              position:'relative',borderRadius:8,overflow:'hidden',background:'#0a0010',
+                              border: isSelected
+                                ? '2px solid #f59e0b'
+                                : hasThumb ? '1px solid rgba(124,58,237,.3)' : '1px solid rgba(239,68,68,.3)',
+                              cursor:'pointer',
+                              boxShadow: isSelected ? '0 0 0 2px rgba(245,158,11,.3)' : 'none',
+                              transform: isSelected ? 'scale(0.96)' : 'scale(1)',
+                              transition:'border .15s,transform .15s,box-shadow .15s',
+                              userSelect:'none',
+                            }}
+                            onClick={(e) => {
+                              if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                                // Ctrl/Cmd/Shift+click: toggle this ID in multi-selection
+                                setSelectedGridIds(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(id)) next.delete(id);
+                                  else next.add(id);
+                                  // Auto-fill regen field with sorted selection
+                                  const sorted = Array.from(next).sort((a,b)=>a-b);
+                                  setRegenIds(sorted.join(', '));
+                                  return next;
+                                });
+                              } else {
+                                // Normal click: single select → fill regen field directly
+                                setSelectedGridIds(new Set([id]));
+                                setRegenIds(String(id));
+                              }
+                            }}
+                          >
+                            {/* Selection checkbox indicator */}
+                            {isSelected && (
+                              <div style={{
+                                position:'absolute',top:4,right:4,zIndex:2,
+                                width:18,height:18,borderRadius:4,
+                                background:'#f59e0b',display:'flex',alignItems:'center',
+                                justifyContent:'center',fontSize:11,fontWeight:900,color:'#000'
+                              }}>✓</div>
+                            )}
+                            {hasThumb ? (
+                              <img src={`/api/hwasi/thumbnail/${id}`}
+                                style={{width:'100%',aspectRatio:'16/9',objectFit:'cover',display:'block'}}
+                                loading="lazy" alt={`#${id}`}
+                                onError={e => { e.target.style.display='none'; }}/>
+                            ) : (
+                              <div style={{width:'100%',aspectRatio:'16/9',display:'flex',alignItems:'center',
+                                justifyContent:'center',background:'rgba(239,68,68,.1)',fontSize:16}}>❌</div>
+                            )}
+                            {/* Video ID label */}
+                            <div style={{
+                              position:'absolute',bottom:0,left:0,right:0,
+                              background:'linear-gradient(transparent,rgba(0,0,0,.9))',
+                              padding:'10px 3px 3px',textAlign:'center',
+                              fontSize:10,fontWeight:700,
+                              color: isSelected ? '#f59e0b' : hasThumb ? '#a78bfa' : '#f87171'
+                            }}>#{id}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p style={{fontSize:11,color:'var(--text3)',marginTop:10,textAlign:'center'}}>
+                      <strong style={{color:'#a78bfa'}}>Click</strong> = select one ·
+                      <strong style={{color:'#f59e0b'}}> Ctrl+Click</strong> = multi-select ·
+                      Selected IDs auto-fill the regen field above
+                    </p>
+                  </>
                 )}
               </div>
             </div>
