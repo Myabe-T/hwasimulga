@@ -156,21 +156,63 @@ export default function GalleryPage() {
         window.location.href = '/login';
         return;
       }
-      // Generate a stable browser fingerprint (canvas + UA hash)
-      let fingerprint = '';
+      // ── Hardware-level fingerprint (same across all browsers on same device) ──
+      // Uses: WebGL GPU renderer + screen size + platform + CPU cores + device memory
+      // These DON'T change between Chrome / Brave / Firefox / Opera on same device
+      let fingerprint = 'unknown';
+      let deviceLabel = 'Unknown Device';
       try {
-        const c = document.createElement('canvas');
-        const g = c.getContext('2d');
-        g.textBaseline = 'top'; g.font = '14px Arial';
-        g.fillText('hwasi-fp', 2, 2);
-        fingerprint = c.toDataURL().slice(-32) + navigator.userAgent.slice(-16);
-      } catch { fingerprint = navigator.userAgent.slice(0,32); }
+        // 1. WebGL GPU (most unique — Adreno 740 = Pixel 8, Apple GPU = iPhone, etc.)
+        let gpu = '';
+        try {
+          const gl = document.createElement('canvas').getContext('webgl') || document.createElement('canvas').getContext('experimental-webgl');
+          if (gl) {
+            const ext = gl.getExtension('WEBGL_debug_renderer_info');
+            if (ext) gpu = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '';
+          }
+        } catch {}
+
+        // 2. Platform (iPhone / Linux armv8l / Win32 / MacIntel)
+        const platform = navigator.platform || navigator.userAgentData?.platform || '';
+
+        // 3. Screen hardware (device-specific, not browser-specific)
+        const sw = window.screen.width;
+        const sh = window.screen.height;
+        const dpr = Math.round((window.devicePixelRatio || 1) * 100); // e.g. 300 = DPR 3.0
+
+        // 4. Hardware specs
+        const cores = navigator.hardwareConcurrency || 0;
+        const mem   = navigator.deviceMemory || 0;
+
+        // Combine into a stable hardware ID
+        const raw = `${platform}|${sw}x${sh}|dpr${dpr}|gpu:${gpu}|cores${cores}|mem${mem}`;
+        // Simple 32-char hash (djb2)
+        let hash = 5381;
+        for (let i = 0; i < raw.length; i++) hash = ((hash << 5) + hash) ^ raw.charCodeAt(i);
+        fingerprint = Math.abs(hash).toString(36).padStart(8, '0') + `-${sw}x${sh}-${platform.slice(0,8)}`;
+
+        // Human-readable device label for admin panel
+        const ua = navigator.userAgent;
+        if (/iPhone/.test(ua)) {
+          const v = ua.match(/iPhone OS (\d+_\d+)/); deviceLabel = `iPhone (iOS ${v?v[1].replace('_','.'):'?'})`;
+        } else if (/iPad/.test(ua)) {
+          deviceLabel = 'iPad';
+        } else if (/Android/.test(ua)) {
+          const brand = gpu.split(' ')[0] || 'Android'; deviceLabel = `${brand} Android`;
+        } else if (/Win/.test(platform)) {
+          deviceLabel = `Windows PC`;
+        } else if (/Mac/.test(platform)) {
+          deviceLabel = `Mac`;
+        } else if (/Linux/.test(platform)) {
+          deviceLabel = `Linux`;
+        }
+      } catch { fingerprint = navigator.userAgent.slice(0, 32); }
 
       // Active — ping server
       const hbRes = await fetch('/api/hwasi/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email || null, fingerprint }),
+        body: JSON.stringify({ email: user.email || null, fingerprint, deviceLabel }),
       }).catch(() => null);
 
       // If server says we're blocked, force logout

@@ -35,7 +35,7 @@ export async function POST(req) {
 
     // Record device fingerprint if provided
     if (body.fingerprint) {
-      await recordDevice(payload.sub, body.fingerprint, payload.username, payload.displayName);
+      await recordDevice(payload.sub, body.fingerprint, payload.username, payload.displayName, body.deviceLabel || null);
     }
 
     return NextResponse.json({ ok: true });

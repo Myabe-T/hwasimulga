@@ -1347,17 +1347,33 @@ export default function AdminPage() {
                           <div style={{fontWeight:700}}>{entry.displayName||entry.username||`User #${uid}`}</div>
                           <div style={{fontSize:12,color:'rgba(255,255,255,.5)'}}>@{entry.username}</div>
                           {entry.blocked && <span style={{padding:'2px 8px',borderRadius:10,background:'rgba(239,68,68,.2)',color:'#f87171',fontSize:11,fontWeight:700}}>🚫 BLOCKED</span>}
-                          {entry.flagged && !entry.blocked && <span style={{padding:'2px 8px',borderRadius:10,background:'rgba(245,158,11,.2)',color:'#fbbf24',fontSize:11,fontWeight:700}}>⚠️ FLAGGED</span>}
-                          <div style={{marginLeft:'auto',fontSize:12,color:'rgba(255,255,255,.4)'}}>{entry.fingerprints?.length||0} unique device{(entry.fingerprints?.length||0)!==1?'s':''}</div>
+                          {entry.flagged && !entry.blocked && <span style={{padding:'2px 8px',borderRadius:10,background:'rgba(245,158,11,.2)',color:'#fbbf24',fontSize:11,fontWeight:700}}>⚠️ FLAGGED — sharing suspected</span>}
+                          <div style={{marginLeft:'auto',fontSize:12,color:'rgba(255,255,255,.4)'}}>{Object.keys(entry.devices||{}).length} device{Object.keys(entry.devices||{}).length!==1?'s':''} seen</div>
                         </div>
-                        <div style={{fontSize:11,color:'rgba(255,255,255,.35)',marginBottom:10,fontFamily:'monospace',wordBreak:'break-all'}}>
-                          {(entry.fingerprints||[]).slice(0,3).map((fp,i)=>(
-                            <span key={i} style={{display:'inline-block',margin:'2px 4px',padding:'2px 6px',background:'rgba(255,255,255,.06)',borderRadius:4}}>
-                              device-{i+1}: {fp.slice(0,12)}…
-                            </span>
-                          ))}
-                          {(entry.fingerprints||[]).length>3 && <span style={{color:'rgba(255,255,255,.3)'}}>+{entry.fingerprints.length-3} more</span>}
+
+                        {/* Device list — shows readable labels */}
+                        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:10}}>
+                          {Object.entries(entry.devices||{}).map(([fp, dev], i) => {
+                            const icon = dev.label?.includes('iPhone')||dev.label?.includes('iOS') ? '📱' :
+                                         dev.label?.includes('Android') ? '📱' :
+                                         dev.label?.includes('iPad') ? '📱' :
+                                         dev.label?.includes('Windows') ? '💻' :
+                                         dev.label?.includes('Mac') ? '🍎' : '🖥';
+                            return (
+                              <div key={fp} style={{padding:'6px 12px',background:'rgba(255,255,255,.06)',borderRadius:10,display:'flex',flexDirection:'column',gap:2,minWidth:150}}>
+                                <div style={{fontSize:13,fontWeight:600,color:'#e2e8f0'}}>{icon} {dev.label || `Device ${i+1}`}</div>
+                                <div style={{fontSize:10,color:'rgba(255,255,255,.3)'}}>
+                                  First: {new Date(dev.firstSeen).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'2-digit'})}
+                                  {' · '}Last: {new Date(dev.lastSeen).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'2-digit'})}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
+                        <div style={{fontSize:11,color:'rgba(255,255,255,.25)',marginBottom:8}}>
+                          Hardware fingerprints — same across all browsers (Chrome/Brave/Firefox) on same physical device
+                        </div>
+
                         {user?.role === 'admin' && (
                           <div style={{display:'flex',gap:8}}>
                             {!entry.blocked ? (
