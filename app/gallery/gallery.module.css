@@ -66,11 +66,35 @@
 .sectionTitle { font-size:18px; font-weight:800; }
 
 /* ── Video Grid — 4 col desktop, 2 col mobile ── */
-.grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+.grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+
+/* ── Guest header extras ── */
+.guestLoginBtn { padding:8px 18px; border-radius:100px; border:1px solid rgba(255,255,255,.18); background:transparent; color:#fff; font-size:13px; font-weight:700; text-decoration:none; transition:all .2s; }
+.guestLoginBtn:hover { background:rgba(255,255,255,.08); }
+.guestRegBtn { padding:8px 18px; border-radius:100px; background:linear-gradient(135deg,#7c3aed,#ec4899); color:#fff; font-size:13px; font-weight:700; text-decoration:none; box-shadow:0 4px 14px rgba(124,58,237,.4); transition:all .2s; }
+.guestRegBtn:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(124,58,237,.55); }
+.guestSaleBanner { background:linear-gradient(90deg,rgba(245,158,11,.12),rgba(16,185,129,.08)); border-top:1px solid rgba(245,158,11,.15); padding:7px 18px; font-size:12px; font-weight:600; display:flex; align-items:center; gap:6px; color:rgba(255,255,255,.8); }
+.sectionCount { font-size:13px; color:rgba(255,255,255,.4); font-weight:600; margin-left:6px; }
+
+/* ── Guest card (used by guest grid) — same style as vcard ── */
+.card { border-radius:14px; overflow:hidden; background:#13002a; border:1px solid rgba(255,255,255,.07); cursor:pointer; transition:transform .2s, border-color .2s, box-shadow .2s; position:relative; animation:fadeUp .3s ease both; }
+.card:hover { transform:translateY(-3px); border-color:rgba(124,58,237,.4); box-shadow:0 8px 28px rgba(124,58,237,.2); }
+.thumb { position:relative; width:100%; aspect-ratio:16/9; overflow:hidden; background:#0a0014; }
+.thumbImg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.thumbPlaceholder { position:absolute; inset:0; width:100%; height:100%; }
+.cardOverlay { position:absolute; inset:0; background:rgba(0,0,0,0); display:flex; align-items:center; justify-content:center; transition:background .2s; }
+.card:hover .cardOverlay { background:rgba(0,0,0,.45); }
+.playBtn { width:46px; height:46px; border-radius:50%; background:rgba(124,58,237,.9); border:none; color:#fff; font-size:18px; display:flex; align-items:center; justify-content:center; opacity:0; transform:scale(.8); transition:all .2s; cursor:pointer; }
+.card:hover .playBtn { opacity:1; transform:scale(1); }
+.qualityBadge { position:absolute; top:6px; left:6px; padding:2px 7px; border-radius:5px; font-size:10px; font-weight:800; z-index:2; letter-spacing:.04em; }
+.cardInfo { padding:10px 12px 10px; }
+.cardTitle { font-size:13px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:3px; }
+.cardMeta { font-size:11px; color:rgba(255,255,255,.4); font-weight:600; }
+.pgInfo { font-size:13px; color:rgba(255,255,255,.5); font-weight:700; padding:0 4px; }
 
 /* ── Video Card ── */
-.vcard { border-radius:14px; overflow:hidden; background:#110022; border:1px solid rgba(255,255,255,.06); animation:fadeUp .3s ease both; transition:border-color .2s; }
-.vcard:hover { border-color:rgba(124,58,237,.3); }
+.vcard { border-radius:14px; overflow:hidden; background:#13002a; border:1px solid rgba(255,255,255,.07); animation:fadeUp .3s ease both; transition:transform .2s, border-color .2s, box-shadow .2s; }
+.vcard:hover { transform:translateY(-3px); border-color:rgba(124,58,237,.4); box-shadow:0 8px 28px rgba(124,58,237,.2); }
 @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
 
 /* Thumbnail */

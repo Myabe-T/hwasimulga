@@ -36,9 +36,28 @@ const FEATURES = [
   { icon: '👑', title: 'VIP Access Unlocked', desc: "Go premium and get all-access. Because you deserve the entire collection, not just the preview." },
 ];
 
+
 export default function LandingPage() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { secs, label, humanLeft } = useGlobalCountdown();
+
+  // Dynamic pricing from admin panel
+  const [plans, setPlans] = useState({
+    basic: { price: 100, originalPrice: 200, days: 14 },
+    plus:  { price: 300, originalPrice: 500, days: 60 },
+    pro:   { price: 599, originalPrice: 999, days: 1095 },
+  });
+  useEffect(() => {
+    fetch('/api/hwasi/plans').then(r => r.json()).then(d => {
+      if (d.plans) setPlans(d.plans);
+    }).catch(() => {});
+  }, []);
+
+  const fmtDays = (d) => {
+    if (d >= 365) return `${Math.round(d/365)} year${Math.round(d/365)>1?'s':''} access`;
+    if (d >= 30)  return `${Math.round(d/30)} month${Math.round(d/30)>1?'s':''} access`;
+    return `${d} days access`;
+  };
 
   return (
     <div className={styles.page}>
@@ -166,11 +185,11 @@ export default function LandingPage() {
           <div className={styles.pricingCard}>
             <div className={styles.pricingBadge} style={{background:'#7c3aed'}}>BASIC</div>
             <div className={styles.pricingPriceWrap}>
-              <span className={styles.pricingOld}>₹200</span>
-              <span className={styles.pricingPrice}>₹100</span>
+              <span className={styles.pricingOld}>₹{plans.basic.originalPrice}</span>
+              <span className={styles.pricingPrice}>₹{plans.basic.price}</span>
             </div>
-            <div className={styles.pricingPeriod}>14 days access</div>
-            <div className={styles.pricingSave}>You save ₹100 🎉</div>
+            <div className={styles.pricingPeriod}>{fmtDays(plans.basic.days)}</div>
+            <div className={styles.pricingSave}>You save ₹{plans.basic.originalPrice - plans.basic.price} 🎉</div>
             <ul className={styles.pricingFeatures}>
               <li>✓ All 730+ videos</li>
               <li>✓ HD quality</li>
@@ -184,11 +203,11 @@ export default function LandingPage() {
             <div className={styles.pricingPopular}>⭐ MOST POPULAR</div>
             <div className={styles.pricingBadge} style={{background:'#0ea5e9'}}>PLUS</div>
             <div className={styles.pricingPriceWrap}>
-              <span className={styles.pricingOld}>₹500</span>
-              <span className={styles.pricingPrice}>₹300</span>
+              <span className={styles.pricingOld}>₹{plans.plus.originalPrice}</span>
+              <span className={styles.pricingPrice}>₹{plans.plus.price}</span>
             </div>
-            <div className={styles.pricingPeriod}>60 days access</div>
-            <div className={styles.pricingSave}>You save ₹200 🎉</div>
+            <div className={styles.pricingPeriod}>{fmtDays(plans.plus.days)}</div>
+            <div className={styles.pricingSave}>You save ₹{plans.plus.originalPrice - plans.plus.price} 🎉</div>
             <ul className={styles.pricingFeatures}>
               <li>✓ Everything in Basic</li>
               <li>✓ Priority access</li>
@@ -201,11 +220,11 @@ export default function LandingPage() {
           <div className={styles.pricingCard}>
             <div className={styles.pricingBadge} style={{background:'#f59e0b'}}>PRO</div>
             <div className={styles.pricingPriceWrap}>
-              <span className={styles.pricingOld}>₹999</span>
-              <span className={styles.pricingPrice}>₹599</span>
+              <span className={styles.pricingOld}>₹{plans.pro.originalPrice}</span>
+              <span className={styles.pricingPrice}>₹{plans.pro.price}</span>
             </div>
-            <div className={styles.pricingPeriod}>3 years access</div>
-            <div className={styles.pricingSave}>You save ₹400 🎉</div>
+            <div className={styles.pricingPeriod}>{fmtDays(plans.pro.days)}</div>
+            <div className={styles.pricingSave}>You save ₹{plans.pro.originalPrice - plans.pro.price} 🎉</div>
             <ul className={styles.pricingFeatures}>
               <li>✓ Everything in Plus</li>
               <li>✓ Lifetime-style access</li>

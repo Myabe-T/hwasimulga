@@ -435,7 +435,7 @@ export default function GalleryPage() {
         <div className={styles.guestSaleBanner}>
           🔥 Flash Sale —
           <span style={{fontFamily:'Courier New',fontWeight:900,color:'#f59e0b',margin:'0 6px'}}>{globalTimer}</span>
-          left · <s style={{opacity:.4}}>₹200/₹500/₹999</s> → <strong style={{color:'#34d399'}}>₹100/₹300/₹599</strong>
+          left · <s style={{opacity:.4}}>₹{plans?.basic?.originalPrice||200}/₹{plans?.plus?.originalPrice||500}/₹{plans?.pro?.originalPrice||999}</s> → <strong style={{color:'#34d399'}}>₹{plans?.basic?.price||100}/₹{plans?.plus?.price||300}/₹{plans?.pro?.price||599}</strong>
           <a href="/register" style={{marginLeft:10,color:'#f59e0b',fontWeight:700,textDecoration:'none'}}>Unlock →</a>
         </div>
       </header>
@@ -460,13 +460,13 @@ export default function GalleryPage() {
                   <button className={styles.playBtn}>▶</button>
                 </div>
                 {/* Lock icon for guests */}
-                <div style={{position:'absolute',top:8,right:8,background:'rgba(0,0,0,.6)',backdropFilter:'blur(6px)',padding:'3px 8px',borderRadius:8,fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:4}}>
+                <div style={{position:'absolute',top:8,right:8,background:'rgba(0,0,0,.65)',backdropFilter:'blur(6px)',padding:'3px 8px',borderRadius:8,fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:4,color:'#fbbf24'}}>
                   🔒 Login
                 </div>
                 <div className={styles.qualityBadge} style={{background: qualityColor(videoQuality(id)), color:'#fff'}}>{videoQuality(id)}</div>
               </div>
               <div className={styles.cardInfo}>
-                <div className={styles.cardTitle}>{videoTitle(id)}</div>
+                <div className={styles.cardTitle}>{videoTitles[String(id)] || videoTitle(id)}</div>
                 <div className={styles.cardMeta}>
                   <span>👁 {viewCount(id)}</span>
                 </div>
@@ -502,7 +502,11 @@ export default function GalleryPage() {
               <a href="/register" style={{padding:'12px',borderRadius:12,background:'linear-gradient(135deg,#7c3aed,#4f46e5)',color:'#fff',textDecoration:'none',fontSize:14,fontWeight:700,display:'block'}}>🚀 Register</a>
             </div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
-              {[['⚡ Basic','₹100','14d'],['🚀 Plus','₹300','60d'],['👑 Pro','₹599','3yr']].map(([label,price,period]) => (
+              {[
+                ['⚡ Basic', `₹${plans?.basic?.price||100}`, `${plans?.basic?.days||14}d`],
+                ['🚀 Plus',  `₹${plans?.plus?.price||300}`,  `${plans?.plus?.days||60}d`],
+                ['👑 Pro',   `₹${plans?.pro?.price||599}`,   '3yr'],
+              ].map(([label,price,period]) => (
                 <div key={label} style={{padding:'10px 6px',background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.07)',borderRadius:12,textAlign:'center'}}>
                   <div style={{fontSize:12,color:'rgba(255,255,255,.5)'}}>{label}</div>
                   <div style={{fontWeight:800,fontSize:14}}>{price}</div>
@@ -698,8 +702,12 @@ export default function GalleryPage() {
                   className={styles.btnGhost}
                   style={{color: shareCopied===modal.id ? '#4ade80' : undefined}}
                   onClick={() => {
-                    const link = `${window.location.origin}/watch/${modal.id}`;
-                    navigator.clipboard.writeText(link);
+                    const shareUrl = `${window.location.origin}/watch/${modal.id}`;
+                    if (navigator.share) {
+                      navigator.share({ title: videoTitles[String(modal.id)] || videoTitle(modal.id), url: shareUrl });
+                    } else {
+                      navigator.clipboard.writeText(shareUrl);
+                    }
                     setShareCopied(modal.id);
                     setTimeout(() => setShareCopied(null), 2000);
                   }}
@@ -1002,8 +1010,9 @@ function VideoCard({ id, index, hasThumb, isBookmarked, isAdmin, showHash, onPla
         <ActionBtn icon="⬇" label="Download" color="#10b981" onClick={(e) => onDownload(e)} />
         <ActionBtn icon="↗" label="Share" color="#3b82f6" onClick={(e) => {
           e.stopPropagation();
-          if (navigator.share) navigator.share({ title: videoTitle(id), url: window.location.href });
-          else navigator.clipboard?.writeText(window.location.href);
+          const shareUrl = `${window.location.origin}/watch/${id}`;
+          if (navigator.share) navigator.share({ title: videoTitle(id), url: shareUrl });
+          else { navigator.clipboard?.writeText(shareUrl); }
         }} />
         <ActionBtn icon="🚩" label="Report" color="#ef4444" onClick={(e) => onReport(e)} />
         {isAdmin && onDelete && (
