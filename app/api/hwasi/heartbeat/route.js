@@ -1,7 +1,7 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
-import { updateSession } from '@/lib/redis';
+import { updateSession, recordDevice, isUserBlocked } from '@/lib/redis';
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024'
@@ -13,8 +13,17 @@ export async function POST(req) {
 
   try {
     const { payload } = await jwtVerify(cookie.value, SECRET);
-    // Pull extra info from request body if provided
+
+    // Check if user is blocked
+    const blocked = await isUserBlocked(payload.sub);
+    if (blocked) {
+      return NextResponse.json({ ok: false, blocked: true }, { status: 403 });
+    }
+
+    // Pull extra info from request body
     const body = await req.json().catch(() => ({}));
+
+    // Update online session
     await updateSession(payload.sub, {
       userId:      payload.sub,
       username:    payload.username,
@@ -23,6 +32,12 @@ export async function POST(req) {
       role:        payload.role,
       avatar:      payload.avatar,
     });
+
+    // Record device fingerprint if provided
+    if (body.fingerprint) {
+      await recordDevice(payload.sub, body.fingerprint, payload.username, payload.displayName);
+    }
+
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ ok: false }, { status: 401 });

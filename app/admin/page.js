@@ -9,6 +9,8 @@ const NAV = [
   { id: 'thumbnails',    icon: IconThumb,   label: 'Thumbnails',    roles: ['admin'] },
   { id: 'users',         icon: IconUsers,   label: 'Users',         roles: BOTH },
   { id: 'subscriptions', icon: IconPremium, label: 'Subscriptions', roles: BOTH },
+  { id: 'pricing',       icon: IconSettings,label: 'Pricing Mgmt',  roles: ['admin'] },
+  { id: 'devices',       icon: IconFlag,    label: 'Device Security',roles: BOTH },
   { id: 'reports',       icon: IconFlag,    label: 'Reports',       roles: BOTH },
   { id: 'deleted',       icon: IconTrash,   label: 'Deleted',       roles: BOTH },
   { id: 'analytics',     icon: IconChart,   label: 'Analytics',     roles: BOTH },
@@ -69,6 +71,10 @@ export default function AdminPage() {
   const [editTitleSaving, setEditTitleSaving] = useState(false);
   const [onlineUsers,   setOnlineUsers]   = useState([]);
   const [showOnlineModal, setShowOnlineModal] = useState(false);
+  const [plansConfig,   setPlansConfig]   = useState(null);
+  const [plansMsg,      setPlansMsg]      = useState('');
+  const [plansSaving,   setPlansSaving]   = useState(false);
+  const [deviceData,    setDeviceData]    = useState({});
 
   useEffect(() => {
     async function init() {
@@ -123,6 +129,9 @@ export default function AdminPage() {
     setSubRequests(sr.requests || []);
     // Load custom video titles
     fetch('/api/hwasi/titles').then(x=>x.json()).then(d=>setVideoTitles(d.titles||{})).catch(()=>{});
+    // Load plans config and device data
+    fetch('/api/hwasi/plans').then(x=>x.json()).then(d=>setPlansConfig(d.plans||null)).catch(()=>{});
+    fetch('/api/hwasi/devices').then(x=>x.json()).then(d=>setDeviceData(d.devices||{})).catch(()=>{});
   }
 
   async function saveVideoTitle() {
@@ -1248,6 +1257,134 @@ export default function AdminPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ PRICING MANAGEMENT ══ */}
+          {tab==='pricing' && (
+            <div className={styles.fadeIn}>
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>💰</span>
+                  <div><h3 className={styles.cardTitle}>Plan Pricing</h3><p className={styles.cardSub}>Changes apply site-wide immediately</p></div>
+                  <button className="btn btn-ghost btn-sm" style={{marginLeft:'auto'}} onClick={()=>{fetch('/api/hwasi/plans').then(x=>x.json()).then(d=>setPlansConfig(d.plans||null));}}>↻ Refresh</button>
+                </div>
+                {plansMsg && <div style={{padding:'8px 14px',borderRadius:8,background:plansMsg.includes('✅')?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)',color:plansMsg.includes('✅')?'#4ade80':'#f87171',marginBottom:12,fontSize:13}}>{plansMsg}</div>}
+                {['basic','plus','pro'].map(key => {
+                  const p = (plansConfig||{})[key] || {};
+                  const defaultIcons = {basic:'⚡',plus:'🚀',pro:'👑'};
+                  return (
+                    <div key={key} style={{border:'1px solid rgba(255,255,255,.08)',borderRadius:14,padding:20,marginBottom:16}}>
+                      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+                        <span style={{fontSize:24}}>{defaultIcons[key]}</span>
+                        <h4 style={{margin:0,fontWeight:800,fontSize:16,textTransform:'capitalize'}}>{p.label || key}</h4>
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12}}>
+                        <div>
+                          <label className={styles.fieldLabel}>Sale Price (₹)</label>
+                          <input className="input" type="number" min="1" value={p.price||''} onChange={e=>setPlansConfig(pc=>({...pc,[key]:{...pc[key],price:Number(e.target.value)}}))} />
+                        </div>
+                        <div>
+                          <label className={styles.fieldLabel}>Original Price (₹) <span style={{fontSize:10,color:'rgba(255,255,255,.4)'}}>crossed-out</span></label>
+                          <input className="input" type="number" min="1" value={p.originalPrice||''} onChange={e=>setPlansConfig(pc=>({...pc,[key]:{...pc[key],originalPrice:Number(e.target.value)}}))} />
+                        </div>
+                        <div>
+                          <label className={styles.fieldLabel}>Duration (days)</label>
+                          <input className="input" type="number" min="1" value={p.days||''} onChange={e=>setPlansConfig(pc=>({...pc,[key]:{...pc[key],days:Number(e.target.value)}}))} />
+                        </div>
+                        <div>
+                          <label className={styles.fieldLabel}>Label</label>
+                          <input className="input" value={p.label||key} onChange={e=>setPlansConfig(pc=>({...pc,[key]:{...pc[key],label:e.target.value}}))} />
+                        </div>
+                      </div>
+                      {p.price && p.originalPrice && (
+                        <div style={{marginTop:10,fontSize:12,color:'rgba(255,255,255,.4)'}}>
+                          Savings: ₹{(p.originalPrice-p.price)} · {Math.round((p.originalPrice-p.price)/p.originalPrice*100)}% off
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <button
+                  className="btn btn-primary"
+                  disabled={plansSaving || !plansConfig}
+                  onClick={async () => {
+                    setPlansSaving(true); setPlansMsg('');
+                    const r = await fetch('/api/hwasi/plans',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(plansConfig)});
+                    const d = await r.json();
+                    setPlansSaving(false);
+                    if (d.ok) { setPlansConfig(d.plans); setPlansMsg('✅ Plans saved! Changes are live for all users.'); }
+                    else setPlansMsg('❌ Failed to save: '+(d.error||'unknown error'));
+                    setTimeout(()=>setPlansMsg(''),4000);
+                  }}
+                >
+                  {plansSaving ? 'Saving...' : '💾 Save All Plans'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ══ DEVICE SECURITY ══ */}
+          {tab==='devices' && (
+            <div className={styles.fadeIn}>
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>🔒</span>
+                  <div>
+                    <h3 className={styles.cardTitle}>Device Security</h3>
+                    <p className={styles.cardSub}>Accounts with &gt;3 unique device fingerprints are auto-flagged</p>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" style={{marginLeft:'auto'}} onClick={()=>{fetch('/api/hwasi/devices').then(x=>x.json()).then(d=>setDeviceData(d.devices||{}));}}>↻ Refresh</button>
+                </div>
+                {Object.keys(deviceData).length === 0 ? (
+                  <p style={{color:'var(--text3)',textAlign:'center',padding:'32px 0'}}>No device data yet. Data appears once users log in.</p>
+                ) : (
+                  <div style={{display:'flex',flexDirection:'column',gap:12,marginTop:12}}>
+                    {Object.entries(deviceData).map(([uid, entry]) => (
+                      <div key={uid} style={{padding:16,background:entry.blocked?'rgba(239,68,68,.08)':entry.flagged?'rgba(245,158,11,.08)':'rgba(255,255,255,.03)',border:`1px solid ${entry.blocked?'rgba(239,68,68,.25)':entry.flagged?'rgba(245,158,11,.25)':'rgba(255,255,255,.08)'}`,borderRadius:14}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:8}}>
+                          <div style={{fontWeight:700}}>{entry.displayName||entry.username||`User #${uid}`}</div>
+                          <div style={{fontSize:12,color:'rgba(255,255,255,.5)'}}>@{entry.username}</div>
+                          {entry.blocked && <span style={{padding:'2px 8px',borderRadius:10,background:'rgba(239,68,68,.2)',color:'#f87171',fontSize:11,fontWeight:700}}>🚫 BLOCKED</span>}
+                          {entry.flagged && !entry.blocked && <span style={{padding:'2px 8px',borderRadius:10,background:'rgba(245,158,11,.2)',color:'#fbbf24',fontSize:11,fontWeight:700}}>⚠️ FLAGGED</span>}
+                          <div style={{marginLeft:'auto',fontSize:12,color:'rgba(255,255,255,.4)'}}>{entry.fingerprints?.length||0} unique device{(entry.fingerprints?.length||0)!==1?'s':''}</div>
+                        </div>
+                        <div style={{fontSize:11,color:'rgba(255,255,255,.35)',marginBottom:10,fontFamily:'monospace',wordBreak:'break-all'}}>
+                          {(entry.fingerprints||[]).slice(0,3).map((fp,i)=>(
+                            <span key={i} style={{display:'inline-block',margin:'2px 4px',padding:'2px 6px',background:'rgba(255,255,255,.06)',borderRadius:4}}>
+                              device-{i+1}: {fp.slice(0,12)}…
+                            </span>
+                          ))}
+                          {(entry.fingerprints||[]).length>3 && <span style={{color:'rgba(255,255,255,.3)'}}>+{entry.fingerprints.length-3} more</span>}
+                        </div>
+                        {user?.role === 'admin' && (
+                          <div style={{display:'flex',gap:8}}>
+                            {!entry.blocked ? (
+                              <button
+                                style={{padding:'7px 16px',borderRadius:10,border:'none',background:'rgba(239,68,68,.15)',color:'#f87171',fontWeight:700,cursor:'pointer',fontSize:12}}
+                                onClick={async()=>{
+                                  await fetch('/api/hwasi/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid,blocked:true})});
+                                  setDeviceData(d=>({...d,[uid]:{...d[uid],blocked:true}}));
+                                  flash(`🚫 Blocked ${entry.displayName||entry.username}`,'err');
+                                }}
+                              >🚫 Block Account</button>
+                            ) : (
+                              <button
+                                style={{padding:'7px 16px',borderRadius:10,border:'none',background:'rgba(34,197,94,.15)',color:'#4ade80',fontWeight:700,cursor:'pointer',fontSize:12}}
+                                onClick={async()=>{
+                                  await fetch('/api/hwasi/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid,blocked:false})});
+                                  setDeviceData(d=>({...d,[uid]:{...d[uid],blocked:false,flagged:false}}));
+                                  flash(`✅ Unblocked ${entry.displayName||entry.username}`);
+                                }}
+                              >✅ Unblock Account</button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

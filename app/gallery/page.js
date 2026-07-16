@@ -78,6 +78,8 @@ export default function GalleryPage() {
   const [editTitleModal, setEditTitleModal] = useState(null); // { id }
   const [editTitleInput, setEditTitleInput] = useState('');
   const [editTitleSaving, setEditTitleSaving] = useState(false);
+  const [plans, setPlans] = useState(null);
+  const [shareCopied, setShareCopied] = useState(null); // videoId that was copied
 
   // Global epoch-based countdown (same for everyone)
   const EPOCH_START = 1704067200;
@@ -126,10 +128,13 @@ export default function GalleryPage() {
       setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start).filter(id => !delSet.has(id)));
       setViewStatus(vs);
       setBookmarks(new Set((bm.ids || []).map(Number)));
-      // Load custom titles
+      // Load custom titles and plan pricing
       fetch('/api/hwasi/titles').then(x=>x.json()).then(d=>setVideoTitles(d.titles||{})).catch(()=>{});
+      fetch('/api/hwasi/plans').then(x=>x.json()).then(d=>setPlans(d.plans||null)).catch(()=>{});
     }
     init();
+    // Also load plans for guest (for upgrade modal)
+    fetch('/api/hwasi/plans').then(x=>x.json()).then(d=>setPlans(d.plans||null)).catch(()=>{});
   }, []);
 
   // ── Heartbeat + 15-min idle auto-logout ──────────────────────────────────────
@@ -146,17 +151,34 @@ export default function GalleryPage() {
     async function beat() {
       const idle = Date.now() - lastActivity;
       if (idle >= IDLE_LIMIT) {
-        // Auto-logout
+        // Auto-logout for idle
         await fetch('/api/logout', { method: 'POST' });
         window.location.href = '/login';
         return;
       }
+      // Generate a stable browser fingerprint (canvas + UA hash)
+      let fingerprint = '';
+      try {
+        const c = document.createElement('canvas');
+        const g = c.getContext('2d');
+        g.textBaseline = 'top'; g.font = '14px Arial';
+        g.fillText('hwasi-fp', 2, 2);
+        fingerprint = c.toDataURL().slice(-32) + navigator.userAgent.slice(-16);
+      } catch { fingerprint = navigator.userAgent.slice(0,32); }
+
       // Active — ping server
-      fetch('/api/hwasi/heartbeat', {
+      const hbRes = await fetch('/api/hwasi/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email || null }),
-      }).catch(() => {});
+        body: JSON.stringify({ email: user.email || null, fingerprint }),
+      }).catch(() => null);
+
+      // If server says we're blocked, force logout
+      if (hbRes?.status === 403) {
+        await fetch('/api/logout', { method: 'POST' });
+        window.location.href = '/login?blocked=1';
+        return;
+      }
     }
 
     beat(); // immediate first beat
@@ -627,6 +649,18 @@ export default function GalleryPage() {
                 </span>
               </div>
               <div className={styles.modalActions}>
+                <button
+                  className={styles.btnGhost}
+                  style={{color: shareCopied===modal.id ? '#4ade80' : undefined}}
+                  onClick={() => {
+                    const link = `${window.location.origin}/watch/${modal.id}`;
+                    navigator.clipboard.writeText(link);
+                    setShareCopied(modal.id);
+                    setTimeout(() => setShareCopied(null), 2000);
+                  }}
+                >
+                  {shareCopied===modal.id ? '✓ Copied!' : '🔗 Share'}
+                </button>
                 <button className={styles.btnGhost} onClick={(e) => handleDownload(e, modal.id)}>⬇ Download</button>
                 <button className={styles.closeBtn} onClick={closeModal}>✕</button>
               </div>
@@ -745,44 +779,59 @@ export default function GalleryPage() {
       {/* ── UPGRADE MODAL (PREMIUM FOMO) ── */}
       {showUpgrade && (
         <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) setShowUpgrade(false); }}>
-          <div className={styles.upgradeBox} style={{maxWidth: 480, background: 'linear-gradient(145deg, rgba(20, 15, 30, 0.9), rgba(10, 5, 15, 0.95))', border: '1px solid rgba(236,72,153,0.3)', backdropFilter: 'blur(20px)', boxShadow: '0 30px 100px rgba(236,72,153,0.2)'}}>
-            
-            <div style={{position:'absolute', top:-20, left:'50%', transform:'translateX(-50%)', background:'linear-gradient(90deg, #ec4899, #8b5cf6)', padding:'6px 16px', borderRadius:20, fontSize:12, fontWeight:800, color:'#fff', boxShadow:'0 10px 20px rgba(236,72,153,0.4)', letterSpacing:'0.05em', whiteSpace:'nowrap'}}>
-              🔥 LIMITED TIME OFFER: {globalTimer}
+          <div className={styles.upgradeBox} style={{maxWidth:520, background:'linear-gradient(145deg,rgba(20,15,30,.95),rgba(10,5,15,.98))', border:'1px solid rgba(236,72,153,.3)', backdropFilter:'blur(20px)', boxShadow:'0 30px 100px rgba(236,72,153,.2)', overflow:'visible', padding:'32px 24px 24px'}}>
+
+            {/* Timer badge */}
+            <div style={{position:'absolute', top:-18, left:'50%', transform:'translateX(-50%)', background:'linear-gradient(90deg,#ec4899,#8b5cf6)', padding:'6px 18px', borderRadius:20, fontSize:12, fontWeight:800, color:'#fff', boxShadow:'0 10px 20px rgba(236,72,153,.4)', letterSpacing:'.05em', whiteSpace:'nowrap', zIndex:10}}>
+              ⏰ LIMITED TIME OFFER: {globalTimer}
             </div>
 
-            <div style={{fontSize:50, textAlign:'center', marginTop:10, animation:'pulse 2s infinite'}}>💎</div>
-            <h2 className={styles.upgradeTitle} style={{fontSize:28, background:'linear-gradient(to right, #fbcfe8, #ec4899)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>Premium Access</h2>
-            <p className={styles.upgradeSub} style={{fontSize:15, color:'rgba(255,255,255,0.7)', marginBottom:24}}>
-              {upgradeInfo?.hoursLeft
-                ? `You've watched all 5 free videos today. Come back in ${upgradeInfo.hoursLeft}h or upgrade now to unlock instantly.`
-                : "You've used all your free videos today. Upgrade now to watch unlimited videos instantly."}
-            </p>
-            
-            <div style={{background:'rgba(236,72,153,0.05)', border:'1px solid rgba(236,72,153,0.15)', borderRadius:20, padding:20, marginBottom:24, position:'relative', overflow:'hidden'}}>
-              <div style={{position:'absolute', top:0, right:0, background:'#ec4899', color:'#fff', fontSize:11, fontWeight:800, padding:'4px 12px', borderBottomLeftRadius:10}}>80% OFF</div>
-              <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginBottom:8}}>
-                <span style={{fontSize:24, color:'rgba(255,255,255,0.4)', textDecoration:'line-through', fontWeight:600}}>₹599</span>
-                <span style={{fontSize:42, color:'#fff', fontWeight:900, textShadow:'0 0 20px rgba(236,72,153,0.5)'}}>₹99</span>
-                <span style={{fontSize:14, color:'rgba(255,255,255,0.6)', alignSelf:'flex-end', paddingBottom:6}}>/ lifetime</span>
-              </div>
-              <ul style={{listStyle:'none', padding:0, margin:0, fontSize:14, color:'rgba(255,255,255,0.8)', display:'flex', flexDirection:'column', gap:8, textAlign:'left'}}>
-                <li>✨ <strong style={{color:'#fff'}}>Unlimited</strong> Video Watches</li>
-                <li>🚀 <strong style={{color:'#fff'}}>Zero</strong> Daily Limits</li>
-                <li>🔓 Access to <strong style={{color:'#fff'}}>Curated & Popular</strong></li>
-                <li>⚡ Instant Account Activation</li>
-              </ul>
+            <div style={{textAlign:'center', marginBottom:16}}>
+              <div style={{fontSize:44}}>💎</div>
+              <h2 style={{margin:'8px 0 6px', fontSize:22, fontWeight:900, background:'linear-gradient(to right,#fbcfe8,#ec4899)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>Premium Access</h2>
+              <p style={{fontSize:13, color:'rgba(255,255,255,.6)', margin:0}}>
+                {upgradeInfo?.hoursLeft
+                  ? `You've watched all 5 free videos. Come back in ${upgradeInfo.hoursLeft}h or upgrade now.`
+                  : "You've used all your free videos today. Upgrade now for unlimited access."}
+              </p>
             </div>
 
-            <button style={{width:'100%', padding:18, background:'linear-gradient(45deg, #ec4899, #8b5cf6)', borderRadius:16, border:'none', color:'#fff', fontSize:18, fontWeight:800, cursor:'pointer', boxShadow:'0 10px 30px rgba(236,72,153,0.4)', transition:'transform 0.2s'}} onClick={() => window.location.href='/premium'} onMouseOver={e=>e.currentTarget.style.transform='scale(1.02)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
-              Claim Offer Now →
+            {/* Plan cards */}
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16}}>
+              {(plans ? Object.values(plans) : [
+                {id:'basic',label:'Basic',price:100,originalPrice:200,days:14,icon:'⚡',color:'#7c3aed'},
+                {id:'plus', label:'Plus', price:300,originalPrice:500,days:60, icon:'🚀',color:'#0ea5e9',popular:true},
+                {id:'pro',  label:'Pro',  price:599,originalPrice:999,days:1095,icon:'👑',color:'#f59e0b'},
+              ]).map(p => {
+                const save = (p.originalPrice||0) - (p.price||0);
+                return (
+                  <div key={p.id} onClick={() => window.location.href='/premium'}
+                    style={{position:'relative', padding:'14px 10px', borderRadius:14, border:`1px solid ${p.popular?p.color:'rgba(255,255,255,.1)'}`, background:p.popular?`${p.color}18`:'rgba(255,255,255,.04)', cursor:'pointer', textAlign:'center', transition:'transform .2s'}}
+                    onMouseOver={e=>e.currentTarget.style.transform='scale(1.04)'}
+                    onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}
+                  >
+                    {p.popular && <div style={{position:'absolute',top:-10,left:'50%',transform:'translateX(-50%)',background:p.color,color:'#fff',fontSize:9,fontWeight:800,padding:'2px 8px',borderRadius:10,whiteSpace:'nowrap'}}>POPULAR</div>}
+                    <div style={{fontSize:22,marginBottom:4}}>{p.icon}</div>
+                    <div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,.5)',textTransform:'uppercase',marginBottom:4}}>{p.label}</div>
+                    {p.originalPrice && <div style={{fontSize:11,color:'rgba(255,255,255,.3)',textDecoration:'line-through'}}>₹{p.originalPrice}</div>}
+                    <div style={{fontSize:22,fontWeight:900,color:'#fff'}}>₹{p.price}</div>
+                    <div style={{fontSize:10,color:'rgba(255,255,255,.4)'}}>{p.days} days</div>
+                    {save > 0 && <div style={{fontSize:10,color:'#4ade80',fontWeight:700,marginTop:4}}>Save ₹{save}</div>}
+                  </div>
+                );
+              })}
+            </div>
+
+            <button style={{width:'100%',padding:16,background:'linear-gradient(45deg,#ec4899,#8b5cf6)',borderRadius:14,border:'none',color:'#fff',fontSize:16,fontWeight:800,cursor:'pointer',boxShadow:'0 10px 30px rgba(236,72,153,.4)'}} onClick={() => window.location.href='/premium'}>
+              View All Plans →
             </button>
-            <button className={styles.upgradeSkip} style={{marginTop:16}} onClick={() => setShowUpgrade(false)}>Maybe Later</button>
+            <button className={styles.upgradeSkip} style={{marginTop:12}} onClick={() => setShowUpgrade(false)}>Maybe Later</button>
           </div>
         </div>
       )}
 
       {/* ── PREMIUM INFO MODAL ── */}
+
       {premiumInfo && (
         <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) setPremiumInfo(null); }}>
           <div className={styles.smallModal} style={{textAlign:'center'}}>

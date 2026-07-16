@@ -37,14 +37,8 @@ const FEATURES = [
 ];
 
 export default function LandingPage() {
-  const [authModal, setAuthModal] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { secs, label, humanLeft } = useGlobalCountdown();
-
-  function handleGalleryClick(e) {
-    e.preventDefault();
-    setAuthModal(true);
-  }
 
   return (
     <div className={styles.page}>
@@ -59,7 +53,7 @@ export default function LandingPage() {
         <div className={styles.navCenter}>
           <a href="#features" className={styles.navLink}>Features</a>
           <a href="#pricing" className={styles.navLink}>Pricing</a>
-          <a href="/gallery" className={styles.navLink} onClick={handleGalleryClick}>Gallery</a>
+          <a href="/gallery" className={styles.navLink}>Gallery</a>
         </div>
 
         <div className={styles.navRight}>
@@ -74,7 +68,7 @@ export default function LandingPage() {
           <div className={styles.mobileMenu}>
             <a href="#features" onClick={() => setMobileOpen(false)}>Features</a>
             <a href="#pricing" onClick={() => setMobileOpen(false)}>Pricing</a>
-            <a href="/gallery" onClick={e => { handleGalleryClick(e); setMobileOpen(false); }}>Gallery</a>
+            <a href="/gallery" onClick={() => setMobileOpen(false)}>Gallery</a>
             <div className={styles.mobileMenuDivider} />
             <a href="/login">Login</a>
             <a href="/register" className={styles.mobileRegBtn}>Register Free</a>
@@ -123,7 +117,7 @@ export default function LandingPage() {
 
         <div className={styles.heroActions}>
           <a href="/register" className={styles.btnHero}>🚀 Get Started Free</a>
-          <a href="/gallery" className={styles.btnHeroOutline} onClick={handleGalleryClick}>Browse Gallery →</a>
+          <a href="/gallery" className={styles.btnHeroOutline}>Browse Gallery →</a>
         </div>
 
         <div className={styles.heroStats}>
@@ -238,51 +232,6 @@ export default function LandingPage() {
           <a href="/register">Register</a>
         </div>
       </footer>
-
-      {/* ── AUTH GATE MODAL ── */}
-      {authModal && (
-        <div className={styles.authModalBg} onClick={e => { if (e.target === e.currentTarget) setAuthModal(false); }}>
-          <div className={styles.authModal}>
-            <button className={styles.authModalClose} onClick={() => setAuthModal(false)}>✕</button>
-            <img src="/logo.png" alt="" className={styles.authModalLogo} />
-            <h2 className={styles.authModalTitle}>Access Gallery</h2>
-            <p className={styles.authModalSub}>
-              Sign in or create a free account to browse 730+ exclusive videos
-            </p>
-
-            <div className={styles.authModalCountdown}>
-              <span>🔥 Sale price resets in</span>
-              <strong className={styles.authModalTimer}>{label}</strong>
-            </div>
-
-            <div className={styles.authModalActions}>
-              <a href="/login" className={styles.authModalLogin}>🔑 Sign In</a>
-              <a href="/register" className={styles.authModalRegister}>🚀 Register Free</a>
-            </div>
-
-            <div className={styles.authModalPlans}>
-              <div className={styles.authModalPlan}>
-                <span>⚡ Basic</span>
-                <div><s style={{fontSize:10,color:'rgba(255,255,255,.35)'}}>₹200</s> <strong>₹100</strong></div>
-                <small>14 days</small>
-              </div>
-              <div className={styles.authModalPlan}>
-                <span>🚀 Plus</span>
-                <div><s style={{fontSize:10,color:'rgba(255,255,255,.35)'}}>₹500</s> <strong>₹300</strong></div>
-                <small>60 days</small>
-              </div>
-              <div className={styles.authModalPlan}>
-                <span>👑 Pro</span>
-                <div><s style={{fontSize:10,color:'rgba(255,255,255,.35)'}}>₹999</s> <strong>₹599</strong></div>
-                <small>3 years</small>
-              </div>
-            </div>
-            <p style={{fontSize:11,textAlign:'center',color:'rgba(255,255,255,.3)',marginTop:8}}>
-              5 free video previews/day without premium
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
