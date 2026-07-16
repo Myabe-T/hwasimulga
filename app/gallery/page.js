@@ -80,6 +80,9 @@ export default function GalleryPage() {
   const [editTitleSaving, setEditTitleSaving] = useState(false);
   const [plans, setPlans] = useState(null);
   const [shareCopied, setShareCopied] = useState(null); // videoId that was copied
+  const [downloadUpgradeModal, setDownloadUpgradeModal] = useState(false);
+  const [bookmarkLimitModal, setBookmarkLimitModal] = useState(false);
+  const FREE_BOOKMARK_LIMIT = 8;
 
   // Global epoch-based countdown (same for everyone)
   const EPOCH_START = 1704067200;
@@ -357,6 +360,11 @@ export default function GalleryPage() {
 
   async function handleDownload(e, id) {
     e && e.stopPropagation();
+    // Gate: only premium, admin, advisor can download
+    if (!viewStatus?.isPremium && user?.role === 'viewer') {
+      setDownloadUpgradeModal(true);
+      return;
+    }
     try {
       const sr = await fetch(`/api/hwasi/sign/${id}`);
       const sd = await sr.json();
@@ -373,6 +381,13 @@ export default function GalleryPage() {
   async function toggleBookmark(e, id) {
     e && e.stopPropagation();
     const isBookmarked = bookmarks.has(id);
+    // Gate: free users limited to 8 bookmarks
+    if (!isBookmarked && !viewStatus?.isPremium && user?.role === 'viewer') {
+      if (bookmarks.size >= FREE_BOOKMARK_LIMIT) {
+        setBookmarkLimitModal(true);
+        return;
+      }
+    }
     setBookmarks(prev => { const n = new Set(prev); isBookmarked ? n.delete(id) : n.add(id); return n; });
     await fetch('/api/hwasi/bookmarks', {
       method: isBookmarked ? 'DELETE' : 'POST',
@@ -543,8 +558,9 @@ export default function GalleryPage() {
           {/* Right: chips + user */}
           <div className={styles.headerRight}>
             {viewStatus && !viewStatus.isPremium && user.role === 'viewer' && (
-              <div className={styles.freeChip} onClick={() => window.location.href='/premium'}>
-                {viewStatus.remaining ?? 5}/5 free
+              <div className={styles.freeChip} onClick={() => window.location.href='/premium'}
+                title="Free plan — upgrade to Premium for unlimited access">
+                🆓 FREE · {viewStatus.remaining ?? 5}/5 watches
               </div>
             )}
             {viewStatus?.isPremium && (
@@ -930,6 +946,65 @@ export default function GalleryPage() {
                 onClick={changePassword}>Save Password</button>
               <button className={styles.cancelBtn} style={{flex:1}} onClick={() => { setChangePwdModal(false); setPwdMsg(''); setPwdForm({old:'',new:'',confirm:''}); }}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DOWNLOAD: PREMIUM ONLY MODAL ── */}
+      {downloadUpgradeModal && (
+        <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) setDownloadUpgradeModal(false); }}>
+          <div className={styles.smallModal} style={{textAlign:'center',maxWidth:400,position:'relative'}}>
+            <div style={{fontSize:44,marginBottom:10}}>⬇️</div>
+            <h3 style={{fontWeight:900,fontSize:19,marginBottom:6,background:'linear-gradient(to right,#a78bfa,#ec4899)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
+              Downloads are Premium Only
+            </h3>
+            <p style={{fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:16,lineHeight:1.6}}>
+              Upgrade to Premium to download videos and watch them offline anytime.
+            </p>
+            <div style={{padding:'8px 14px',background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.25)',borderRadius:12,marginBottom:16,fontSize:12,fontWeight:600}}>
+              🔥 Flash Sale ends in <strong style={{fontFamily:'Courier New',color:'#f59e0b'}}>{globalTimer}</strong>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:18}}>
+              {[
+                {label:'Basic',icon:'⚡',price:plans?.basic?.price||100,color:'#7c3aed'},
+                {label:'Plus', icon:'🚀',price:plans?.plus?.price||300, color:'#0ea5e9',popular:true},
+                {label:'Pro',  icon:'👑',price:plans?.pro?.price||599,  color:'#f59e0b'},
+              ].map(p => (
+                <div key={p.label} style={{padding:'12px 6px',background:p.popular?`${p.color}20`:'rgba(255,255,255,.04)',border:`1px solid ${p.popular?p.color:'rgba(255,255,255,.1)'}`,borderRadius:12,cursor:'pointer'}}
+                  onClick={() => window.location.href='/premium'}>
+                  <div style={{fontSize:18}}>{p.icon}</div>
+                  <div style={{fontWeight:700,fontSize:12,marginTop:4}}>{p.label}</div>
+                  <div style={{fontWeight:900,fontSize:16,color:p.color}}>₹{p.price}</div>
+                </div>
+              ))}
+            </div>
+            <a href="/premium" style={{display:'block',padding:'13px',borderRadius:12,background:'linear-gradient(135deg,#7c3aed,#ec4899)',color:'#fff',fontWeight:800,fontSize:14,textDecoration:'none',marginBottom:8,boxShadow:'0 6px 20px rgba(124,58,237,.4)'}}>
+              👑 Upgrade to Premium →
+            </a>
+            <button className={styles.cancelBtn} onClick={() => setDownloadUpgradeModal(false)}>Maybe later</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── BOOKMARK LIMIT MODAL (free users: max 8) ── */}
+      {bookmarkLimitModal && (
+        <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) setBookmarkLimitModal(false); }}>
+          <div className={styles.smallModal} style={{textAlign:'center',maxWidth:380}}>
+            <div style={{fontSize:44,marginBottom:10}}>🔖</div>
+            <h3 style={{fontWeight:900,fontSize:18,marginBottom:6}}>Bookmark Limit Reached</h3>
+            <p style={{fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:6,lineHeight:1.6}}>
+              Free accounts can save up to <strong style={{color:'#f59e0b'}}>8 bookmarks</strong>.
+            </p>
+            <p style={{fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:16,lineHeight:1.6}}>
+              Upgrade to Premium for <strong style={{color:'#4ade80'}}>unlimited bookmarks</strong> + downloads + unlimited watches!
+            </p>
+            <div style={{padding:'8px 14px',background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.25)',borderRadius:12,marginBottom:16,fontSize:12,fontWeight:600}}>
+              🔥 Sale ends in <strong style={{fontFamily:'Courier New',color:'#f59e0b'}}>{globalTimer}</strong>
+            </div>
+            <a href="/premium" style={{display:'block',padding:'13px',borderRadius:12,background:'linear-gradient(135deg,#7c3aed,#ec4899)',color:'#fff',fontWeight:800,fontSize:14,textDecoration:'none',marginBottom:8,boxShadow:'0 6px 20px rgba(124,58,237,.4)'}}>
+              👑 Upgrade Now →
+            </a>
+            <button className={styles.cancelBtn} onClick={() => setBookmarkLimitModal(false)}>Stay Free</button>
           </div>
         </div>
       )}
