@@ -75,6 +75,8 @@ export default function AdminPage() {
   const [plansMsg,      setPlansMsg]      = useState('');
   const [plansSaving,   setPlansSaving]   = useState(false);
   const [deviceData,    setDeviceData]    = useState({});
+  const [blockModal,    setBlockModal]    = useState(null); // { uid, displayName, username }
+  const [blockReason,   setBlockReason]   = useState('');
 
   useEffect(() => {
     async function init() {
@@ -1379,10 +1381,9 @@ export default function AdminPage() {
                             {!entry.blocked ? (
                               <button
                                 style={{padding:'7px 16px',borderRadius:10,border:'none',background:'rgba(239,68,68,.15)',color:'#f87171',fontWeight:700,cursor:'pointer',fontSize:12}}
-                                onClick={async()=>{
-                                  await fetch('/api/hwasi/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid,blocked:true})});
-                                  setDeviceData(d=>({...d,[uid]:{...d[uid],blocked:true}}));
-                                  flash(`🚫 Blocked ${entry.displayName||entry.username}`,'err');
+                                onClick={() => {
+                                  setBlockReason('');
+                                  setBlockModal({ uid, displayName: entry.displayName, username: entry.username });
                                 }}
                               >🚫 Block Account</button>
                             ) : (
@@ -1709,6 +1710,52 @@ export default function AdminPage() {
                 <button style={{padding:'11px 14px',borderRadius:12,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.1)',color:'#f87171',fontWeight:600,cursor:'pointer'}} onClick={() => { setEditTitleInput(''); saveVideoTitle(); }} title="Remove custom title">🗑</button>
               )}
               <button style={{padding:'11px 14px',borderRadius:12,border:'1px solid rgba(255,255,255,.1)',background:'transparent',color:'rgba(255,255,255,.6)',cursor:'pointer'}} onClick={() => setEditTitleModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BLOCK REASON MODAL ── */}
+      {blockModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',backdropFilter:'blur(8px)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#130a20',border:'1px solid rgba(239,68,68,.3)',borderRadius:20,padding:28,width:'100%',maxWidth:420,boxShadow:'0 30px 80px rgba(0,0,0,.7)'}}>
+            <div style={{fontSize:36,textAlign:'center',marginBottom:12}}>🚫</div>
+            <h3 style={{textAlign:'center',fontWeight:900,fontSize:18,marginBottom:6,color:'#f87171'}}>Block Account</h3>
+            <p style={{textAlign:'center',fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:18}}>
+              Blocking <strong style={{color:'#fff'}}>{blockModal.displayName||blockModal.username}</strong>. Select a reason — it will be shown to the user when they try to login.
+            </p>
+            <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:14}}>
+              {['Multiple device sharing detected','Account sharing / unauthorized access','Terms of service violation','Suspicious activity detected','Payment dispute / chargeback'].map(r => (
+                <button key={r} onClick={() => setBlockReason(r)}
+                  style={{padding:'9px 14px',borderRadius:10,border:`1px solid ${blockReason===r?'#f87171':'rgba(255,255,255,.08)'}`,background:blockReason===r?'rgba(239,68,68,.15)':'rgba(255,255,255,.03)',color:blockReason===r?'#f87171':'rgba(255,255,255,.65)',fontWeight:blockReason===r?700:500,fontSize:13,cursor:'pointer',textAlign:'left',transition:'all .15s'}}
+                >{r}</button>
+              ))}
+            </div>
+            <div style={{marginBottom:18}}>
+              <label style={{fontSize:12,color:'rgba(255,255,255,.4)',fontWeight:700,display:'block',marginBottom:6}}>OR TYPE CUSTOM REASON</label>
+              <input
+                style={{width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.05)',color:'#fff',fontSize:13,boxSizing:'border-box'}}
+                placeholder="e.g. Banned for abuse..."
+                value={blockReason}
+                onChange={e => setBlockReason(e.target.value)}
+              />
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <button
+                disabled={!blockReason.trim()}
+                style={{flex:1,padding:'12px',borderRadius:12,border:'none',background:blockReason.trim()?'linear-gradient(135deg,#ef4444,#b91c1c)':'rgba(239,68,68,.3)',color:'#fff',fontWeight:800,fontSize:14,cursor:blockReason.trim()?'pointer':'not-allowed',transition:'all .2s'}}
+                onClick={async () => {
+                  const {uid} = blockModal;
+                  await fetch('/api/hwasi/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid,blocked:true,reason:blockReason.trim()})});
+                  setDeviceData(d => ({...d,[uid]:{...d[uid],blocked:true,blockReason:blockReason.trim()}}));
+                  flash(`🚫 Blocked ${blockModal.displayName||blockModal.username}`,'err');
+                  setBlockModal(null); setBlockReason('');
+                }}
+              >🚫 Confirm Block</button>
+              <button
+                style={{flex:1,padding:'12px',borderRadius:12,border:'1px solid rgba(255,255,255,.1)',background:'transparent',color:'rgba(255,255,255,.6)',fontWeight:600,fontSize:14,cursor:'pointer'}}
+                onClick={() => {setBlockModal(null); setBlockReason('');}}
+              >Cancel</button>
             </div>
           </div>
         </div>

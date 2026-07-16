@@ -7,12 +7,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState(''); // PENDING_APPROVAL | ACCOUNT_BLOCKED | ''
   const [showPass, setShowPass] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setErrorCode('');
     try {
       const res = await fetch('/api/login', {
         method: 'POST',
@@ -21,6 +23,7 @@ export default function LoginPage() {
       });
       if (!res.ok) {
         const d = await res.json();
+        setErrorCode(d.code || '');
         throw new Error(d.error || 'Login failed');
       }
       // Hard navigation so the cookie is picked up by middleware fresh
@@ -116,7 +119,42 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {error && (
+            {error && errorCode === 'PENDING_APPROVAL' && (
+              <div style={{
+                padding:'14px 16px', borderRadius:12, marginBottom:4,
+                background:'rgba(245,158,11,.12)', border:'1px solid rgba(245,158,11,.35)',
+                display:'flex', gap:10, alignItems:'flex-start'
+              }}>
+                <span style={{fontSize:20,flexShrink:0}}>⏳</span>
+                <div>
+                  <div style={{fontWeight:800,fontSize:13,color:'#fbbf24',marginBottom:4}}>Account Pending Approval</div>
+                  <div style={{fontSize:12,color:'rgba(255,255,255,.6)',lineHeight:1.6}}>
+                    Your registration is waiting for admin review. You'll be able to log in once approved. Please check back later.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {error && errorCode === 'ACCOUNT_BLOCKED' && (
+              <div style={{
+                padding:'14px 16px', borderRadius:12, marginBottom:4,
+                background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)',
+                display:'flex', gap:10, alignItems:'flex-start'
+              }}>
+                <span style={{fontSize:20,flexShrink:0}}>🚫</span>
+                <div>
+                  <div style={{fontWeight:800,fontSize:13,color:'#f87171',marginBottom:4}}>Account Blocked</div>
+                  <div style={{fontSize:12,color:'rgba(255,255,255,.6)',lineHeight:1.6,whiteSpace:'pre-line'}}>
+                    {error.replace('🚫 Your account has been blocked.\n\nReason: ','').replace('\n\nContact support to resolve this issue.','')}
+                  </div>
+                  <div style={{marginTop:8,fontSize:12,color:'rgba(255,255,255,.5)'}}>
+                    To appeal, contact support: <strong style={{color:'#f87171'}}>support@hwasimulga.com</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {error && !errorCode && (
               <div className={styles.error}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10"/>

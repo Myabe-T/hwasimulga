@@ -19,12 +19,12 @@ export async function GET(req) {
   return NextResponse.json({ devices: data });
 }
 
-// POST — admin only: block or unblock a user
+// POST — admin only: block or unblock a user (with optional reason)
 export async function POST(req) {
   const user = await getUser(req);
   if (!user || user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const { userId, blocked } = await req.json();
+  const { userId, blocked, reason } = await req.json();
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
-  await setUserBlocked(userId, Boolean(blocked));
+  await setUserBlocked(userId, Boolean(blocked), reason || null);
   return NextResponse.json({ ok: true });
 }
