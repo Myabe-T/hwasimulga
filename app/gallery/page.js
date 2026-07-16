@@ -14,8 +14,8 @@ function videoTitle(id) {
 }
 
 // Deterministic quality badge from ID
-function videoQuality(id) { return Number(id) % 3 === 0 ? '2K' : Number(id) % 2 === 0 ? '1080P' : '720P'; }
-function qualityColor(q) { return q === '2K' ? '#06b6d4' : q === '1080P' ? '#3b82f6' : '#10b981'; }
+function videoQuality(id) { const n = Number(id); return n % 3 === 0 ? '1440P' : n % 2 === 0 ? '1080P' : '720P'; }
+function qualityColor(q) { return q === '1440P' ? '#06b6d4' : q === '1080P' ? '#3b82f6' : '#10b981'; }
 
 // Deterministic view count from ID
 function viewCount(id) {
@@ -82,6 +82,8 @@ export default function GalleryPage() {
   const [shareCopied, setShareCopied] = useState(null); // videoId that was copied
   const [downloadUpgradeModal, setDownloadUpgradeModal] = useState(false);
   const [bookmarkLimitModal, setBookmarkLimitModal] = useState(false);
+  const [premiumWelcomePopup, setPremiumWelcomePopup] = useState(false);
+  const [adminMessage, setAdminMessage] = useState(null); // { message, from, timestamp }
   const FREE_BOOKMARK_LIMIT = 8;
 
   // Global epoch-based countdown (same for everyone)
@@ -134,6 +136,16 @@ export default function GalleryPage() {
       // Load custom titles and plan pricing
       fetch('/api/hwasi/titles').then(x=>x.json()).then(d=>setVideoTitles(d.titles||{})).catch(()=>{});
       fetch('/api/hwasi/plans').then(x=>x.json()).then(d=>setPlans(d.plans||null)).catch(()=>{});
+      // ── Check premium welcome popup (show once per session after grant) ──
+      if (vs?.isPremium) {
+        const KEY = `hw_premwelcome_${d.sub}`;
+        if (!sessionStorage.getItem(KEY)) {
+          sessionStorage.setItem(KEY, '1');
+          setPremiumWelcomePopup(true);
+        }
+      }
+      // ── Check for admin warning message ──
+      fetch('/api/hwasi/device-message').then(r=>r.json()).then(m=>{ if(m.message) setAdminMessage(m.message); }).catch(()=>{});
     }
     init();
     // Also load plans for guest (for upgrade modal)
@@ -1005,6 +1017,51 @@ export default function GalleryPage() {
               👑 Upgrade Now →
             </a>
             <button className={styles.cancelBtn} onClick={() => setBookmarkLimitModal(false)}>Stay Free</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── PREMIUM WELCOME POPUP ── */}
+      {premiumWelcomePopup && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',backdropFilter:'blur(12px)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{position:'relative',background:'linear-gradient(135deg,#0f0518,#1a0533)',border:'1px solid rgba(245,158,11,.4)',borderRadius:24,padding:36,width:'100%',maxWidth:460,textAlign:'center',boxShadow:'0 40px 100px rgba(245,158,11,.2),0 0 0 1px rgba(255,255,255,.05)',overflow:'hidden'}}>
+            {/* Glow effects */}
+            <div style={{position:'absolute',top:-60,left:'50%',transform:'translateX(-50%)',width:300,height:200,background:'radial-gradient(ellipse,rgba(245,158,11,.25),transparent 70%)',pointerEvents:'none'}} />
+            <div style={{fontSize:72,marginBottom:4,animation:'bounce 1s ease infinite',display:'inline-block'}}>👑</div>
+            <style>{`@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}} @keyframes shine{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}`}</style>
+            <h2 style={{fontSize:26,fontWeight:900,margin:'12px 0 6px',background:'linear-gradient(to right,#fbbf24,#f59e0b,#fbbf24)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundSize:'200%',animation:'shine 2s ease infinite'}}>
+              You're Premium Now! 🎉
+            </h2>
+            <p style={{fontSize:14,color:'rgba(255,255,255,.6)',lineHeight:1.8,marginBottom:6}}>
+              Welcome to the premium experience. You now have <strong style={{color:'#fbbf24'}}>unlimited access</strong> to all videos!
+            </p>
+            {viewStatus?.expiresAt && (
+              <div style={{display:'inline-block',padding:'8px 18px',background:'rgba(245,158,11,.12)',border:'1px solid rgba(245,158,11,.3)',borderRadius:50,fontSize:13,color:'#fbbf24',fontWeight:700,marginBottom:16}}>
+                ✅ Active until {new Date(viewStatus.expiresAt).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}
+              </div>
+            )}
+            <div style={{display:'flex',gap:10,marginTop:8}}>
+              <button
+                style={{flex:1,padding:'14px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#fff',fontWeight:900,fontSize:15,cursor:'pointer',boxShadow:'0 8px 24px rgba(245,158,11,.35)'}}
+                onClick={() => setPremiumWelcomePopup(false)}
+              >🎬 Start Watching</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADMIN WARNING MESSAGE POPUP ── */}
+      {adminMessage && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',backdropFilter:'blur(8px)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'linear-gradient(135deg,#130a20,#1a0d2e)',border:'1px solid rgba(251,191,36,.4)',borderRadius:20,padding:28,width:'100%',maxWidth:400,textAlign:'center',boxShadow:'0 30px 80px rgba(0,0,0,.7)'}}>
+            <div style={{fontSize:48,marginBottom:10}}>⚠️</div>
+            <h3 style={{fontWeight:900,fontSize:18,color:'#fbbf24',marginBottom:8}}>Admin Warning</h3>
+            <p style={{fontSize:14,color:'rgba(255,255,255,.7)',lineHeight:1.7,marginBottom:20,whiteSpace:'pre-wrap'}}>{adminMessage.message}</p>
+            <div style={{fontSize:11,color:'rgba(255,255,255,.3)',marginBottom:16}}>From: {adminMessage.from} · {new Date(adminMessage.timestamp).toLocaleString('en-IN')}</div>
+            <button
+              style={{padding:'12px 28px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#fff',fontWeight:800,fontSize:14,cursor:'pointer'}}
+              onClick={() => setAdminMessage(null)}
+            >✓ I Understand</button>
           </div>
         </div>
       )}

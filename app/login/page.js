@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import styles from './login.module.css';
 
 export default function LoginPage() {
@@ -9,6 +9,12 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [errorCode, setErrorCode] = useState(''); // PENDING_APPROVAL | ACCOUNT_BLOCKED | ''
   const [showPass, setShowPass] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/verify').then(r => r.json()).then(d => {
+      if (d.auth) window.location.href = '/gallery';
+    }).catch(() => {});
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();

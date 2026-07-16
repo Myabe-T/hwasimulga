@@ -28,7 +28,7 @@ function useGlobalCountdown() {
 }
 
 const FEATURES = [
-  { icon: '🔥', title: 'Hotter Than Summer', desc: "730+ videos so steamy, your phone needs a cool-down break after every session 🥵" },
+  { icon: '🔥', title: 'Hotter Than Summer', desc: "Huge collection of exclusive videos so steamy, your phone needs a cool-down break after every session 🥵" },
   { icon: '⚡', title: 'Instant Gratification', desc: "Loads so fast you'll forget loading screens exist. Zero wait, maximum... satisfaction." },
   { icon: '📱', title: 'Pocket-Sized Pleasure', desc: "Perfect on any screen — phone, tablet, laptop. Take it anywhere, anytime, nobody's watching 😉" },
   { icon: '🆕', title: 'Always Fresh, Never Boring', desc: "New drops every single day. Like a sneaker release but way more exciting." },
@@ -119,7 +119,7 @@ export default function LandingPage() {
         </h1>
 
         <p className={styles.heroSub}>
-          730+ exclusive videos · HD quality · Daily updates · Secure & private
+          Huge Collection Of Premium & Viral Videos · HD Quality · Daily Updates · Secure & Private
         </p>
 
         {/* Countdown hero box */}
@@ -140,7 +140,7 @@ export default function LandingPage() {
         </div>
 
         <div className={styles.heroStats}>
-          <div className={styles.stat}><span>730+</span><label>Videos</label></div>
+          <div className={styles.stat}><span>🎬</span><label>Huge Collection</label></div>
           <div className={styles.statDiv} />
           <div className={styles.stat}><span>HD</span><label>Quality</label></div>
           <div className={styles.statDiv} />
@@ -191,7 +191,7 @@ export default function LandingPage() {
             <div className={styles.pricingPeriod}>{fmtDays(plans.basic.days)}</div>
             <div className={styles.pricingSave}>You save ₹{plans.basic.originalPrice - plans.basic.price} 🎉</div>
             <ul className={styles.pricingFeatures}>
-              <li>✓ All 730+ videos</li>
+              <li>✓ Huge premium video collection</li>
               <li>✓ HD quality</li>
               <li>✓ Download access</li>
             </ul>

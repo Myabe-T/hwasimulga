@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import styles from '../login/login.module.css';
 
 const ALLOWED_DOMAINS = ['gmail.com','yahoo.com','yahoo.in','outlook.com','hotmail.com','live.com','icloud.com','proton.me','protonmail.com','rediffmail.com','yandex.com'];
@@ -8,6 +8,12 @@ export default function RegisterPage() {
   const [form, setForm] = useState({ username: '', email: '', password: '', displayName: '' });
   const [err, setErr]   = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/verify').then(r => r.json()).then(d => {
+      if (d.auth) window.location.href = '/gallery';
+    }).catch(() => {});
+  }, []);
 
   function emailOk(email) {
     if (!email.includes('@')) return false;

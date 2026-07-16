@@ -75,8 +75,18 @@ export default function AdminPage() {
   const [plansMsg,      setPlansMsg]      = useState('');
   const [plansSaving,   setPlansSaving]   = useState(false);
   const [deviceData,    setDeviceData]    = useState({});
-  const [blockModal,    setBlockModal]    = useState(null); // { uid, displayName, username }
+  const [blockModal,    setBlockModal]    = useState(null);
   const [blockReason,   setBlockReason]   = useState('');
+  // Payment settings state
+  const [paySettings,   setPaySettings]   = useState({ maintenanceMode: false, upiId: '', qrUrl: '' });
+  const [paySettingsSaving, setPaySettingsSaving] = useState(false);
+  const [paySettingsMsg, setPaySettingsMsg] = useState('');
+  // UTR submissions
+  const [utrList,       setUtrList]       = useState([]);
+  // Device message modal
+  const [deviceMsgModal, setDeviceMsgModal] = useState(null); // { uid, displayName, username }
+  const [deviceMsgText,  setDeviceMsgText]  = useState('');
+  const [deviceMsgSending, setDeviceMsgSending] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -134,6 +144,9 @@ export default function AdminPage() {
     // Load plans config and device data
     fetch('/api/hwasi/plans').then(x=>x.json()).then(d=>setPlansConfig(d.plans||null)).catch(()=>{});
     fetch('/api/hwasi/devices').then(x=>x.json()).then(d=>setDeviceData(d.devices||{})).catch(()=>{});
+    // Load payment settings + UTR submissions
+    fetch('/api/hwasi/payment-settings').then(x=>x.json()).then(d=>{ if(d.settings) setPaySettings(d.settings); }).catch(()=>{});
+    fetch('/api/hwasi/utr').then(x=>x.json()).then(d=>setUtrList(d.submissions||[])).catch(()=>{});
   }
 
   async function saveVideoTitle() {
@@ -1324,6 +1337,83 @@ export default function AdminPage() {
                   {plansSaving ? 'Saving...' : '💾 Save All Plans'}
                 </button>
               </div>
+
+              {/* ── Payment System Settings ── */}
+              <div className={styles.card} style={{marginTop:20}}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>🛠</span>
+                  <div><h3 className={styles.cardTitle}>Payment System</h3><p className={styles.cardSub}>Maintenance mode · UPI ID · QR Code</p></div>
+                </div>
+                {paySettingsMsg && <div style={{padding:'8px 14px',borderRadius:8,background:paySettingsMsg.includes('✅')?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)',color:paySettingsMsg.includes('✅')?'#4ade80':'#f87171',marginBottom:12,fontSize:13}}>{paySettingsMsg}</div>}
+
+                {/* Maintenance toggle */}
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px',background:'rgba(255,255,255,.04)',borderRadius:12,border:'1px solid rgba(255,255,255,.08)',marginBottom:14}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:14}}>🚧 Maintenance Mode</div>
+                    <div style={{fontSize:12,color:'rgba(255,255,255,.4)',marginTop:2}}>When ON — payment page shows "Under Maintenance" to all users</div>
+                  </div>
+                  <div onClick={()=>setPaySettings(p=>({...p,maintenanceMode:!p.maintenanceMode}))}
+                    style={{width:48,height:26,borderRadius:13,background:paySettings.maintenanceMode?'#10b981':'rgba(255,255,255,.15)',cursor:'pointer',position:'relative',transition:'background .2s',flexShrink:0}}>
+                    <div style={{position:'absolute',top:3,left:paySettings.maintenanceMode?24:3,width:20,height:20,borderRadius:'50%',background:'#fff',transition:'left .2s'}} />
+                  </div>
+                </div>
+
+                {/* UPI ID */}
+                <div style={{marginBottom:12}}>
+                  <label className={styles.fieldLabel}>💳 UPI ID</label>
+                  <input className="input" placeholder="e.g. yourname@upi" value={paySettings.upiId||''}
+                    onChange={e=>setPaySettings(p=>({...p,upiId:e.target.value}))} />
+                </div>
+
+                {/* QR Code URL */}
+                <div style={{marginBottom:16}}>
+                  <label className={styles.fieldLabel}>📷 QR Code Image URL</label>
+                  <input className="input" placeholder="https://i.imgur.com/yourqr.png" value={paySettings.qrUrl||''}
+                    onChange={e=>setPaySettings(p=>({...p,qrUrl:e.target.value}))} />
+                  {paySettings.qrUrl && <img src={paySettings.qrUrl} alt="QR Preview" style={{marginTop:10,width:120,height:120,objectFit:'contain',borderRadius:8,border:'1px solid rgba(255,255,255,.1)'}} />}
+                </div>
+
+                <button className="btn btn-primary" disabled={paySettingsSaving}
+                  onClick={async()=>{
+                    setPaySettingsSaving(true); setPaySettingsMsg('');
+                    const r = await fetch('/api/hwasi/payment-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(paySettings)});
+                    const d = await r.json();
+                    setPaySettingsSaving(false);
+                    if(d.ok){setPaySettings(d.settings);setPaySettingsMsg('✅ Payment settings saved!');}
+                    else setPaySettingsMsg('❌ Failed to save');
+                    setTimeout(()=>setPaySettingsMsg(''),3000);
+                  }}
+                >{paySettingsSaving?'Saving...':'💾 Save Payment Settings'}</button>
+              </div>
+
+              {/* ── UTR Submissions ── */}
+              <div className={styles.card} style={{marginTop:20}}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>📋</span>
+                  <div><h3 className={styles.cardTitle}>UTR Submissions</h3><p className={styles.cardSub}>{utrList.length} pending payment claim(s)</p></div>
+                  <button className="btn btn-ghost btn-sm" style={{marginLeft:'auto'}} onClick={()=>fetch('/api/hwasi/utr').then(x=>x.json()).then(d=>setUtrList(d.submissions||[]))}>↻</button>
+                </div>
+                {utrList.length===0 ? (
+                  <p style={{color:'var(--text3)',textAlign:'center',padding:'20px 0'}}>No UTR submissions yet</p>
+                ) : (
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                    <thead><tr style={{color:'var(--text3)',fontSize:11,textTransform:'uppercase'}}>
+                      <th style={{padding:'8px',textAlign:'left'}}>User</th>
+                      <th style={{padding:'8px',textAlign:'left'}}>UTR ID</th>
+                      <th style={{padding:'8px',textAlign:'left'}}>Plan</th>
+                      <th style={{padding:'8px',textAlign:'left'}}>When</th>
+                    </tr></thead>
+                    <tbody>{utrList.map((u,i)=>(
+                      <tr key={i} style={{borderTop:'1px solid rgba(255,255,255,.05)'}}>
+                        <td style={{padding:'10px 8px'}}><div style={{fontWeight:700}}>{u.displayName}</div><div style={{fontSize:11,color:'rgba(255,255,255,.4)'}}>@{u.username}</div></td>
+                        <td style={{padding:'10px 8px',fontFamily:'monospace',color:'#a78bfa',fontWeight:700}}>{u.utrId}</td>
+                        <td style={{padding:'10px 8px'}}><span style={{padding:'2px 10px',borderRadius:100,background:'rgba(124,58,237,.15)',border:'1px solid rgba(124,58,237,.3)',fontSize:11,fontWeight:700,color:'#a78bfa'}}>{u.plan}</span></td>
+                        <td style={{padding:'10px 8px',fontSize:11,color:'rgba(255,255,255,.4)'}}>{new Date(u.timestamp).toLocaleString('en-IN')}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                )}
+              </div>
             </div>
           )}
 
@@ -1377,7 +1467,7 @@ export default function AdminPage() {
                         </div>
 
                         {user?.role === 'admin' && (
-                          <div style={{display:'flex',gap:8}}>
+                          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                             {!entry.blocked ? (
                               <button
                                 style={{padding:'7px 16px',borderRadius:10,border:'none',background:'rgba(239,68,68,.15)',color:'#f87171',fontWeight:700,cursor:'pointer',fontSize:12}}
@@ -1396,6 +1486,11 @@ export default function AdminPage() {
                                 }}
                               >✅ Unblock Account</button>
                             )}
+                            {/* Send Warning Message */}
+                            <button
+                              style={{padding:'7px 16px',borderRadius:10,border:'1px solid rgba(251,191,36,.3)',background:'rgba(251,191,36,.1)',color:'#fbbf24',fontWeight:700,cursor:'pointer',fontSize:12}}
+                              onClick={()=>{setDeviceMsgText('');setDeviceMsgModal({uid,displayName:entry.displayName,username:entry.username});}}
+                            >💬 Send Warning</button>
                           </div>
                         )}
                       </div>
@@ -1532,6 +1627,17 @@ export default function AdminPage() {
                           <td style={{padding:'10px 12px',color:'rgba(255,255,255,.7)'}}>@{d.deletedBy}</td>
                           <td style={{padding:'10px 12px'}}><span style={{fontSize:11,padding:'2px 8px',borderRadius:6,background:d.role==='admin'?'rgba(236,72,153,.15)':'rgba(59,130,246,.15)',color:d.role==='admin'?'#ec4899':'#60a5fa'}}>{d.role}</span></td>
                           <td style={{padding:'10px 12px',fontSize:11,color:'rgba(255,255,255,.4)'}}>{new Date(d.timestamp).toLocaleString('en-IN')}</td>
+                          <td style={{padding:'10px 12px'}}>
+                            <button
+                              style={{padding:'5px 14px',borderRadius:8,border:'1px solid rgba(34,197,94,.3)',background:'rgba(34,197,94,.1)',color:'#4ade80',fontWeight:700,fontSize:11,cursor:'pointer'}}
+                              onClick={async()=>{
+                                if(!confirm(`Restore video #${d.id} back to the gallery?`)) return;
+                                const r = await fetch('/api/hwasi/restore-video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:String(d.id)})});
+                                if(r.ok){flash(`✅ Video #${d.id} restored!`);loadAll();}
+                                else flash('❌ Restore failed','err');
+                              }}
+                            >↩ Restore</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1710,6 +1816,57 @@ export default function AdminPage() {
                 <button style={{padding:'11px 14px',borderRadius:12,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.1)',color:'#f87171',fontWeight:600,cursor:'pointer'}} onClick={() => { setEditTitleInput(''); saveVideoTitle(); }} title="Remove custom title">🗑</button>
               )}
               <button style={{padding:'11px 14px',borderRadius:12,border:'1px solid rgba(255,255,255,.1)',background:'transparent',color:'rgba(255,255,255,.6)',cursor:'pointer'}} onClick={() => setEditTitleModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DEVICE WARNING MESSAGE MODAL ── */}
+      {deviceMsgModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',backdropFilter:'blur(8px)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#130a20',border:'1px solid rgba(251,191,36,.3)',borderRadius:20,padding:28,width:'100%',maxWidth:420,boxShadow:'0 30px 80px rgba(0,0,0,.7)'}}>
+            <div style={{fontSize:36,textAlign:'center',marginBottom:12}}>💬</div>
+            <h3 style={{textAlign:'center',fontWeight:900,fontSize:18,marginBottom:6,color:'#fbbf24'}}>Send Warning to User</h3>
+            <p style={{textAlign:'center',fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:18}}>
+              Message to <strong style={{color:'#fff'}}>{deviceMsgModal.displayName||deviceMsgModal.username}</strong>. They will see this as a popup next time they use the site.
+            </p>
+            {/* Quick templates */}
+            <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:14}}>
+              {[
+                '⚠️ You are using this account on multiple devices. Please stop or your account may be banned.',
+                '🚨 Warning: Account sharing is not allowed. Continued violation will result in permanent ban.',
+                '🔔 Suspicious activity detected on your account. Please review your usage.',
+              ].map(t => (
+                <button key={t} onClick={()=>setDeviceMsgText(t)}
+                  style={{padding:'9px 14px',borderRadius:10,border:`1px solid ${deviceMsgText===t?'#fbbf24':'rgba(255,255,255,.08)'}`,background:deviceMsgText===t?'rgba(251,191,36,.1)':'rgba(255,255,255,.03)',color:deviceMsgText===t?'#fbbf24':'rgba(255,255,255,.65)',fontWeight:deviceMsgText===t?700:500,fontSize:12,cursor:'pointer',textAlign:'left',transition:'all .15s'}}
+                >{t}</button>
+              ))}
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:12,color:'rgba(255,255,255,.4)',fontWeight:700,display:'block',marginBottom:6}}>OR TYPE CUSTOM MESSAGE</label>
+              <textarea
+                style={{width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.05)',color:'#fff',fontSize:13,boxSizing:'border-box',resize:'vertical',minHeight:80}}
+                placeholder="Type your warning message..."
+                value={deviceMsgText}
+                onChange={e=>setDeviceMsgText(e.target.value)}
+              />
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <button
+                disabled={!deviceMsgText.trim() || deviceMsgSending}
+                style={{flex:1,padding:'12px',borderRadius:12,border:'none',background:deviceMsgText.trim()?'linear-gradient(135deg,#f59e0b,#d97706)':'rgba(251,191,36,.3)',color:'#fff',fontWeight:800,fontSize:14,cursor:deviceMsgText.trim()?'pointer':'not-allowed',transition:'all .2s'}}
+                onClick={async()=>{
+                  setDeviceMsgSending(true);
+                  const r = await fetch('/api/hwasi/device-message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:deviceMsgModal.uid,message:deviceMsgText.trim()})});
+                  setDeviceMsgSending(false);
+                  if(r.ok){flash(`💬 Message sent to ${deviceMsgModal.displayName||deviceMsgModal.username}`);setDeviceMsgModal(null);setDeviceMsgText('');}
+                  else flash('❌ Failed to send message','err');
+                }}
+              >{deviceMsgSending?'Sending...':'💬 Send Message'}</button>
+              <button
+                style={{flex:1,padding:'12px',borderRadius:12,border:'1px solid rgba(255,255,255,.1)',background:'transparent',color:'rgba(255,255,255,.6)',fontWeight:600,fontSize:14,cursor:'pointer'}}
+                onClick={()=>{setDeviceMsgModal(null);setDeviceMsgText('');}}
+              >Cancel</button>
             </div>
           </div>
         </div>
