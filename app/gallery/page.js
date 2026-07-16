@@ -241,12 +241,15 @@ export default function GalleryPage() {
   const bookmarkIds = [...bookmarks].slice(0, 48);
 
   // Generate "For You" and "Popular" from allIds deterministically
-  const forYouIds   = [...allIds].sort((a,b) => (a*7+b*3)%17 - (b*7+a*3)%17).slice(0, 24);
+  // We use a simple hash sort to pseudo-randomize the feed for For You
+  const sortedForYou = [...allIds].sort((a,b) => (a*7+b*3)%17 - (b*7+a*3)%17);
+  const forYouIds    = sortedForYou.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
+  
   const popularIds  = [...allIds].sort((a,b) => viewCount(b).localeCompare(viewCount(a))).slice(0, 24);
 
   function tabIds() {
     if (homeTab === 'trending') return trendingIds.length ? trendingIds : allIds.slice(0, 24);
-    if (homeTab === 'foryou')   return pageIds;
+    if (homeTab === 'foryou')   return forYouIds;
     if (homeTab === 'popular')  return popularIds;
     if (homeTab === 'recent')   return historyIds.length ? historyIds : [...allIds].reverse().slice(0, 24);
     return [];

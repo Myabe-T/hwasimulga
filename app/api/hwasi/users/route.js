@@ -2,7 +2,7 @@ export const runtime = 'edge';
 
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getUsers, saveUsers } from '@/lib/redis';
+import { getUsers, saveUsers, getRegUsers } from '@/lib/redis';
 
 let counter = 0;
 function uid() { return `usr_${Date.now().toString(36)}_${(++counter).toString(36)}`; }
@@ -10,8 +10,9 @@ function uid() { return `usr_${Date.now().toString(36)}_${(++counter).toString(3
 export async function GET() {
   const { error, status } = await requireAuth(['admin','advisor']);
   if (error) return NextResponse.json({ error }, { status });
-  const users = await getUsers();
-  return NextResponse.json(users.map(({ password: _, ...u }) => u));
+  const [staticUsers, regUsers] = await Promise.all([getUsers(), getRegUsers()]);
+  const allUsers = [...staticUsers, ...regUsers];
+  return NextResponse.json(allUsers.map(({ password, passwordHash, ...u }) => u));
 }
 
 export async function POST(req) {

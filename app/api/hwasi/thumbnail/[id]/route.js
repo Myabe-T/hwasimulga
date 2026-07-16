@@ -9,9 +9,6 @@ const UA = 'Mozilla/5.0 (compatible; HwasimulgaBot/1.0)';
 
 // GET /api/hwasi/thumbnail/[id] — serve thumbnail as JPEG image
 export async function GET(req, { params }) {
-  const session = await getSession();
-  if (!session) return new NextResponse('Unauthorized', { status: 401 });
-
   const { id } = await params;
   const b64 = await getThumbnail(id);
   if (!b64) return new NextResponse('Not Found', { status: 404 });
