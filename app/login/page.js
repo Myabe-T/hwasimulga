@@ -64,7 +64,7 @@ export default function LoginPage() {
                 </defs>
               </svg>
             </div>
-            <span className={styles.logoText}>Hwasimulga</span>
+            <span className={styles.logoText}>DesiHawas</span>
           </div>
 
           <h1 className={styles.heading}>Welcome Back</h1>
@@ -154,7 +154,7 @@ export default function LoginPage() {
                     {error.replace('🚫 Your account has been blocked.\n\nReason: ','').replace('\n\nContact support to resolve this issue.','')}
                   </div>
                   <div style={{marginTop:8,fontSize:12,color:'rgba(255,255,255,.5)'}}>
-                    To appeal, contact support: <strong style={{color:'#f87171'}}>support@hwasimulga.com</strong>
+                    To appeal, contact support: <strong style={{color:'#f87171'}}>support@DesiHawas.com</strong>
                   </div>
                 </div>
               </div>

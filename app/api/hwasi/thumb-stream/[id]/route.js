@@ -20,7 +20,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 
 const CDN_BASE = 'https://cdn.desimms.com.co';
-const UA = 'Mozilla/5.0 (compatible; HwasimulgaBot/1.0)';
+const UA = 'Mozilla/5.0 (compatible; DesiHawasBot/1.0)';
 
 export async function GET(req, { params }) {
   const session = await getSession();

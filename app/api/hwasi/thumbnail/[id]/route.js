@@ -5,7 +5,7 @@ import { getSession } from '@/lib/auth';
 import { getThumbnail, setThumbnail, deleteThumbnail } from '@/lib/redis';
 
 const CDN_BASE = 'https://cdn.desimms.com.co';
-const UA = 'Mozilla/5.0 (compatible; HwasimulgaBot/1.0)';
+const UA = 'Mozilla/5.0 (compatible; DesiHawasBot/1.0)';
 
 // GET /api/hwasi/thumbnail/[id] — serve thumbnail as JPEG image
 export async function GET(req, { params }) {

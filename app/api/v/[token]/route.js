@@ -18,7 +18,7 @@ const CDN_BASE = 'https://cdn.desimms.com.co';
  *
  * CDN URL PROTECTION:
  * The CDN should be configured with Referer-based access control so that
- * cdn.desimms.com.co URLs only work when accessed from hwasimulga.pages.dev.
+ * cdn.desimms.com.co URLs only work when accessed from DesiHawas.pages.dev.
  * Direct access (like pasting the URL in a new tab) would then return 403.
  *
  * ?dl=1 → triggers browser download via Content-Disposition header
@@ -44,7 +44,7 @@ export async function GET(req, { params }) {
       if (!upstream.ok) return new NextResponse('Not Found', { status: 404 });
       const headers = new Headers();
       headers.set('Content-Type', 'video/mp4');
-      headers.set('Content-Disposition', `attachment; filename="hwasimulga-${id}.mp4"`);
+      headers.set('Content-Disposition', `attachment; filename="DesiHawas-${id}.mp4"`);
       const cl = upstream.headers.get('content-length');
       if (cl) headers.set('Content-Length', cl);
       return new NextResponse(upstream.body, { status: 200, headers });

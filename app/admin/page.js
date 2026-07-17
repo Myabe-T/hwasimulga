@@ -466,7 +466,7 @@ export default function AdminPage() {
           </div>
           {!collapsed && (
             <div>
-              <div className={styles.logoTitle}>Hwasimulga</div>
+              <div className={styles.logoTitle}>DesiHawas</div>
               <div className={styles.logoSub}>ADMIN</div>
             </div>
           )}
@@ -521,7 +521,7 @@ export default function AdminPage() {
           <div>
             <h1 className={styles.pageTitle}>{NAV.find(n=>n.id===tab)?.label || tab}</h1>
             <p className={styles.pageSub}>{
-              tab==='dashboard' ? 'Overview of your Hwasimulga platform' :
+              tab==='dashboard' ? 'Overview of your DesiHawas platform' :
               tab==='curated'   ? 'Manage Trending and Latest video sections' :
               tab==='users'     ? 'Create and manage viewer accounts' :
               tab==='analytics' ? 'See who watched which videos' :

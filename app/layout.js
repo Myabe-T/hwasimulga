@@ -1,7 +1,7 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Hwasimulga — Video Gallery',
+  title: 'DesiHawas — Video Gallery',
   description: 'Premium private video gallery. Fast. Beautiful. Secure.',
   robots: 'noindex, nofollow',
 };

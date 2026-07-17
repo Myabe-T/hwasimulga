@@ -73,7 +73,7 @@ export default function RegisterPage() {
                 </defs>
               </svg>
             </div>
-            <span className={styles.logoText}>Hwasimulga</span>
+            <span className={styles.logoText}>DesiHawas</span>
           </div>
 
           <h1 className={styles.heading}>Create Account</h1>

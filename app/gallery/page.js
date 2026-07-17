@@ -99,57 +99,51 @@ export default function GalleryPage() {
     async function init() {
       const r = await fetch('/api/verify');
       const d = await r.json();
-      // Guest mode: do NOT redirect — show videos but gate on play
-      if (!d.auth) {
-        // Load public settings to show video grid
-        const [s, t] = await Promise.all([
-          fetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start: 1, end: 730 })),
-          fetch('/api/hwasi/thumbnails').then(x => x.json()).catch(() => ({})),
-        ]);
-        const st = s.error ? { start: 1, end: 730, deletedIds: [] } : s;
-        const delSet = new Set(st.deletedIds || []);
-        setSettings(st);
-        setThumbIds(new Set((t.ids || []).map(Number)));
-        setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start).filter(id => !delSet.has(id)));
-        // Load custom titles for everyone (guests too)
-        fetch('/api/hwasi/titles').then(x => x.json()).then(d => setVideoTitles(d.titles || {})).catch(() => { });
-        return; // user stays null = guest
-      }
-      setUser(d);
-      const [s, c, h, t, vs, bm] = await Promise.all([
-        fetch('/api/hwasi/settings').then(x => x.json()),
-        fetch('/api/hwasi/curated').then(x => x.json()),
-        fetch('/api/hwasi/history/me').then(x => x.json()),
-        fetch('/api/hwasi/thumbnails').then(x => x.json()),
-        fetch('/api/hwasi/views').then(x => x.json()).catch(() => ({ allowed: true })),
-        fetch('/api/hwasi/bookmarks').then(x => x.json()).catch(() => ({ ids: [] })),
+
+      // ── PHASE 1: load settings + thumbnails immediately so video grid shows ──
+      const [s, t] = await Promise.all([
+        fetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:1, end:730 })),
+        fetch('/api/hwasi/thumbnails').then(x => x.json()).catch(() => ({})),
       ]);
-      const st = s.error ? { start: 1, end: 730, deletedIds: [] } : s;
+      const st = s.error ? { start:1, end:730, deletedIds:[] } : s;
       const delSet = new Set(st.deletedIds || []);
       setSettings(st);
-      setCurated(c.error ? { trending: [], latest: [] } : c);
-      setMyHistory(Array.isArray(h) ? h : []);
       setThumbIds(new Set((t.ids || []).map(Number)));
       setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start).filter(id => !delSet.has(id)));
-      setViewStatus(vs);
-      setBookmarks(new Set((bm.ids || []).map(Number)));
-      // Load custom titles and plan pricing
-      fetch('/api/hwasi/titles').then(x => x.json()).then(d => setVideoTitles(d.titles || {})).catch(() => { });
-      fetch('/api/hwasi/plans').then(x => x.json()).then(d => setPlans(d.plans || null)).catch(() => { });
-      // ── Check premium welcome popup (show once per session after grant) ──
-      if (vs?.isPremium) {
-        const KEY = `hw_premwelcome_${d.sub}`;
-        if (!sessionStorage.getItem(KEY)) {
-          sessionStorage.setItem(KEY, '1');
-          setPremiumWelcomePopup(true);
+      // Always load titles (for guests too)
+      fetch('/api/hwasi/titles').then(x=>x.json()).then(d=>setVideoTitles(d.titles||{})).catch(()=>{});
+
+      // Guest mode stops here — no auth-gated data
+      if (!d.auth) return;
+
+      setUser(d);
+
+      // ── PHASE 2: load auth-gated data in background (don't block grid) ──
+      fetch('/api/hwasi/plans').then(x=>x.json()).then(d=>setPlans(d.plans||null)).catch(()=>{});
+
+      Promise.all([
+        fetch('/api/hwasi/curated').then(x=>x.json()).catch(()=>({ trending:[], latest:[] })),
+        fetch('/api/hwasi/history/me').then(x=>x.json()).catch(()=>[]),
+        fetch('/api/hwasi/views').then(x=>x.json()).catch(()=>({ allowed:true })),
+        fetch('/api/hwasi/bookmarks').then(x=>x.json()).catch(()=>({ ids:[] })),
+      ]).then(([c, h, vs, bm]) => {
+        setCurated(c.error ? { trending:[], latest:[] } : c);
+        setMyHistory(Array.isArray(h) ? h : []);
+        setViewStatus(vs);
+        setBookmarks(new Set((bm.ids || []).map(Number)));
+        // Premium welcome popup — show ONCE per account lifetime (localStorage, not sessionStorage)
+        if (vs?.isPremium) {
+          const KEY = `dh_premwelcome_${d.sub}`;
+          if (!localStorage.getItem(KEY)) {
+            localStorage.setItem(KEY, '1');
+            setPremiumWelcomePopup(true);
+          }
         }
-      }
-      // ── Check for admin warning message ──
-      fetch('/api/hwasi/device-message').then(r => r.json()).then(m => { if (m.message) setAdminMessage(m.message); }).catch(() => { });
+        // Admin warning message
+        fetch('/api/hwasi/device-message').then(r=>r.json()).then(m=>{ if(m.message) setAdminMessage(m.message); }).catch(()=>{});
+      });
     }
     init();
-    // Also load plans for guest (for upgrade modal)
-    fetch('/api/hwasi/plans').then(x => x.json()).then(d => setPlans(d.plans || null)).catch(() => { });
   }, []);
 
   // ── Heartbeat + 15-min idle auto-logout ──────────────────────────────────────

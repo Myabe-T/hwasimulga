@@ -65,8 +65,8 @@ export default function LandingPage() {
       {/* ── NAV ── */}
       <nav className={styles.nav}>
         <a href="/" className={styles.navLogoWrap}>
-          <img src="/logo.png" alt="Hwasimulga" className={styles.navLogoImg} />
-          <span className={styles.navLogoText}>Hwasimulga</span>
+          <img src="/logo.png" alt="DesiHawas" className={styles.navLogoImg} />
+          <span className={styles.navLogoText}>DesiHawas</span>
         </a>
 
         <div className={styles.navCenter}>
@@ -243,7 +243,7 @@ export default function LandingPage() {
       <footer className={styles.footer}>
         <div className={styles.footerLogo}>
           <img src="/logo.png" alt="" style={{width:24,height:24,borderRadius:4,verticalAlign:'middle',marginRight:8}} />
-          Hwasimulga
+          DesiHawas
         </div>
         <p>Premium private video platform · {secs > 0 ? `Sale ends in ${humanLeft}` : 'Sale active'}</p>
         <div className={styles.footerLinks}>

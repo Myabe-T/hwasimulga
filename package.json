@@ -1,5 +1,5 @@
 {
-  "name": "hwasimulga",
+  "name": "DesiHawas",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "cf:build": "npx @cloudflare/next-on-pages",
-    "cf:deploy": "npx wrangler pages deploy .vercel/output/static --project-name hwasimulga"
+    "cf:deploy": "npx wrangler pages deploy .vercel/output/static --project-name DesiHawas"
   },
   "dependencies": {
     "@upstash/redis": "^1.38.0",

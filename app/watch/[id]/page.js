@@ -39,7 +39,7 @@ export default function WatchPage() {
     <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#030010',color:'#fff',textAlign:'center',padding:24}}>
       <div style={{fontSize:60,marginBottom:20}}>🔒</div>
       <h1 style={{fontSize:28,fontWeight:900,marginBottom:12,background:'linear-gradient(to right,#fbcfe8,#ec4899)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Members Only</h1>
-      <p style={{color:'rgba(255,255,255,.6)',marginBottom:32,maxWidth:400}}>This video is exclusively for Hwasimulga members. Login or create a free account to watch.</p>
+      <p style={{color:'rgba(255,255,255,.6)',marginBottom:32,maxWidth:400}}>This video is exclusively for DesiHawas members. Login or create a free account to watch.</p>
       <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center'}}>
         <a href={`/login?redirect=/watch/${id}`} style={{padding:'14px 28px',background:'linear-gradient(135deg,#ec4899,#8b5cf6)',borderRadius:14,color:'#fff',fontWeight:700,textDecoration:'none',fontSize:16}}>Login to Watch</a>
         <a href="/register" style={{padding:'14px 28px',background:'rgba(255,255,255,.08)',border:'1px solid rgba(255,255,255,.15)',borderRadius:14,color:'#fff',fontWeight:700,textDecoration:'none',fontSize:16}}>Create Free Account</a>
