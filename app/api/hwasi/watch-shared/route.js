@@ -1,7 +1,7 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
-import { decryptPayload, encryptPayload } from '@/lib/crypto';
+import { encryptPayload } from '@/lib/crypto';
 import { getPremium, getViewCount, incrementViewCount, redis } from '@/lib/redis';
 import { signVideoId } from '@/lib/sign';
 
@@ -18,8 +18,7 @@ async function getWatchLimit() {
 }
 
 // POST /api/hwasi/watch-shared
-// body: { shareToken }
-// Validates share token, checks user limits, returns video stream token
+// body: { shareToken } — short 12-char Redis code
 export async function POST(req) {
   const session = await getUser(req);
   if (!session) {
@@ -29,11 +28,7 @@ export async function POST(req) {
   let body;
   try {
     const raw = await req.json();
-    if (raw.cipher && raw.iv) {
-      body = await decryptPayload(raw.cipher, raw.iv);
-    } else {
-      body = raw;
-    }
+    body = raw;
   } catch {
     return NextResponse.json(await encryptPayload({ error: 'Invalid request' }), { status: 400 });
   }
@@ -41,31 +36,36 @@ export async function POST(req) {
   const { shareToken } = body || {};
   if (!shareToken) return NextResponse.json(await encryptPayload({ error: 'Missing shareToken' }), { status: 400 });
 
-  // Decrypt the share token
-  const parts = shareToken.split('.');
-  if (parts.length !== 2) return NextResponse.json(await encryptPayload({ error: 'Invalid share token' }), { status: 400 });
-  
-  const sharePayload = await decryptPayload(parts[0], parts[1]);
-  if (!sharePayload || !sharePayload.id) {
+  // Look up share code in Redis
+  const stored = await redis.get(`share:${shareToken}`);
+  if (!stored) {
     return NextResponse.json(await encryptPayload({ error: 'Invalid or expired share link' }), { status: 400 });
   }
 
-  const videoId = sharePayload.id;
+  let videoId;
+  try {
+    const parsed = JSON.parse(stored);
+    videoId = parsed.id;
+  } catch {
+    return NextResponse.json(await encryptPayload({ error: 'Corrupted share data' }), { status: 400 });
+  }
+
+  if (!videoId) return NextResponse.json(await encryptPayload({ error: 'Invalid share data' }), { status: 400 });
 
   // Admin/advisor always allowed
-  if (['admin','advisor'].includes(session.role)) {
+  if (['admin', 'advisor'].includes(session.role)) {
     const streamToken = await signVideoId(videoId);
     return NextResponse.json(await encryptPayload({ allowed: true, token: streamToken, isPremium: true }));
   }
 
-  // Check premium from DB (never trust client-side role)
+  // Check premium from DB
   const sub = await getPremium(session.sub);
   if (sub) {
     const streamToken = await signVideoId(videoId);
     return NextResponse.json(await encryptPayload({ allowed: true, token: streamToken, isPremium: true, plan: sub.plan }));
   }
 
-  // CRITICAL: Always re-check limit from DB, never trust client-sent values
+  // Check free limit from DB
   const FREE_LIMIT = await getWatchLimit();
   const userId = session.sub || session.username;
   const userKey = `user:${userId}`;
@@ -76,22 +76,14 @@ export async function POST(req) {
     const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
     const hoursLeft = Math.ceil((tomorrow - now) / 3600000);
     return NextResponse.json(await encryptPayload({
-      allowed: false,
-      count,
-      limit: FREE_LIMIT,
-      remaining: 0,
-      hoursLeft,
-      code: 'LIMIT_REACHED'
+      allowed: false, count, limit: FREE_LIMIT, remaining: 0, hoursLeft, code: 'LIMIT_REACHED'
     }));
   }
 
-  // Increment and issue stream token
   await incrementViewCount(userKey);
   const streamToken = await signVideoId(videoId);
   return NextResponse.json(await encryptPayload({
-    allowed: true,
-    token: streamToken,
-    isPremium: false,
+    allowed: true, token: streamToken, isPremium: false,
     remaining: FREE_LIMIT - count - 1,
   }));
 }

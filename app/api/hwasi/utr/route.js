@@ -47,3 +47,43 @@ export async function GET(req) {
   const submissions = (items || []).map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
   return NextResponse.json({ ok: true, submissions });
 }
+
+// DELETE — admin: reject/delete a UTR submission and notify user
+export async function DELETE(req) {
+  const user = await getUser(req);
+  if (!user || !['admin','advisor'].includes(user.role)) return NextResponse.json(await encryptPayload({ error: 'Forbidden' }), { status: 403 });
+
+  let body = {};
+  try { body = await req.json(); } catch {}
+  const { utrId, userId } = body;
+  if (!utrId) return NextResponse.json(await encryptPayload({ error: 'utrId required' }), { status: 400 });
+
+  const redis = await getRedis();
+  const items = await redis.lrange(KEY, 0, 999);
+  // Remove matching entry
+  let removed = false;
+  for (const item of items) {
+    try {
+      const parsed = JSON.parse(item);
+      if (parsed.utrId === utrId) {
+        await redis.lrem(KEY, 1, item);
+        removed = true;
+        break;
+      }
+    } catch {}
+  }
+
+  // Send a one-time notification to the user via device-message system
+  if (userId) {
+    const msgKey = `hwasi:device_msg:${userId}`;
+    const notification = JSON.stringify({
+      msg: `⚠️ Your UTR payment ID "${utrId}" could not be verified. Please double-check your UTR/transaction ID and resubmit, or contact support.`,
+      ts: Date.now(),
+      type: 'utr_rejected'
+    });
+    await redis.set(msgKey, notification, { ex: 60 * 60 * 24 * 3 }); // expires in 3 days
+  }
+
+  return NextResponse.json(await encryptPayload({ ok: true, removed }));
+}
+

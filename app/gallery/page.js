@@ -45,7 +45,7 @@ const GRADIENT_PLACEHOLDER = (id) => {
 
 // ── TABS definition
 const HOME_TABS = [
-  { id: 'instaviral', label: 'Insta Viral Videos', icon: '💎' },
+  { id: 'instaviral', label: 'Insta Viral', icon: '💎' },
   { id: 'trending', label: 'Trending', icon: '🔥' },
   { id: 'foryou', label: 'For You', icon: '👤' },
   { id: 'popular', label: 'Popular', icon: '📈' },
@@ -55,12 +55,13 @@ const HOME_TABS = [
 export default function GalleryPage() {
   const [user, setUser] = useState(null);
   const [settings, setSettings] = useState({ start: 1, end: 730 });
-  const [curated, setCurated] = useState({ trending: [], latest: [], instaviral: [] });
+  const [curated, setCurated] = useState({ trending: [], popular: [], instaviral: [] });
   const [curatedLoading, setCuratedLoading] = useState(true);
   const [myHistory, setMyHistory] = useState([]);
   const [allIds, setAllIds] = useState([]);
   const [thumbIds, setThumbIds] = useState(new Set());
   const [page, setPage] = useState(0);
+  const [curatedPage, setCuratedPage] = useState(0);
   const [modal, setModal] = useState(null);
   const [view, setView] = useState('gallery'); // gallery | bookmarks | history
   const [homeTab, setHomeTab] = useState('trending');
@@ -251,7 +252,7 @@ export default function GalleryPage() {
 
   const trendingIds = (curated.trending || []).map(Number).filter(Boolean).slice(0, 24);
   const instaviralIds = (curated.instaviral || []).map(Number).filter(Boolean).slice(0, 24);
-  const latestIds = (curated.latest || []).map(Number).filter(Boolean).slice(0, 24);
+  const popularCuratedIds = (curated.popular || curated.latest || []).map(Number).filter(Boolean);
   const historyIds = [...new Set(myHistory.map(h => +h.videoId))].slice(0, 48);
   const bookmarkIds = [...bookmarks].slice(0, 48);
 

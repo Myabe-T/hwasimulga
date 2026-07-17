@@ -1413,6 +1413,7 @@ export default function AdminPage() {
                       <th style={{padding:'8px',textAlign:'left'}}>UTR ID</th>
                       <th style={{padding:'8px',textAlign:'left'}}>Plan</th>
                       <th style={{padding:'8px',textAlign:'left'}}>When</th>
+                      <th style={{padding:'8px',textAlign:'left'}}>Action</th>
                     </tr></thead>
                     <tbody>{utrList.map((u,i)=>(
                       <tr key={i} style={{borderTop:'1px solid rgba(255,255,255,.05)'}}>
@@ -1420,6 +1421,17 @@ export default function AdminPage() {
                         <td style={{padding:'10px 8px',fontFamily:'monospace',color:'#a78bfa',fontWeight:700}}>{u.utrId}</td>
                         <td style={{padding:'10px 8px'}}><span style={{padding:'2px 10px',borderRadius:100,background:'rgba(124,58,237,.15)',border:'1px solid rgba(124,58,237,.3)',fontSize:11,fontWeight:700,color:'#a78bfa'}}>{u.plan}</span></td>
                         <td style={{padding:'10px 8px',fontSize:11,color:'rgba(255,255,255,.4)'}}>{new Date(u.timestamp).toLocaleString('en-IN')}</td>
+                        <td style={{padding:'10px 8px'}}>
+                          <button className="btn btn-sm" style={{background:'rgba(239,68,68,.15)',color:'#f87171',border:'1px solid rgba(239,68,68,.3)',borderRadius:8,padding:'4px 10px',cursor:'pointer',fontSize:11}}
+                            onClick={async()=>{
+                              if(!confirm(`Delete UTR "${u.utrId}" by @${u.username}? The user will receive a rejection notification.`)) return;
+                              const r = await fetch('/api/hwasi/utr',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({utrId:u.utrId,userId:u.userId,username:u.username})});
+                              if(r.ok){setUtrList(l=>l.filter(x=>x.utrId!==u.utrId));flash('🗑 UTR removed. User notified.');}
+                              else flash('❌ Failed to delete','err');
+                            }}>
+                            ✕ Reject
+                          </button>
+                        </td>
                       </tr>
                     ))}</tbody>
                   </table>
