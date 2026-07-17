@@ -1,7 +1,7 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
-import { getPremium, getViewCount, incrementViewCount } from '@/lib/redis';
+import { getPremium, getViewCount, incrementViewCount, redis } from '@/lib/redis';
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
 
@@ -13,8 +13,6 @@ async function getUser(req) {
 
 async function getWatchLimit() {
   try {
-    const { Redis } = await import('@upstash/redis/cloudflare');
-    const redis = new Redis({ url: process.env.UPSTASH_REDIS_URL, token: process.env.UPSTASH_REDIS_TOKEN });
     const v = await redis.get('hwasi:watch_limit');
     return v ? Number(v) : 5;
   } catch { return 5; }
@@ -22,8 +20,6 @@ async function getWatchLimit() {
 
 async function getWatchLimitMsg() {
   try {
-    const { Redis } = await import('@upstash/redis/cloudflare');
-    const redis = new Redis({ url: process.env.UPSTASH_REDIS_URL, token: process.env.UPSTASH_REDIS_TOKEN });
     const v = await redis.get('hwasi:watch_limit_msg');
     return v || null;
   } catch { return null; }

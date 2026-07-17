@@ -2,10 +2,8 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 
-async function getRedis() {
-  const { Redis } = await import('@upstash/redis/cloudflare');
-  return new Redis({ url: process.env.UPSTASH_REDIS_URL, token: process.env.UPSTASH_REDIS_TOKEN });
-}
+import { redis } from '@/lib/redis';
+async function getRedis() { return redis; }
 
 // POST — admin/advisor: restore a deleted video by ID
 export async function POST(req) {

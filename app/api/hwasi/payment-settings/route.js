@@ -6,10 +6,8 @@ import { jwtVerify } from 'jose';
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
 const KEY = 'hwasi:payment_settings';
 
-async function getRedis() {
-  const { Redis } = await import('@upstash/redis/cloudflare');
-  return new Redis({ url: process.env.UPSTASH_REDIS_URL, token: process.env.UPSTASH_REDIS_TOKEN });
-}
+import { redis } from '@/lib/redis';
+async function getRedis() { return redis; }
 
 async function getUser(req) {
   const cookie = req.cookies.get('hwasi_token');
