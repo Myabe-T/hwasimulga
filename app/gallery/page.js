@@ -694,17 +694,26 @@ export default function GalleryPage() {
           ) : (
           <div className={styles.grid}>
             {tabIds().map((id, i) => (
-              <VideoCard key={id} id={id} index={i}
-                hasThumb={thumbIds.has(id)}
-                isBookmarked={bookmarks.has(id)}
-                isAdmin={isAdminOrAdvisor}
-                showHash={isAdminOrAdvisor}
-                onPlay={() => openModal(id)}
-                onDownload={instaviralIds.includes(Number(id)) ? null : (e) => handleDownload(e, id)}
-                onBookmark={(e) => toggleBookmark(e, id)}
-                onReport={(e) => { e.stopPropagation(); setReportModal(id); }}
-                onDelete={isAdminOrAdvisor ? (e) => { e.stopPropagation(); setDeleteModal({ id }); setDeleteReason('duplicate'); } : null}
-              />
+              <div key={id} style={{ position: 'relative' }}>
+                {homeTab === 'instaviral' && !isPremium && (
+                  <div style={{ position:'absolute',inset:0,zIndex:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(10,0,21,.78)',backdropFilter:'blur(6px)',borderRadius:14,cursor:'pointer' }}
+                    onClick={(e) => { e.stopPropagation(); setInstaViralBlock(true); }}>
+                    <div style={{ fontSize:32, marginBottom:4 }}>💎</div>
+                    <div style={{ fontSize:10, fontWeight:800, color:'#f59e0b', letterSpacing:1.2, textTransform:'uppercase' }}>Premium Only</div>
+                  </div>
+                )}
+                <VideoCard id={id} index={i}
+                  hasThumb={thumbIds.has(id)}
+                  isBookmarked={bookmarks.has(id)}
+                  isAdmin={isAdminOrAdvisor}
+                  showHash={isAdminOrAdvisor}
+                  onPlay={() => openModal(id)}
+                  onDownload={instaviralIds.includes(Number(id)) ? null : (e) => handleDownload(e, id)}
+                  onBookmark={(e) => toggleBookmark(e, id)}
+                  onReport={(e) => { e.stopPropagation(); setReportModal(id); }}
+                  onDelete={isAdminOrAdvisor ? (e) => { e.stopPropagation(); setDeleteModal({ id }); setDeleteReason('duplicate'); } : null}
+                />
+              </div>
             ))}
           </div>
           )}
@@ -913,6 +922,30 @@ export default function GalleryPage() {
       )}
 
       {/* ── UPGRADE MODAL (PREMIUM FOMO) ── */}
+      {/* ── Insta Viral Premium Block ── */}
+      {instaViralBlock && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.88)', backdropFilter:'blur(14px)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+          onClick={() => setInstaViralBlock(false)}>
+          <div style={{ background:'linear-gradient(135deg,#1a0030,#2d0050)', border:'1px solid rgba(236,72,153,.35)', borderRadius:24, padding:'44px 36px', maxWidth:400, width:'100%', textAlign:'center', boxShadow:'0 0 80px rgba(124,58,237,.5)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize:68, marginBottom:12, lineHeight:1 }}>💎</div>
+            <h2 style={{ fontSize:22, fontWeight:800, margin:'0 0 10px', background:'linear-gradient(135deg,#ec4899,#a855f7)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>Premium Only Content</h2>
+            <p style={{ color:'rgba(255,255,255,.65)', marginBottom:28, lineHeight:1.7, fontSize:14 }}>
+              Insta Viral videos are exclusive to <strong style={{color:'#f59e0b'}}>Premium members</strong>.<br/>
+              Upgrade now to unlock the full collection instantly!
+            </p>
+            <button onClick={() => window.location.href='/premium'}
+              style={{ width:'100%', padding:'15px 0', borderRadius:12, border:'none', cursor:'pointer', background:'linear-gradient(135deg,#7c3aed,#ec4899)', color:'#fff', fontWeight:800, fontSize:16, marginBottom:12, letterSpacing:.3 }}>
+              🚀 Upgrade to Premium
+            </button>
+            <button onClick={() => setInstaViralBlock(false)}
+              style={{ background:'none', border:'1px solid rgba(255,255,255,.12)', color:'rgba(255,255,255,.5)', padding:'10px 0', width:'100%', borderRadius:10, cursor:'pointer', fontSize:13 }}>
+              Maybe Later
+            </button>
+          </div>
+        </div>
+      )}
+
       {showUpgrade && (
         <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) setShowUpgrade(false); }}>
           <div className={styles.upgradeBox} style={{ maxWidth: 520, background: 'linear-gradient(145deg,rgba(20,15,30,.95),rgba(10,5,15,.98))', border: '1px solid rgba(236,72,153,.3)', backdropFilter: 'blur(20px)', boxShadow: '0 30px 100px rgba(236,72,153,.2)', overflow: 'visible', padding: '32px 24px 24px' }}>
@@ -1198,7 +1231,7 @@ function VideoCard({ id, index, hasThumb, isBookmarked, isAdmin, showHash, onPla
       {/* Action buttons row */}
       <div className={styles.vactions}>
         <ActionBtn icon="🔖" label="Save" active={isBookmarked} activeColor="#f59e0b" onClick={(e) => onBookmark(e)} />
-        <ActionBtn icon="⬇" label="Download" color="#10b981" onClick={(e) => onDownload(e)} />
+        {onDownload && <ActionBtn icon="⬇" label="Download" color="#10b981" onClick={(e) => onDownload(e)} />}
         <ActionBtn icon="↗" label="Share" color="#3b82f6" onClick={async (e) => {
           e.stopPropagation();
           try {
