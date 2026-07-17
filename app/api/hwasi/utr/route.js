@@ -60,17 +60,15 @@ export async function DELETE(req) {
 
   const redis = await getRedis();
   const items = await redis.lrange(KEY, 0, 999);
-  // Remove matching entry
-  let removed = false;
-  for (const item of items) {
-    try {
-      const parsed = JSON.parse(item);
-      if (parsed.utrId === utrId) {
-        await redis.lrem(KEY, 1, item);
-        removed = true;
-        break;
-      }
-    } catch {}
+  // Filter out the matching entry and rewrite the entire list
+  const filtered = (items || []).filter(item => {
+    try { return JSON.parse(item).utrId !== utrId; } catch { return true; }
+  });
+  const removed = filtered.length < (items || []).length;
+  // Atomically replace list
+  await redis.del(KEY);
+  if (filtered.length > 0) {
+    await redis.rpush(KEY, ...filtered);
   }
 
   // Send a one-time notification to the user via device-message system

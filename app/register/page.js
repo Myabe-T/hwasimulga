@@ -3,7 +3,7 @@ import { secureFetch } from '@/lib/crypto';
 import { useState, useEffect, useRef } from 'react';
 import styles from '../login/login.module.css';
 
-const ALLOWED_DOMAINS = ['gmail.com','yahoo.com','yahoo.in','outlook.com','hotmail.com','live.com','icloud.com','proton.me','protonmail.com','rediffmail.com','yandex.com'];
+const ALLOWED_DOMAINS = ['gmail.com','yahoo.com','yahoo.in','outlook.com','hotmail.com','live.com','icloud.com','proton.me','protonmail.com','rediffmail.com','yandex.com','mail.com','zoho.com','tutanota.com','fastmail.com'];
 
 function emailOk(email) {
   if (!email.includes('@')) return false;
@@ -11,20 +11,26 @@ function emailOk(email) {
 }
 
 export default function RegisterPage() {
-  const [step, setStep]       = useState(1); // 1=form, 2=otp, 3=done
-  const [form, setForm]       = useState({ username: '', email: '', password: '', displayName: '' });
-  const [otp, setOtp]         = useState(['','','','','','']);
-  const [err, setErr]         = useState('');
-  const [info, setInfo]       = useState('');
-  const [loading, setLoading] = useState(false);
-  const [resendCd, setResendCd] = useState(0); // countdown in seconds
+  const [step, setStep]         = useState(1); // 1=form, 2=otp, 3=done
+  const [form, setForm]         = useState({ username: '', email: '', password: '', displayName: '' });
+  const [otp, setOtp]           = useState(['','','','','','']);
+  const [err, setErr]           = useState('');
+  const [info, setInfo]         = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [resendCd, setResendCd] = useState(0);
   const [successMsg, setSuccessMsg] = useState('');
+  const [otpRequired, setOtpRequired] = useState(true); // default ON until loaded
   const otpRefs = useRef([]);
   const timerRef = useRef(null);
 
   useEffect(() => {
     secureFetch('/api/verify').then(r => r.json()).then(d => {
       if (d.auth) window.location.href = '/gallery';
+    }).catch(() => {});
+    // Fetch settings to check if OTP is required
+    fetch('/api/hwasi/settings').then(r => r.json()).then(d => {
+      const s = d?.data ? d.data : d;
+      if (typeof s?.otpRequired === 'boolean') setOtpRequired(s.otpRequired);
     }).catch(() => {});
     return () => clearInterval(timerRef.current);
   }, []);
@@ -38,12 +44,24 @@ export default function RegisterPage() {
 
   async function sendOtp() {
     setErr(''); setInfo('');
-    if (!form.email || !emailOk(form.email)) { setErr('Use Gmail, Yahoo, Outlook, iCloud or Proton email'); return; }
+    if (!form.email || !emailOk(form.email)) { setErr('Use Gmail, Yahoo, Outlook, iCloud, Proton or similar email'); return; }
     if (!form.username || form.username.length < 3) { setErr('Username must be at least 3 characters'); return; }
     if (!form.password || form.password.length < 6) { setErr('Password must be at least 6 characters'); return; }
     setLoading(true);
     try {
-      const r = await fetch('/api/hwasi/send-otp', {
+      // If OTP is disabled by admin, skip straight to registration
+      if (!otpRequired) {
+        const rr = await secureFetch('/api/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...form, emailVerified: false }),
+        });
+        const rd = await rr.json();
+        if (!rr.ok) { setErr(rd.error || 'Registration failed'); return; }
+        if (rd.pending) { setSuccessMsg(rd.message || 'Registration submitted! An admin will review your account shortly.'); setStep(3); }
+        else window.location.href = '/gallery';
+        return;
+      }
+      const r = await secureFetch('/api/hwasi/send-otp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: form.email, displayName: form.displayName || form.username }),
       });
@@ -102,7 +120,7 @@ export default function RegisterPage() {
     setErr(''); setInfo('');
     setLoading(true);
     try {
-      const r = await fetch('/api/hwasi/send-otp', {
+      const r = await secureFetch('/api/hwasi/send-otp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: form.email, displayName: form.displayName }),
       });
@@ -201,8 +219,8 @@ export default function RegisterPage() {
                 </div>
               </div>
               {err && <div className={styles.error}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>{err}</div>}
-              <button className={styles.submitBtn} type="submit" disabled={loading}>
-                {loading ? 'Sending OTP…' : '📧 Send Verification Code'}
+               <button className={styles.submitBtn} type="submit" disabled={loading}>
+                {loading ? (otpRequired ? 'Sending OTP…' : 'Creating account…') : (otpRequired ? '📧 Send Verification Code' : '🚀 Create Account')}
               </button>
               <div className={styles.registerLink}>Already have an account? <a href="/login">Sign in</a></div>
             </form>

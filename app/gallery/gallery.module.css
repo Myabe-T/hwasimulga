@@ -23,9 +23,10 @@
 .navBtn:hover { background:rgba(255,255,255,.06); color:#fff; }
 .navActive { background:rgba(124,58,237,.18) !important; color:#a78bfa !important; }
 
-.headerRight { display:flex; align-items:center; gap:10px; margin-left:auto; }
-.freeChip { font-size:11px; font-weight:700; padding:5px 12px; border-radius:100px; background:rgba(245,158,11,.15); border:1px solid rgba(245,158,11,.3); color:#fbbf24; cursor:pointer; }
-.premiumBadge { font-size:12px; font-weight:700; padding:5px 14px; border-radius:100px; background:rgba(245,158,11,.18); border:1px solid rgba(245,158,11,.35); color:#f59e0b; cursor:pointer; transition:all .2s; }
+.headerRight { display:flex; align-items:center; gap:8px; margin-left:auto; flex-shrink:0; }
+.freeChip { font-size:10px; font-weight:800; padding:4px 10px; border-radius:100px; background:rgba(245,158,11,.15); border:1px solid rgba(245,158,11,.3); color:#fbbf24; cursor:pointer; white-space:nowrap; letter-spacing:.03em; transition:all .2s; }
+.freeChip:hover { background:rgba(245,158,11,.28); }
+.premiumBadge { font-size:11px; font-weight:700; padding:4px 10px; border-radius:100px; background:rgba(245,158,11,.18); border:1px solid rgba(245,158,11,.35); color:#f59e0b; cursor:pointer; transition:all .2s; }
 .premiumBadge:hover { background:rgba(245,158,11,.28); }
 
 /* User dropdown */
@@ -211,4 +212,8 @@
 @media (max-width:480px) {
   .grid { grid-template-columns:1fr; gap:12px; }
   .tabBar { gap:6px; }
+  .freeChip { font-size:9px; padding:3px 8px; }
+  .premiumBadge { font-size:9px; padding:3px 8px; }
+  .headerRight { gap:5px; }
+  .logoText { font-size:14px; }
 }

@@ -311,8 +311,7 @@ export default function GalleryPage() {
 
     if (isInstaViral && !isPrivileged) {
       setModal(null);
-      setUpgradeInfo({ limit: 0, msg: '💎 This is an Insta Viral premium video. Upgrade to Premium to watch it instantly!' });
-      setShowUpgrade(true);
+      setInstaViralBlock(true);
       return;
     }
 
@@ -348,7 +347,7 @@ export default function GalleryPage() {
     }).catch(() => { });
     
     setModal(prev => prev?.id === id ? { ...prev, src: videoSrc, loading: false } : prev);
-  }, [allIds, viewStatus, user]);
+  }, [allIds, viewStatus, user, instaviralIds]);
 
   const closeModal = useCallback(() => setModal(null), []);
   const prevVideo = useCallback(() => { if (!modal || modal.index <= 0) return; openModal(allIds[modal.index - 1]); }, [modal, allIds, openModal]);
@@ -610,12 +609,12 @@ export default function GalleryPage() {
             {viewStatus && !viewStatus.isPremium && user.role === 'viewer' && (
               <div className={styles.freeChip} onClick={() => window.location.href = '/premium'}
                 title="Upgrade to Premium for unlimited access">
-                🆓 Free Account — Upgrade
+                ✦ Upgrade
               </div>
             )}
             {viewStatus?.isPremium && (
               <button className={styles.premiumBadge} onClick={() => setPremiumInfo(viewStatus)}>
-                👑 Premium
+                👑
               </button>
             )}
 

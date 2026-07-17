@@ -1193,6 +1193,37 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              {/* ─ OTP Email Verification Toggle ─ */}
+              <div className={styles.card} style={{marginBottom:20}}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>📧</span>
+                  <div style={{flex:1}}>
+                    <h3 className={styles.cardTitle}>OTP Email Verification</h3>
+                    <p className={styles.cardSub}>When ON, new registrations require email OTP verification. Only popular email domains are always enforced (Gmail, Yahoo, Outlook, iCloud, Proton, etc.)</p>
+                  </div>
+                  <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+                    <span style={{fontSize:13,color:'var(--text2)',fontWeight:600}}>{settings?.otpRequired ? '🟢 ON' : '⚫ OFF'}</span>
+                    <div style={{position:'relative',width:44,height:24}} onClick={async () => {
+                      const next = !settings?.otpRequired;
+                      setSettings(s => ({ ...s, otpRequired: next }));
+                      await secureFetch('/api/hwasi/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ otpRequired: next }) });
+                      flash(next ? '📧 OTP verification ON — users must verify email to register' : '🔓 OTP OFF — users can register without email verification');
+                    }}>
+                      <div style={{
+                        position:'absolute',inset:0,borderRadius:12,
+                        background: settings?.otpRequired ? 'linear-gradient(135deg,#7c3aed,#ec4899)' : 'rgba(255,255,255,.15)',
+                        transition:'background .2s'
+                      }} />
+                      <div style={{
+                        position:'absolute',top:3,width:18,height:18,borderRadius:'50%',background:'#fff',
+                        left: settings?.otpRequired ? 23 : 3,
+                        transition:'left .2s',boxShadow:'0 1px 4px rgba(0,0,0,.3)'
+                      }} />
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               {/* ─ Pending Registrations ─ */}
               {pendingUsers.length > 0 && (
                 <div className={styles.card} style={{marginBottom:20}}>
