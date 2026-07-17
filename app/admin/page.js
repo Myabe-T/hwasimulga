@@ -84,9 +84,13 @@ export default function AdminPage() {
   // UTR submissions
   const [utrList,       setUtrList]       = useState([]);
   // Device message modal
-  const [deviceMsgModal, setDeviceMsgModal] = useState(null); // { uid, displayName, username }
+  const [deviceMsgModal, setDeviceMsgModal] = useState(null);
   const [deviceMsgText,  setDeviceMsgText]  = useState('');
   const [deviceMsgSending, setDeviceMsgSending] = useState(false);
+  // Watch limit
+  const [watchLimit,    setWatchLimit]    = useState({ limit: 5, msg: '' });
+  const [watchLimitSaving, setWatchLimitSaving] = useState(false);
+  const [watchLimitMsg, setWatchLimitMsg]  = useState('');
 
   useEffect(() => {
     async function init() {
@@ -147,6 +151,8 @@ export default function AdminPage() {
     // Load payment settings + UTR submissions
     fetch('/api/hwasi/payment-settings').then(x=>x.json()).then(d=>{ if(d.settings) setPaySettings(d.settings); }).catch(()=>{});
     fetch('/api/hwasi/utr').then(x=>x.json()).then(d=>setUtrList(d.submissions||[])).catch(()=>{});
+    // Load watch limit
+    fetch('/api/hwasi/watch-limit').then(x=>x.json()).then(d=>{ if(d.ok) setWatchLimit({limit:d.limit,msg:d.msg||''}); }).catch(()=>{});
   }
 
   async function saveVideoTitle() {
@@ -1413,6 +1419,45 @@ export default function AdminPage() {
                     ))}</tbody>
                   </table>
                 )}
+              </div>
+
+              {/* ── Watch Limit Configuration ── */}
+              <div className={styles.card} style={{marginTop:20}}>
+                <div className={styles.cardHeader}>
+                  <span style={{fontSize:22}}>👁</span>
+                  <div><h3 className={styles.cardTitle}>Free Watch Limit</h3><p className={styles.cardSub}>Daily free video limit for non-premium users (default: 5)</p></div>
+                </div>
+                {watchLimitMsg && <div style={{padding:'8px 14px',borderRadius:8,background:watchLimitMsg.includes('✅')?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)',color:watchLimitMsg.includes('✅')?'#4ade80':'#f87171',marginBottom:12,fontSize:13}}>{watchLimitMsg}</div>}
+
+                <div style={{display:'grid',gridTemplateColumns:'160px 1fr',gap:16,marginBottom:14}}>
+                  <div>
+                    <label className={styles.fieldLabel}>Daily Limit (videos)</label>
+                    <input className="input" type="number" min="1" max="999" value={watchLimit.limit}
+                      onChange={e=>setWatchLimit(w=>({...w,limit:Number(e.target.value)||5}))} />
+                  </div>
+                  <div>
+                    <label className={styles.fieldLabel}>Custom Message (shown to free users when limit hit)</label>
+                    <input className="input" placeholder="e.g. 🎉 Limit increased to 10 today only! Enjoy!"
+                      value={watchLimit.msg||''}
+                      onChange={e=>setWatchLimit(w=>({...w,msg:e.target.value}))} />
+                  </div>
+                </div>
+
+                <div style={{padding:'10px 14px',background:'rgba(255,255,255,.04)',borderRadius:10,fontSize:12,color:'rgba(255,255,255,.5)',marginBottom:14,lineHeight:1.7}}>
+                  ℹ️ Each user account gets their own daily limit (resets at midnight UTC). When they hit the limit, they see an upgrade prompt. If you set a message above, it will replace the default "upgrade" text.
+                </div>
+
+                <button className="btn btn-primary" disabled={watchLimitSaving}
+                  onClick={async()=>{
+                    setWatchLimitSaving(true); setWatchLimitMsg('');
+                    const r = await fetch('/api/hwasi/watch-limit',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(watchLimit)});
+                    const d = await r.json();
+                    setWatchLimitSaving(false);
+                    if(d.ok){setWatchLimit({limit:d.limit,msg:d.msg||''});setWatchLimitMsg('✅ Watch limit updated! Live immediately.');}
+                    else setWatchLimitMsg('❌ Failed: '+(d.error||'unknown error'));
+                    setTimeout(()=>setWatchLimitMsg(''),4000);
+                  }}
+                >{watchLimitSaving?'Saving...':'💾 Save Watch Limit'}</button>
               </div>
             </div>
           )}
