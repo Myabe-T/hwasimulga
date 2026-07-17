@@ -47,7 +47,7 @@ const GRADIENT_PLACEHOLDER = (id) => {
 const HOME_TABS = [
   { id: 'instaviral', label: 'Insta Viral', icon: '💎' },
   { id: 'trending', label: 'Trending', icon: '🔥' },
-  { id: 'foryou', label: 'For You', icon: '👤' },
+  { id: 'foryou', label: '🎬 Full Collection', icon: '' },
   { id: 'popular', label: 'Popular', icon: '📈' },
   { id: 'recent', label: 'Recent', icon: '🕐' },
 ];
@@ -64,7 +64,7 @@ export default function GalleryPage() {
   const [curatedPage, setCuratedPage] = useState(0);
   const [modal, setModal] = useState(null);
   const [view, setView] = useState('gallery'); // gallery | bookmarks | history
-  const [homeTab, setHomeTab] = useState('trending');
+  const [homeTab, setHomeTab] = useState('foryou');
   const [viewStatus, setViewStatus] = useState(null);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeInfo, setUpgradeInfo] = useState(null);
@@ -74,6 +74,7 @@ export default function GalleryPage() {
   const [premiumInfo, setPremiumInfo] = useState(null);
   const [deleteModal, setDeleteModal] = useState(null); // { id }
   const [deleteReason, setDeleteReason] = useState('duplicate');
+  const [instaViralBlock, setInstaViralBlock] = useState(false);
   const [changePwdModal, setChangePwdModal] = useState(false);
   const [pwdForm, setPwdForm] = useState({ old: '', new: '', confirm: '' });
   const [pwdMsg, setPwdMsg] = useState('');
@@ -250,26 +251,47 @@ export default function GalleryPage() {
   const totalPages = Math.max(1, Math.ceil(allIds.length / PER_PAGE));
   const pageIds = allIds.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
 
-  const trendingIds = (curated.trending || []).map(Number).filter(Boolean).slice(0, 24);
-  const instaviralIds = (curated.instaviral || []).map(Number).filter(Boolean).slice(0, 24);
+  const trendingIds = (curated.trending || []).map(Number).filter(Boolean);
+  const instaviralIds = (curated.instaviral || []).map(Number).filter(Boolean);
   const popularCuratedIds = (curated.popular || curated.latest || []).map(Number).filter(Boolean);
   const historyIds = [...new Set(myHistory.map(h => +h.videoId))].slice(0, 48);
   const bookmarkIds = [...bookmarks].slice(0, 48);
 
-  // Generate "For You" and "Popular" from allIds deterministically
-  // We use a simple hash sort to pseudo-randomize the feed for For You
-  const sortedForYou = [...allIds].sort((a, b) => (a * 7 + b * 3) % 17 - (b * 7 + a * 3) % 17);
+  // Exclude instaviral IDs from all normal tabs — Insta Viral is ALWAYS premium-only
+  const safeAllIds = allIds.filter(id => !instaviralIds.includes(Number(id)));
+  const safeTotalPages = Math.max(1, Math.ceil(safeAllIds.length / PER_PAGE));
+  const sortedForYou = [...safeAllIds];
   const forYouIds = sortedForYou.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
-
-  const popularIds = [...allIds].sort((a, b) => viewCount(b).localeCompare(viewCount(a))).slice(0, 24);
+  const popularIds = [...safeAllIds].sort((a, b) => Number(viewCount(b)) - Number(viewCount(a)));
 
   function tabIds() {
-    if (homeTab === 'instaviral') return curatedLoading ? [] : instaviralIds;
-    if (homeTab === 'trending') return curatedLoading ? [] : (trendingIds.length ? trendingIds : allIds.slice(0, 24));
+    if (homeTab === 'instaviral') return curatedLoading ? [] : instaviralIds.slice(curatedPage * PER_PAGE, (curatedPage + 1) * PER_PAGE);
+    if (homeTab === 'trending') {
+      const base = trendingIds.filter(id => !instaviralIds.includes(id));
+      const full = base.length ? base : safeAllIds.slice(0, 50);
+      return curatedLoading ? [] : full.slice(curatedPage * PER_PAGE, (curatedPage + 1) * PER_PAGE);
+    }
     if (homeTab === 'foryou') return forYouIds;
-    if (homeTab === 'popular') return popularIds;
-    if (homeTab === 'recent') return historyIds.length ? historyIds : [...allIds].reverse().slice(0, 24);
+    if (homeTab === 'popular') {
+      const base = popularCuratedIds.filter(id => !instaviralIds.includes(id));
+      const full = base.length ? base : popularIds;
+      return full.slice(curatedPage * PER_PAGE, (curatedPage + 1) * PER_PAGE);
+    }
+    if (homeTab === 'recent') return historyIds.filter(id => !instaviralIds.includes(Number(id))).slice(0, 24);
     return [];
+  }
+  function tabTotal() {
+    if (homeTab === 'instaviral') return Math.max(1, Math.ceil(instaviralIds.length / PER_PAGE));
+    if (homeTab === 'trending') {
+      const base = trendingIds.filter(id => !instaviralIds.includes(id));
+      return Math.max(1, Math.ceil((base.length || 50) / PER_PAGE));
+    }
+    if (homeTab === 'foryou') return safeTotalPages;
+    if (homeTab === 'popular') {
+      const base = popularCuratedIds.filter(id => !instaviralIds.includes(id));
+      return Math.max(1, Math.ceil((base.length || safeAllIds.length) / PER_PAGE));
+    }
+    return 1;
   }
 
   const openModal = useCallback(async (id) => {

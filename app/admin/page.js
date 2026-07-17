@@ -25,7 +25,7 @@ export default function AdminPage() {
 
   // Data
   const [settings,  setSettings]  = useState({ start: 51, end: 730, cdnId: 'desimms' });
-  const [curated,   setCurated]   = useState({ trending: [], latest: [], instaviral: [] });
+  const [curated,   setCurated]   = useState({ trending: [], popular: [], instaviral: [] });
   const [users,     setUsers]     = useState([]);
   const [history,   setHistory]   = useState([]);
 
@@ -34,7 +34,7 @@ export default function AdminPage() {
   const [savingSet,   setSavingSet]   = useState(false);
   const [newUser,     setNewUser]     = useState({ username:'', password:'', displayName:'', role:'viewer' });
   const [editUser,    setEditUser]    = useState(null);
-  const [curInput,    setCurInput]    = useState({ trending:'', latest:'' });
+  const [curInput,    setCurInput]    = useState({ trending:'', popular:'' });
   const [histFilter,  setHistFilter]  = useState('');
 
   // Thumbnail generator state
@@ -527,7 +527,7 @@ export default function AdminPage() {
             <h1 className={styles.pageTitle}>{NAV.find(n=>n.id===tab)?.label || tab}</h1>
             <p className={styles.pageSub}>{
               tab==='dashboard' ? 'Overview of your DesiHawas platform' :
-              tab==='curated'   ? 'Manage Trending and Latest video sections' :
+              tab==='curated'   ? 'Manage Trending and Popular video sections' :
               tab==='users'     ? 'Create and manage viewer accounts' :
               tab==='analytics' ? 'See who watched which videos' :
               'Configure video range and CDN source'
@@ -707,12 +707,12 @@ export default function AdminPage() {
           {/* ══ CURATED ══ */}
           {tab==='curated' && (
             <div className={styles.fadeIn}>
-              {['trending','latest','instaviral'].map(type=>(
+              {['trending','popular','instaviral'].map(type=>(
                 <div key={type} className={styles.card} style={{marginBottom:20}}>
                   <div className={styles.cardHeader}>
-                    <span style={{fontSize:24}}>{type==='trending'?'🔥':type==='latest'?'✨':'💎'}</span>
+                    <span style={{fontSize:24}}>{type==='trending'?'🔥':type==='popular'?'✨':'💎'}</span>
                     <div style={{flex:1}}>
-                      <h3 className={styles.cardTitle}>{type==='trending'?'Trending':type==='latest'?'Latest':'Insta Viral (Premium Only)'}</h3>
+                      <h3 className={styles.cardTitle}>{type==='trending'?'Trending':type==='popular'?'Popular':'Insta Viral (Premium Only)'}</h3>
                       <p className={styles.cardSub}>{(curated[type]||[]).length} videos in this section</p>
                     </div>
                     {/* Quick action buttons */}
