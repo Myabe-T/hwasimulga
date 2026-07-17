@@ -1,3 +1,4 @@
+export const runtime = 'edge';
 import WatchClient from './WatchClient';
 import { decryptPayload } from '@/lib/crypto';
 
