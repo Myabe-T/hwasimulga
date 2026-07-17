@@ -1,5 +1,6 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
+import { decryptPayload, encryptPayload } from '@/lib/crypto';
 import { jwtVerify } from 'jose';
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
@@ -19,20 +20,29 @@ async function getUser(req) {
 // POST — submit UTR ID
 export async function POST(req) {
   const user = await getUser(req);
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const { utrId, plan } = await req.json();
-  if (!utrId || utrId.trim().length < 6) return NextResponse.json({ error: 'Invalid UTR ID' }, { status: 400 });
+  if (!user) return NextResponse.json(await encryptPayload({ error: 'Unauthorized' }), { status: 401 });
+  const rawBody = await req.json();
+    let utrId, plan;
+    if (rawBody.cipher && rawBody.iv) {
+      const decrypted = await decryptPayload(rawBody.cipher, rawBody.iv);
+      utrId = decrypted.utrId;
+      plan = decrypted.plan;
+    } else {
+      utrId = rawBody.utrId;
+      plan = rawBody.plan;
+    }
+  if (!utrId || utrId.trim().length < 6) return NextResponse.json(await encryptPayload({ error: 'Invalid UTR ID' }), { status: 400 });
   const redis = await getRedis();
   const entry = JSON.stringify({ userId: user.sub, username: user.username, displayName: user.displayName, utrId: utrId.trim(), plan: plan || 'unknown', timestamp: new Date().toISOString(), status: 'pending' });
   await redis.lpush(KEY, entry);
   await redis.ltrim(KEY, 0, 999);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(await encryptPayload({ ok: true }));
 }
 
 // GET — admin: get all UTR submissions
 export async function GET(req) {
   const user = await getUser(req);
-  if (!user || !['admin','advisor'].includes(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!user || !['admin','advisor'].includes(user.role)) return NextResponse.json(await encryptPayload({ error: 'Forbidden' }), { status: 403 });
   const redis = await getRedis();
   const items = await redis.lrange(KEY, 0, 199);
   const submissions = (items || []).map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);

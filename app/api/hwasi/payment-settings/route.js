@@ -1,5 +1,6 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
+import { decryptPayload, encryptPayload } from '@/lib/crypto';
 import { jwtVerify } from 'jose';
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
@@ -31,8 +32,8 @@ export async function GET() {
 // PUT — admin only: update payment settings
 export async function PUT(req) {
   const user = await getUser(req);
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!user) return NextResponse.json(await encryptPayload({ error: 'Unauthorized' }), { status: 401 });
+  if (user.role !== 'admin') return NextResponse.json(await encryptPayload({ error: 'Forbidden' }), { status: 403 });
   try {
     const body = await req.json();
     const redis = await getRedis();
@@ -44,6 +45,6 @@ export async function PUT(req) {
     await redis.set(KEY, JSON.stringify(allowed));
     return NextResponse.json({ ok: true, settings: allowed });
   } catch(e) {
-    return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 });
+    return NextResponse.json(await encryptPayload({ error: e.message || 'Server error' }), { status: 500 });
   }
 }

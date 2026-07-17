@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import styles from './login.module.css';
+import { secureFetch } from '@/lib/crypto';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -22,7 +23,7 @@ export default function LoginPage() {
     setError('');
     setErrorCode('');
     try {
-      const res = await fetch('/api/login', {
+      const res = await secureFetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),

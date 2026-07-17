@@ -1,5 +1,6 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
+import { decryptPayload, encryptPayload } from '@/lib/crypto';
 import { SignJWT } from 'jose';
 import {
   getRegUsers, saveRegUsers,
@@ -33,26 +34,39 @@ function generateId() {
 
 export async function POST(req) {
   try {
-    const { username, email, password, displayName } = await req.json();
+    const rawBody = await req.json();
+    let username, email, password, displayName;
+    if (rawBody.cipher && rawBody.iv) {
+      const decrypted = await decryptPayload(rawBody.cipher, rawBody.iv);
+      username = decrypted.username;
+      email = decrypted.email;
+      password = decrypted.password;
+      displayName = decrypted.displayName;
+    } else {
+      username = rawBody.username;
+      email = rawBody.email;
+      password = rawBody.password;
+      displayName = rawBody.displayName;
+    }
 
     if (!username || !email || !password)
-      return NextResponse.json({ error: 'All fields required' }, { status: 400 });
+      return NextResponse.json(await encryptPayload({ error: 'All fields required' }), { status: 400 });
     if (username.length < 3 || username.length > 20)
-      return NextResponse.json({ error: 'Username must be 3–20 characters' }, { status: 400 });
+      return NextResponse.json(await encryptPayload({ error: 'Username must be 3–20 characters' }), { status: 400 });
     if (!/^[a-z0-9_]+$/i.test(username))
-      return NextResponse.json({ error: 'Username: only letters, numbers, underscore' }, { status: 400 });
+      return NextResponse.json(await encryptPayload({ error: 'Username: only letters, numbers, underscore' }), { status: 400 });
     if (password.length < 6)
-      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
+      return NextResponse.json(await encryptPayload({ error: 'Password must be at least 6 characters' }), { status: 400 });
     if (!isAllowedEmail(email))
-      return NextResponse.json({ error: 'Please use Gmail, Yahoo, Outlook, iCloud or Proton email' }, { status: 400 });
+      return NextResponse.json(await encryptPayload({ error: 'Please use Gmail, Yahoo, Outlook, iCloud or Proton email' }), { status: 400 });
 
     // Duplicate check across all user stores
     const [regUsers, pendingUsers, staticUsers] = await Promise.all([getRegUsers(), getPendingUsers(), getUsers()]);
     const allExisting = [...regUsers, ...pendingUsers, ...staticUsers];
     if (allExisting.some(u => u.username?.toLowerCase() === username.toLowerCase()))
-      return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
+      return NextResponse.json(await encryptPayload({ error: 'Username already taken' }), { status: 409 });
     if (allExisting.some(u => u.email?.toLowerCase() === email.toLowerCase()))
-      return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
+      return NextResponse.json(await encryptPayload({ error: 'Email already registered' }), { status: 409 });
 
     const passwordHash = await hashPassword(password);
     const newUser = {
@@ -96,6 +110,6 @@ export async function POST(req) {
     });
     return res;
   } catch (e) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json(await encryptPayload({ error: e.message }), { status: 500 });
   }
 }

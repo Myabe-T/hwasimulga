@@ -15,9 +15,24 @@ async function hashPassword(password) {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+import { decryptPayload, encryptPayload } from '@/lib/crypto';
+
 export async function POST(req) {
   try {
-    const { username, password } = await req.json();
+    const rawBody = await req.json();
+    
+    // Decrypt the payload if it's encrypted
+    let username, password;
+    if (rawBody.cipher && rawBody.iv) {
+      const decrypted = await decryptPayload(rawBody.cipher, rawBody.iv);
+      username = decrypted.username;
+      password = decrypted.password;
+    } else {
+      // Fallback for unencrypted (or if we want to enforce encryption, we could throw here)
+      username = rawBody.username;
+      password = rawBody.password;
+    }
+
     const usernameClean = username?.toLowerCase()?.trim();
 
     // ── 1. Check static users (admin, demo, viewer) — plain-text password ──
@@ -47,13 +62,10 @@ export async function POST(req) {
              u.passwordHash === pwHash
       );
       if (pendingMatch) {
-        return NextResponse.json({
-          error: '⏳ Your account is pending admin approval. Please wait — you will be notified once approved.',
-          code: 'PENDING_APPROVAL'
-        }, { status: 403 });
+        return NextResponse.json(await encryptPayload({ error: '⏳ Your account is pending admin approval. Please wait — you will be notified once approved.', code: 'PENDING_APPROVAL' }), { status: 403 });
       }
       // Not found anywhere
-      return NextResponse.json({ error: 'Invalid credentials. Check your username/password.' }, { status: 401 });
+      return NextResponse.json(await encryptPayload({ error: 'Invalid credentials. Check your username/password.' }), { status: 401 });
     }
 
     // ── 4. Check if this user's account is blocked ──
@@ -78,13 +90,14 @@ export async function POST(req) {
       .setExpirationTime('7d')
       .sign(SECRET);
 
-    const res = NextResponse.json({ ok: true, username: user.username, displayName: user.displayName, role: user.role, avatar: user.avatar });
+    const payloadData = await encryptPayload({ ok: true, username: user.username, displayName: user.displayName, role: user.role, avatar: user.avatar });
+    const res = NextResponse.json(payloadData);
     res.cookies.set('hwasi_token', token, {
       httpOnly: true, secure: true,
       sameSite: 'strict', maxAge: 60 * 60 * 24 * 7, path: '/'
     });
     return res;
   } catch (e) {
-    return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 });
+    return NextResponse.json(await encryptPayload({ error: e.message || 'Server error' }), { status: 500 });
   }
 }

@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import styles from './gallery.module.css';
 
@@ -988,9 +989,9 @@ export default function GalleryPage() {
                 </div>
               ))}
             </div>
-            <a href="/premium" style={{ display: 'block', padding: '13px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#ec4899)', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none', marginBottom: 8, boxShadow: '0 6px 20px rgba(124,58,237,.4)' }}>
+            <Link href="/premium" style={{ display: 'block', padding: '13px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#ec4899)', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none', marginBottom: 8, boxShadow: '0 6px 20px rgba(124,58,237,.4)' }}>
               👑 Upgrade to Premium →
-            </a>
+            </Link>
             <button className={styles.cancelBtn} onClick={() => setDownloadUpgradeModal(false)}>Maybe later</button>
           </div>
         </div>
@@ -1011,9 +1012,9 @@ export default function GalleryPage() {
             <div style={{ padding: '8px 14px', background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 12, marginBottom: 16, fontSize: 12, fontWeight: 600 }}>
               🔥 Sale ends in <strong style={{ fontFamily: 'Courier New', color: '#f59e0b' }}>{globalTimer}</strong>
             </div>
-            <a href="/premium" style={{ display: 'block', padding: '13px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#ec4899)', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none', marginBottom: 8, boxShadow: '0 6px 20px rgba(124,58,237,.4)' }}>
+            <Link href="/premium" style={{ display: 'block', padding: '13px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#ec4899)', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none', marginBottom: 8, boxShadow: '0 6px 20px rgba(124,58,237,.4)' }}>
               👑 Upgrade Now →
-            </a>
+            </Link>
             <button className={styles.cancelBtn} onClick={() => setBookmarkLimitModal(false)}>Stay Free</button>
           </div>
         </div>

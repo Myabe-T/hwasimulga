@@ -1,4 +1,6 @@
 'use client';
+import Link from 'next/link';
+import { secureFetch } from '@/lib/crypto';
 import { useState, useEffect } from 'react';
 import styles from './premium.module.css';
 
@@ -64,7 +66,7 @@ export default function PremiumPage() {
     if (utrInput.trim().length < 6) { setUtrError('Enter a valid UTR / Transaction ID (min 6 chars)'); return; }
     setUtrSending(true); setUtrError('');
     try {
-      const r = await fetch('/api/hwasi/utr', {
+      const r = await secureFetch('/api/hwasi/utr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ utrId: utrInput.trim(), plan: selected?.label || selected?.id || 'unknown' }),
@@ -101,7 +103,7 @@ export default function PremiumPage() {
       <div style={{padding:'14px 28px',background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:16,fontSize:14,color:'#fbbf24',fontWeight:600}}>
         For urgent access, contact admin directly.
       </div>
-      <a href="/gallery" style={{display:'inline-block',marginTop:24,color:'rgba(255,255,255,.4)',fontSize:13,textDecoration:'none'}}>← Back to Gallery</a>
+      <Link href="/gallery" style={{display:'inline-block',marginTop:24,color:'rgba(255,255,255,.4)',fontSize:13,textDecoration:'none'}}>← Back to Gallery</Link>
     </div>
   );
 
@@ -118,9 +120,9 @@ export default function PremiumPage() {
           Expires: {new Date(status.expiresAt).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}
         </p>
       )}
-      <a href="/gallery" style={{padding:'14px 32px',borderRadius:16,background:'linear-gradient(135deg,#7c3aed,#ec4899)',color:'#fff',fontWeight:800,textDecoration:'none',fontSize:15,boxShadow:'0 12px 32px rgba(236,72,153,.35)'}}>
+      <Link href="/gallery" style={{padding:'14px 32px',borderRadius:16,background:'linear-gradient(135deg,#7c3aed,#ec4899)',color:'#fff',fontWeight:800,textDecoration:'none',fontSize:15,boxShadow:'0 12px 32px rgba(236,72,153,.35)'}}>
         🎬 Watch Videos Now
-      </a>
+      </Link>
     </div>
   );
 
