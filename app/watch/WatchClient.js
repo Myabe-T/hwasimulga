@@ -68,8 +68,8 @@ export default function WatchClient({ videoId }) {
               <h2 style={{ margin: '8px 0 6px', fontSize: 22, fontWeight: 900, background: 'linear-gradient(to right,#fbcfe8,#ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Premium Access</h2>
               <p style={{ fontSize: 13, color: 'rgba(255,255,255,.6)', margin: 0 }}>
                 {viewStatus?.hoursLeft
-                    ? \You've watched all \ free videos. Come back in \h or upgrade now.\
-                    : \You've used all your free videos today. Upgrade for unlimited access.\}
+                    ? `You've watched all ${viewStatus?.limit ?? 5} free videos. Come back in ${viewStatus.hoursLeft}h or upgrade now.`
+                    : `You've used all your free videos today. Upgrade for unlimited access.`}
               </p>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>

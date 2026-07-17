@@ -7,6 +7,6 @@ export async function GET(req, { params }) {
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
   const encrypted = await encryptPayload({ id: Number(id), ts: Date.now() });
-  const token = ${encrypted.cipher}.;
+  const token = `${encrypted.cipher}.${encrypted.iv}`;
   return NextResponse.json({ token });
 }

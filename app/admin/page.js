@@ -1,5 +1,5 @@
-import { secureFetch } from '@/lib/crypto';
 'use client';
+import { secureFetch } from '@/lib/crypto';
 import { useState, useEffect } from 'react';
 import styles from './admin.module.css';
 
@@ -25,7 +25,7 @@ export default function AdminPage() {
 
   // Data
   const [settings,  setSettings]  = useState({ start: 51, end: 730, cdnId: 'desimms' });
-  const [curated,   setCurated]   = useState({ trending: [], latest: [] });
+  const [curated,   setCurated]   = useState({ trending: [], latest: [], instaviral: [] });
   const [users,     setUsers]     = useState([]);
   const [history,   setHistory]   = useState([]);
 
@@ -441,7 +441,6 @@ export default function AdminPage() {
   const totalWatched  = history.length;
   const now = Date.now();
   const startOfDay    = new Date(); startOfDay.setHours(0,0,0,0);
-  const [curated, setCurated] = useState({ trending: [], latest: [], instaviral: [] });
   const watchesToday  = history.filter(h => new Date(h.watchedAt) >= startOfDay).length;
   const watchesWeek   = history.filter(h => now - new Date(h.watchedAt).getTime() < 7*24*3600*1000).length;
   const watchesMonth  = history.filter(h => now - new Date(h.watchedAt).getTime() < 30*24*3600*1000).length;

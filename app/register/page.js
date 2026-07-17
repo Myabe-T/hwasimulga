@@ -1,5 +1,5 @@
-import { secureFetch } from '@/lib/crypto';
 'use client';
+import { secureFetch } from '@/lib/crypto';
 import { useState, useEffect } from 'react';
 import styles from '../login/login.module.css';
 

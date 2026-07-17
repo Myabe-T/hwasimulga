@@ -1,5 +1,5 @@
-import { secureFetch } from '@/lib/crypto';
 'use client';
+import { secureFetch } from '@/lib/crypto';
 import Link from 'next/link';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import styles from './gallery.module.css';
