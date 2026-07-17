@@ -20,7 +20,20 @@ export async function GET() {
 export async function PUT(req) {
   const { error, status } = await requireAuth(['admin','advisor']);
   if (error) return NextResponse.json(await encryptPayload({ error }), { status });
-  const body = await req.json();
+
+  // Support both AES-encrypted body (from secureFetch) and plain JSON body
+  let body = {};
+  try {
+    const raw = await req.json();
+    if (raw && raw.cipher && raw.iv) {
+      // Encrypted body from secureFetch — decrypt it
+      const { decryptPayload } = await import('@/lib/crypto');
+      body = await decryptPayload(raw.cipher, raw.iv) || {};
+    } else {
+      body = raw || {};
+    }
+  } catch { body = {}; }
+
   const cur = await getSettings();
   const updated = { ...cur, ...body };
   await redis.set(KEYS.SETTINGS, JSON.stringify(updated));

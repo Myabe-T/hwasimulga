@@ -1206,7 +1206,7 @@ export default function AdminPage() {
                     <div style={{position:'relative',width:44,height:24}} onClick={async () => {
                       const next = !settings?.otpRequired;
                       setSettings(s => ({ ...s, otpRequired: next }));
-                      await secureFetch('/api/hwasi/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ otpRequired: next }) });
+                      await fetch('/api/hwasi/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ otpRequired: next }) });
                       flash(next ? '📧 OTP verification ON — users must verify email to register' : '🔓 OTP OFF — users can register without email verification');
                     }}>
                       <div style={{
