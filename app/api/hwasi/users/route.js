@@ -10,21 +10,25 @@ function uid() { return `usr_${Date.now().toString(36)}_${(++counter).toString(3
 
 export async function GET() {
   const { error, status } = await requireAuth(['admin','advisor']);
-  if (error) return NextResponse.json(await encryptPayload());
+  if (error) return NextResponse.json(await encryptPayload({ error }), { status });
   const [staticUsers, regUsers] = await Promise.all([getUsers(), getRegUsers()]);
-  const allUsers = [...staticUsers, ...regUsers];
-  return NextResponse.json(await encryptPayload());
+  const allUsers = [...staticUsers, ...regUsers].map(u => {
+    const { password, passwordHash, ...safe } = u;
+    return safe;
+  });
+  return NextResponse.json(await encryptPayload(allUsers));
 }
 
 export async function POST(req) {
   const { error, status } = await requireAuth(['admin','advisor']);
-  if (error) return NextResponse.json(await encryptPayload());
-  const { username, password, displayName, role } = await req.json();
+  if (error) return NextResponse.json(await encryptPayload({ error }), { status });
+  const body = await req.json();
+  const { username, password, displayName, role } = body;
   if (!username || !password || !displayName)
-    return NextResponse.json(await encryptPayload());
+    return NextResponse.json(await encryptPayload({ error: 'All fields required' }), { status: 400 });
   const users = await getUsers();
   if (users.find(u => u.username.toLowerCase() === username.toLowerCase()))
-    return NextResponse.json(await encryptPayload());
+    return NextResponse.json(await encryptPayload({ error: 'Username already taken' }), { status: 409 });
   const nu = {
     id: uid(), username: username.toLowerCase().trim(), password,
     displayName, role: role || 'viewer',
@@ -34,5 +38,5 @@ export async function POST(req) {
   users.push(nu);
   await saveUsers(users);
   const { password: _, ...safe } = nu;
-  return NextResponse.json(await encryptPayload());
+  return NextResponse.json(await encryptPayload(safe));
 }

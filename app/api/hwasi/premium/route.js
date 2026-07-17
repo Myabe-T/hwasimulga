@@ -8,15 +8,17 @@ import { getPremium, setPremium, revokePremium, getAllPremiumIds, getUsers, getR
 // GET /api/hwasi/premium?me=1 — any user: check own premium
 export async function GET(req) {
   const session = await getSession();
-  if (!session) return NextResponse.json(await encryptPayload());
+  if (!session) return NextResponse.json(await encryptPayload({ error: 'Unauthorized' }), { status: 401 });
 
   const me = new URL(req.url).searchParams.get('me');
   if (me) {
     const sub = await getPremium(session.sub);
-    return NextResponse.json(await encryptPayload());
+    return NextResponse.json(await encryptPayload({ premium: sub || null }));
   }
 
-  if (session.role !== 'admin') return NextResponse.json(await encryptPayload());
+  if (!['admin','advisor'].includes(session.role)) {
+    return NextResponse.json(await encryptPayload({ error: 'Forbidden' }), { status: 403 });
+  }
 
   const [staticUsers, regUsers, premiumIds] = await Promise.all([getUsers(), getRegUsers(), getAllPremiumIds()]);
   const users = [...staticUsers, ...regUsers];
@@ -24,35 +26,40 @@ export async function GET(req) {
     await Promise.all(premiumIds.map(async id => [id, await getPremium(id)]))
   );
   const result = users.map(u => ({
-    ...u,
-    password: undefined,
+    id: u.id,
+    username: u.username,
+    displayName: u.displayName,
+    role: u.role,
+    avatar: u.avatar,
+    email: u.email,
+    createdAt: u.createdAt,
     premium: premiumMap[u.id] || null,
   }));
-  return NextResponse.json(await encryptPayload());
+  return NextResponse.json(await encryptPayload({ users: result }));
 }
 
 // POST /api/hwasi/premium — admin: grant premium
-// body: { userId, plan, days? }
 export async function POST(req) {
   const session = await getSession();
-  if (!session || session.role !== 'admin') return NextResponse.json(await encryptPayload());
+  if (!session || session.role !== 'admin') return NextResponse.json(await encryptPayload({ error: 'Forbidden' }), { status: 403 });
 
-  const { userId, plan, days } = await req.json();
-  if (!userId || !plan) return NextResponse.json(await encryptPayload());
-  if (!PLANS[plan]) return NextResponse.json(await encryptPayload());
+  const body = await req.json();
+  const { userId, plan, days } = body;
+  if (!userId || !plan) return NextResponse.json(await encryptPayload({ error: 'userId and plan required' }), { status: 400 });
+  if (!PLANS[plan]) return NextResponse.json(await encryptPayload({ error: 'Invalid plan' }), { status: 400 });
 
   const planDays = days || PLANS[plan].days;
   await setPremium(userId, plan, planDays, session.username);
-  return NextResponse.json(await encryptPayload());
+  return NextResponse.json(await encryptPayload({ ok: true }));
 }
 
 // DELETE /api/hwasi/premium?userId=xxx — admin: revoke
 export async function DELETE(req) {
   const session = await getSession();
-  if (!session || session.role !== 'admin') return NextResponse.json(await encryptPayload());
+  if (!session || session.role !== 'admin') return NextResponse.json(await encryptPayload({ error: 'Forbidden' }), { status: 403 });
 
   const userId = new URL(req.url).searchParams.get('userId');
-  if (!userId) return NextResponse.json(await encryptPayload());
+  if (!userId) return NextResponse.json(await encryptPayload({ error: 'userId required' }), { status: 400 });
   await revokePremium(userId);
-  return NextResponse.json(await encryptPayload());
+  return NextResponse.json(await encryptPayload({ ok: true }));
 }
