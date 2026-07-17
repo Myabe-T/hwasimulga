@@ -54,6 +54,7 @@ export default function GalleryPage() {
   const [user, setUser] = useState(null);
   const [settings, setSettings] = useState({ start: 1, end: 730 });
   const [curated, setCurated] = useState({ trending: [], latest: [] });
+  const [curatedLoading, setCuratedLoading] = useState(true);
   const [myHistory, setMyHistory] = useState([]);
   const [allIds, setAllIds] = useState([]);
   const [thumbIds, setThumbIds] = useState(new Set());
@@ -129,6 +130,7 @@ export default function GalleryPage() {
         fetch('/api/hwasi/bookmarks').then(x=>x.json()).catch(()=>({ ids:[] })),
       ]).then(([c, h, vs, bm]) => {
         setCurated(c.error ? { trending:[], latest:[] } : c);
+        setCuratedLoading(false);
         setMyHistory(Array.isArray(h) ? h : []);
         setViewStatus(vs);
         setBookmarks(new Set((bm.ids || []).map(Number)));
@@ -258,7 +260,7 @@ export default function GalleryPage() {
   const popularIds = [...allIds].sort((a, b) => viewCount(b).localeCompare(viewCount(a))).slice(0, 24);
 
   function tabIds() {
-    if (homeTab === 'trending') return trendingIds.length ? trendingIds : allIds.slice(0, 24);
+    if (homeTab === 'trending') return curatedLoading ? [] : (trendingIds.length ? trendingIds : allIds.slice(0, 24));
     if (homeTab === 'foryou') return forYouIds;
     if (homeTab === 'popular') return popularIds;
     if (homeTab === 'recent') return historyIds.length ? historyIds : [...allIds].reverse().slice(0, 24);
@@ -274,6 +276,9 @@ export default function GalleryPage() {
       return;
     }
 
+    // Immediately show loading modal so user gets instant feedback
+    setModal({ id, index: idx >= 0 ? idx : 0, src: null, loading: true });
+
     if (!viewStatus?.isPremium && user?.role !== 'admin' && user?.role !== 'advisor') {
       const fp = getFingerprint();
       const checkRes = await fetch('/api/hwasi/views', {
@@ -284,13 +289,13 @@ export default function GalleryPage() {
       const check = await checkRes.json();
       setViewStatus(check);
       if (!check.allowed) {
+        setModal(null);
         setUpgradeInfo(check);
         setShowUpgrade(true);
         return;
       }
     }
 
-    setModal({ id, index: idx >= 0 ? idx : 0, src: null, loading: true });
     fetch('/api/hwasi/history', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ videoId: id }),
@@ -643,6 +648,11 @@ export default function GalleryPage() {
           </div>
 
           {/* Video grid */}
+          {curatedLoading && homeTab === 'trending' ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '20vh' }}>
+              <div className={styles.splashSpinner} style={{ width: 40, height: 40, borderWidth: 3 }} />
+            </div>
+          ) : (
           <div className={styles.grid}>
             {tabIds().map((id, i) => (
               <VideoCard key={id} id={id} index={i}
@@ -658,7 +668,7 @@ export default function GalleryPage() {
               />
             ))}
           </div>
-
+          )}
           {/* Pagination for all-videos tab */}
           {homeTab === 'foryou' && totalPages > 1 && (
             <Pagination page={page} total={totalPages} onPage={goPage} />
