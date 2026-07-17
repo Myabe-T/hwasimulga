@@ -31,7 +31,18 @@ export async function POST(req) {
   const session = await getUser(req);
   if (!session) return NextResponse.json(await encryptPayload({ error: 'Unauthorized' }), { status: 401 });
 
-  const body = await req.json().catch(() => ({}));
+  // Support both encrypted (from secureFetch) and plain body
+  let body = {};
+  try {
+    const raw = await req.json();
+    if (raw && raw.cipher && raw.iv) {
+      const { decryptPayload } = await import('@/lib/crypto');
+      body = await decryptPayload(raw.cipher, raw.iv) || {};
+    } else {
+      body = raw || {};
+    }
+  } catch { body = {}; }
+
   const videoId = body.videoId;
 
   if (!videoId) {

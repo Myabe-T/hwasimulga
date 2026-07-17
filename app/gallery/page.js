@@ -749,13 +749,17 @@ export default function GalleryPage() {
                 <button
                   className={styles.btnGhost}
                   style={{ color: shareCopied === modal.id ? '#4ade80' : undefined }}
-                  onClick={() => {
-                    const shareUrl = `${window.location.origin}/watch/${modal.id}`;
-                    if (navigator.share) {
-                      navigator.share({ title: videoTitles[String(modal.id)] || videoTitle(modal.id), url: shareUrl });
-                    } else {
-                      navigator.clipboard.writeText(shareUrl);
-                    }
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/hwasi/share/${modal.id}`);
+                      const d = await res.json();
+                      const shareUrl = `${window.location.origin}/watch?v=${encodeURIComponent(d.token || '')}`;
+                      if (navigator.share) {
+                        navigator.share({ title: videoTitles[String(modal.id)] || videoTitle(modal.id), url: shareUrl });
+                      } else {
+                        navigator.clipboard.writeText(shareUrl);
+                      }
+                    } catch(err) {}
                     setShareCopied(modal.id);
                     setTimeout(() => setShareCopied(null), 2000);
                   }}
@@ -1164,11 +1168,15 @@ function VideoCard({ id, index, hasThumb, isBookmarked, isAdmin, showHash, onPla
       <div className={styles.vactions}>
         <ActionBtn icon="🔖" label="Save" active={isBookmarked} activeColor="#f59e0b" onClick={(e) => onBookmark(e)} />
         <ActionBtn icon="⬇" label="Download" color="#10b981" onClick={(e) => onDownload(e)} />
-        <ActionBtn icon="↗" label="Share" color="#3b82f6" onClick={(e) => {
+        <ActionBtn icon="↗" label="Share" color="#3b82f6" onClick={async (e) => {
           e.stopPropagation();
-          const shareUrl = `${window.location.origin}/watch/${id}`;
-          if (navigator.share) navigator.share({ title: videoTitle(id), url: shareUrl });
-          else { navigator.clipboard?.writeText(shareUrl); }
+          try {
+            const res = await fetch(`/api/hwasi/share/${id}`);
+            const d = await res.json();
+            const shareUrl = `${window.location.origin}/watch?v=${encodeURIComponent(d.token || '')}`;
+            if (navigator.share) navigator.share({ title: videoTitle(id), url: shareUrl });
+            else { navigator.clipboard?.writeText(shareUrl); }
+          } catch(err) {}
         }} />
         <ActionBtn icon="🚩" label="Report" color="#ef4444" onClick={(e) => onReport(e)} />
         {isAdmin && onDelete && (

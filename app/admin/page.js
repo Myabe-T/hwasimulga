@@ -78,6 +78,10 @@ export default function AdminPage() {
   const [deviceData,    setDeviceData]    = useState({});
   const [blockModal,    setBlockModal]    = useState(null);
   const [blockReason,   setBlockReason]   = useState('');
+  // Device filter state
+  const [devSearch,     setDevSearch]     = useState('');
+  const [devMinDevices, setDevMinDevices] = useState('0');
+  const [devFlagFilter, setDevFlagFilter] = useState('all');
   // Payment settings state
   const [paySettings,   setPaySettings]   = useState({ maintenanceMode: false, upiId: '', qrUrl: '' });
   const [paySettingsSaving, setPaySettingsSaving] = useState(false);
@@ -1475,11 +1479,37 @@ export default function AdminPage() {
                   </div>
                   <button className="btn btn-ghost btn-sm" style={{marginLeft:'auto'}} onClick={()=>{fetch('/api/hwasi/devices').then(x=>x.json()).then(d=>setDeviceData(d.devices||{}));}}>↻ Refresh</button>
                 </div>
+                {/* Device filter controls */}
+                <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:16,padding:'12px 0',borderBottom:'1px solid rgba(255,255,255,.06)'}}>
+                  <input className="input" style={{flex:1,minWidth:180}} placeholder="🔍 Search by username or display name…"
+                    value={devSearch||''} onChange={e=>setDevSearch(e.target.value)} />
+                  <select className="input" style={{minWidth:140}} value={devMinDevices||'0'} onChange={e=>setDevMinDevices(e.target.value)}>
+                    <option value="0">All accounts</option>
+                    <option value="2">2+ devices</option>
+                    <option value="3">3+ devices</option>
+                    <option value="5">5+ devices</option>
+                    <option value="10">10+ devices</option>
+                  </select>
+                  <select className="input" style={{minWidth:130}} value={devFlagFilter||'all'} onChange={e=>setDevFlagFilter(e.target.value)}>
+                    <option value="all">All status</option>
+                    <option value="flagged">⚠️ Flagged only</option>
+                    <option value="blocked">🚫 Blocked only</option>
+                  </select>
+                </div>
                 {Object.keys(deviceData).length === 0 ? (
                   <p style={{color:'var(--text3)',textAlign:'center',padding:'32px 0'}}>No device data yet. Data appears once users log in.</p>
                 ) : (
                   <div style={{display:'flex',flexDirection:'column',gap:12,marginTop:12}}>
-                    {Object.entries(deviceData).map(([uid, entry]) => (
+                    {Object.entries(deviceData).filter(([uid, entry]) => {
+                      const minDev = Number(devMinDevices || 0);
+                      const devCount = Object.keys(entry.devices || {}).length;
+                      if (minDev > 0 && devCount < minDev) return false;
+                      if (devFlagFilter === 'flagged' && !entry.flagged) return false;
+                      if (devFlagFilter === 'blocked' && !entry.blocked) return false;
+                      const search = (devSearch || '').toLowerCase();
+                      if (search && !(entry.username || '').toLowerCase().includes(search) && !(entry.displayName || '').toLowerCase().includes(search)) return false;
+                      return true;
+                    }).map(([uid, entry]) => (
                       <div key={uid} style={{padding:16,background:entry.blocked?'rgba(239,68,68,.08)':entry.flagged?'rgba(245,158,11,.08)':'rgba(255,255,255,.03)',border:`1px solid ${entry.blocked?'rgba(239,68,68,.25)':entry.flagged?'rgba(245,158,11,.25)':'rgba(255,255,255,.08)'}`,borderRadius:14}}>
                         <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:8}}>
                           <div style={{fontWeight:700}}>{entry.displayName||entry.username||`User #${uid}`}</div>
