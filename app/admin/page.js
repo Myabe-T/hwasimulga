@@ -1,3 +1,4 @@
+import { secureFetch } from '@/lib/crypto';
 'use client';
 import { useState, useEffect } from 'react';
 import styles from './admin.module.css';
@@ -94,7 +95,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     async function init() {
-      const r = await fetch('/api/verify');
+      const r = await secureFetch('/api/verify');
       const d = await r.json();
       if (!d.auth || !['admin','advisor'].includes(d.role)) { window.location.href = '/gallery'; return; }
       setUser(d);
@@ -117,12 +118,12 @@ export default function AdminPage() {
   async function loadAll(role) {
     const userRole = role || user?.role || 'admin';
     const fetches = [
-      fetch('/api/hwasi/settings').then(x=>x.json()),
+      secureFetch('/api/hwasi/settings').then(x=>x.json()),
       fetch('/api/hwasi/curated').then(x=>x.json()).catch(()=>({})),
-      fetch('/api/hwasi/users').then(x=>x.json()).catch(()=>([])),
+      secureFetch('/api/hwasi/users').then(x=>x.json()).catch(()=>([])),
       fetch('/api/hwasi/history').then(x=>x.json()).catch(()=>([])),
       fetch('/api/hwasi/thumbnails').then(x=>x.json()).catch(()=>({})),
-      fetch('/api/hwasi/premium').then(x=>x.json()).catch(()=>({})),
+      secureFetch('/api/hwasi/premium').then(x=>x.json()).catch(()=>({})),
       fetch('/api/hwasi/reports').then(x=>x.json()).catch(()=>({ reports:[] })),
       fetch('/api/hwasi/deleted').then(x=>x.json()).catch(()=>({ deleted:[] })),
       fetch('/api/hwasi/pending-users').then(x=>x.json()).catch(()=>({ users:[] })),
@@ -176,7 +177,7 @@ export default function AdminPage() {
 
   async function saveSettings() {
     setSavingSet(true);
-    const r = await fetch('/api/hwasi/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(settings) });
+    const r = await secureFetch('/api/hwasi/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(settings) });
     const d = await r.json();
     setSavingSet(false);
     if (r.ok) flash(`✅ Range saved — viewers see #${d.start}–#${d.end}`);
@@ -208,7 +209,7 @@ export default function AdminPage() {
 
   async function pickRandom50(type) {
     // Fetch current settings for range, then pick 50 random IDs
-    const s = await fetch('/api/hwasi/settings').then(x=>x.json()).catch(()=>({start:51,end:730}));
+    const s = await secureFetch('/api/hwasi/settings').then(x=>x.json()).catch(()=>({start:51,end:730}));
     const start = s.start || 51;
     const end   = s.end   || 730;
     const all   = Array.from({length: end - start + 1}, (_, i) => i + start);
@@ -227,7 +228,7 @@ export default function AdminPage() {
 
   async function createUser() {
     if (!newUser.username||!newUser.password||!newUser.displayName) { flash('❌ All fields required','err'); return; }
-    const r = await fetch('/api/hwasi/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(newUser) });
+    const r = await secureFetch('/api/hwasi/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(newUser) });
     const d = await r.json();
     if (r.ok) { setUsers(p=>[...p,d]); setNewUser({username:'',password:'',displayName:'',role:'viewer'}); flash(`✅ User "${d.username}" created!`); }
     else flash('❌ '+d.error,'err');
@@ -440,6 +441,7 @@ export default function AdminPage() {
   const totalWatched  = history.length;
   const now = Date.now();
   const startOfDay    = new Date(); startOfDay.setHours(0,0,0,0);
+  const [curated, setCurated] = useState({ trending: [], latest: [], instaviral: [] });
   const watchesToday  = history.filter(h => new Date(h.watchedAt) >= startOfDay).length;
   const watchesWeek   = history.filter(h => now - new Date(h.watchedAt).getTime() < 7*24*3600*1000).length;
   const watchesMonth  = history.filter(h => now - new Date(h.watchedAt).getTime() < 30*24*3600*1000).length;
@@ -702,12 +704,12 @@ export default function AdminPage() {
           {/* ══ CURATED ══ */}
           {tab==='curated' && (
             <div className={styles.fadeIn}>
-              {['trending','latest'].map(type=>(
+              {['trending','latest','instaviral'].map(type=>(
                 <div key={type} className={styles.card} style={{marginBottom:20}}>
                   <div className={styles.cardHeader}>
-                    <span style={{fontSize:24}}>{type==='trending'?'🔥':'✨'}</span>
+                    <span style={{fontSize:24}}>{type==='trending'?'🔥':type==='latest'?'✨':'💎'}</span>
                     <div style={{flex:1}}>
-                      <h3 className={styles.cardTitle}>{type==='trending'?'Trending':'Latest'}</h3>
+                      <h3 className={styles.cardTitle}>{type==='trending'?'Trending':type==='latest'?'Latest':'Insta Viral (Premium Only)'}</h3>
                       <p className={styles.cardSub}>{(curated[type]||[]).length} videos in this section</p>
                     </div>
                     {/* Quick action buttons */}
@@ -1084,7 +1086,7 @@ export default function AdminPage() {
                       onChange={e=>setGrantForm(p=>({...p,days:e.target.value}))}/>
                   </div>
                   <button className="btn btn-primary" disabled={!grantForm.userId} onClick={async () => {
-                    const r = await fetch('/api/hwasi/premium', {
+                    const r = await secureFetch('/api/hwasi/premium', {
                       method:'POST', headers:{'Content-Type':'application/json'},
                       body: JSON.stringify({ userId:grantForm.userId, plan:grantForm.plan, days:grantForm.days ? Number(grantForm.days) : undefined })
                     });

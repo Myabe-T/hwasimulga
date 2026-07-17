@@ -1,22 +1,10 @@
-export const runtime = 'edge';
-import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
-import { getRegUsers, saveRegUsers, getUsers, saveUsers } from '@/lib/redis';
+const fs = require('fs');
+const path = 'app/api/hwasi/change-password/route.js';
+let content = fs.readFileSync(path, 'utf8');
 
-async function hashPassword(password) {
-  const data = new TextEncoder().encode(password + 'hwasi_salt_2024');
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
+content = content.replace("import { getRegUsers, saveRegUsers } from '@/lib/redis';", "import { getRegUsers, saveRegUsers, getUsers, saveUsers } from '@/lib/redis';");
 
-export async function POST(req) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const { oldPassword, newPassword } = await req.json();
-  if (!oldPassword || !newPassword)
-    return NextResponse.json({ error: 'Both old and new password required' }, { status: 400 });
-  if (newPassword.length < 6)
-    return NextResponse.json({ error: 'New password must be at least 6 characters' }, { status: 400 });
+const newLogic = 
   const [staticUsers, regUsers] = await Promise.all([getUsers(), getRegUsers()]);
   
   let staticIdx = staticUsers.findIndex(u => u.id === session.sub);
@@ -27,12 +15,14 @@ export async function POST(req) {
   }
 
   if (staticIdx !== -1) {
+    // Check static user plain text password
     if (staticUsers[staticIdx].password !== oldPassword) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 });
     }
     staticUsers[staticIdx].password = newPassword;
     await saveUsers(staticUsers);
   } else if (regIdx !== -1) {
+    // Check reg user hashed password
     const oldHash = await hashPassword(oldPassword);
     if (regUsers[regIdx].passwordHash !== oldHash) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 });
@@ -42,4 +32,8 @@ export async function POST(req) {
   }
 
   return NextResponse.json({ ok: true });
-}
+;
+
+content = content.replace(/const users = await getRegUsers\(\);[\s\S]*?return NextResponse\.json\(\{ ok: true \}\);/m, newLogic.trim());
+
+fs.writeFileSync(path, content);

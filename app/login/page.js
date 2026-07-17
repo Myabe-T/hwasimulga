@@ -12,7 +12,7 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false);
 
   useEffect(() => {
-    fetch('/api/verify').then(r => r.json()).then(d => {
+    secureFetch('/api/verify').then(r => r.json()).then(d => {
       if (d.auth) window.location.href = '/gallery';
     }).catch(() => {});
   }, []);

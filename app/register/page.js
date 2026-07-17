@@ -1,3 +1,4 @@
+import { secureFetch } from '@/lib/crypto';
 'use client';
 import { useState, useEffect } from 'react';
 import styles from '../login/login.module.css';
@@ -10,7 +11,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch('/api/verify').then(r => r.json()).then(d => {
+    secureFetch('/api/verify').then(r => r.json()).then(d => {
       if (d.auth) window.location.href = '/gallery';
     }).catch(() => {});
   }, []);
@@ -32,7 +33,7 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const r = await fetch('/api/register', {
+      const r = await secureFetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),

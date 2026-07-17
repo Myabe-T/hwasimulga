@@ -74,11 +74,11 @@ export async function POST(req) {
     const devEntry = deviceData[String(user.id)];
     if (devEntry?.blocked) {
       const reason = devEntry.blockReason || 'Terms of service violation';
-      return NextResponse.json({
+      return NextResponse.json(await encryptPayload({
         error: `🚫 Your account has been blocked.\n\nReason: ${reason}\n\nContact support to resolve this issue.`,
         code: 'ACCOUNT_BLOCKED',
         reason,
-      }, { status: 403 });
+      }), { status: 403 });
     }
 
     // ── 5. Issue JWT token ──

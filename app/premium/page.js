@@ -46,7 +46,7 @@ export default function PremiumPage() {
   useEffect(() => {
     Promise.all([
       fetch('/api/hwasi/plans').then(r=>r.json()).catch(()=>({})),
-      fetch('/api/hwasi/premium?me=1').then(r=>r.json()).catch(()=>({})),
+      secureFetch('/api/hwasi/premium?me=1').then(r=>r.json()).catch(()=>({})),
       fetch('/api/hwasi/payment-settings').then(r=>r.json()).catch(()=>({})),
     ]).then(([pd, sub, ps]) => {
       setPlans(pd.plans || null);

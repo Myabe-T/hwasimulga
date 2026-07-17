@@ -1,3 +1,4 @@
+import { secureFetch } from '@/lib/crypto';
 'use client';
 import Link from 'next/link';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -44,6 +45,7 @@ const GRADIENT_PLACEHOLDER = (id) => {
 
 // ── TABS definition
 const HOME_TABS = [
+  { id: 'instaviral', label: 'Insta Viral Videos', icon: '💎' },
   { id: 'trending', label: 'Trending', icon: '🔥' },
   { id: 'foryou', label: 'For You', icon: '👤' },
   { id: 'popular', label: 'Popular', icon: '📈' },
@@ -53,7 +55,7 @@ const HOME_TABS = [
 export default function GalleryPage() {
   const [user, setUser] = useState(null);
   const [settings, setSettings] = useState({ start: 1, end: 730 });
-  const [curated, setCurated] = useState({ trending: [], latest: [] });
+  const [curated, setCurated] = useState({ trending: [], latest: [], instaviral: [] });
   const [curatedLoading, setCuratedLoading] = useState(true);
   const [myHistory, setMyHistory] = useState([]);
   const [allIds, setAllIds] = useState([]);
@@ -99,12 +101,12 @@ export default function GalleryPage() {
 
   useEffect(() => {
     async function init() {
-      const r = await fetch('/api/verify');
+      const r = await secureFetch('/api/verify');
       const d = await r.json();
 
       // ── PHASE 1: load settings + thumbnails immediately so video grid shows ──
       const [s, t] = await Promise.all([
-        fetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:1, end:730 })),
+        secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:1, end:730 })),
         fetch('/api/hwasi/thumbnails').then(x => x.json()).catch(() => ({})),
       ]);
       const st = s.error ? { start:1, end:730, deletedIds:[] } : s;
@@ -126,7 +128,7 @@ export default function GalleryPage() {
       Promise.all([
         fetch('/api/hwasi/curated').then(x=>x.json()).catch(()=>({ trending:[], latest:[] })),
         fetch('/api/hwasi/history/me').then(x=>x.json()).catch(()=>[]),
-        fetch('/api/hwasi/views').then(x=>x.json()).catch(()=>({ allowed:true })),
+        secureFetch('/api/hwasi/views').then(x=>x.json()).catch(()=>({ allowed:true })),
         fetch('/api/hwasi/bookmarks').then(x=>x.json()).catch(()=>({ ids:[] })),
       ]).then(([c, h, vs, bm]) => {
         setCurated(c.error ? { trending:[], latest:[] } : c);
@@ -248,6 +250,7 @@ export default function GalleryPage() {
   const pageIds = allIds.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
 
   const trendingIds = (curated.trending || []).map(Number).filter(Boolean).slice(0, 24);
+  const instaviralIds = (curated.instaviral || []).map(Number).filter(Boolean).slice(0, 24);
   const latestIds = (curated.latest || []).map(Number).filter(Boolean).slice(0, 24);
   const historyIds = [...new Set(myHistory.map(h => +h.videoId))].slice(0, 48);
   const bookmarkIds = [...bookmarks].slice(0, 48);
@@ -260,6 +263,7 @@ export default function GalleryPage() {
   const popularIds = [...allIds].sort((a, b) => viewCount(b).localeCompare(viewCount(a))).slice(0, 24);
 
   function tabIds() {
+    if (homeTab === 'instaviral') return curatedLoading ? [] : instaviralIds;
     if (homeTab === 'trending') return curatedLoading ? [] : (trendingIds.length ? trendingIds : allIds.slice(0, 24));
     if (homeTab === 'foryou') return forYouIds;
     if (homeTab === 'popular') return popularIds;
@@ -279,35 +283,48 @@ export default function GalleryPage() {
     // Immediately show loading modal so user gets instant feedback
     setModal({ id, index: idx >= 0 ? idx : 0, src: null, loading: true });
 
-    if (!viewStatus?.isPremium && user?.role !== 'admin' && user?.role !== 'advisor') {
+    const isInstaViral = instaviralIds.includes(Number(id));
+    const isPrivileged = viewStatus?.isPremium || user?.role === 'admin' || user?.role === 'advisor';
+
+    if (isInstaViral && !isPrivileged) {
+      setModal(null);
+      setUpgradeInfo({ limit: 0, msg: '💎 This is an Insta Viral premium video. Upgrade to Premium to watch it instantly!' });
+      setShowUpgrade(true);
+      return;
+    }
+
+    // Call views to authorize AND get token
+    let videoSrc = '';
+    try {
       const fp = getFingerprint();
-      const checkRes = await fetch('/api/hwasi/views', {
+      const checkRes = await secureFetch('/api/hwasi/views', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoId: id, fingerprint: fp }),
-      }).catch(() => ({ json: () => ({ allowed: true }) }));
+      });
       const check = await checkRes.json();
       setViewStatus(check);
+      
       if (!check.allowed) {
         setModal(null);
         setUpgradeInfo(check);
         setShowUpgrade(true);
         return;
       }
+      
+      if (check.token) {
+        videoSrc = '/api/v/' + check.token;
+      }
+    } catch (e) {
+      console.error('Error fetching view token', e);
     }
 
     fetch('/api/hwasi/history', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ videoId: id }),
     }).catch(() => { });
-    try {
-      const sr = await fetch(`/api/hwasi/sign/${id}`);
-      const sd = await sr.json();
-      if (sd.src) setModal(prev => prev?.id === id ? { ...prev, src: sd.src, loading: false } : prev);
-      else setModal(prev => prev?.id === id ? { ...prev, src: '', loading: false } : prev);
-    } catch {
-      setModal(prev => prev?.id === id ? { ...prev, src: '', loading: false } : prev);
-    }
+    
+    setModal(prev => prev?.id === id ? { ...prev, src: videoSrc, loading: false } : prev);
   }, [allIds, viewStatus, user]);
 
   const closeModal = useCallback(() => setModal(null), []);
@@ -472,7 +489,6 @@ export default function GalleryPage() {
         <div className={styles.sectionHead}>
           <div className={styles.sectionAccent} />
           <h2 className={styles.sectionTitle}>Browse All Videos</h2>
-          <span className={styles.sectionCount}>{allIds.length} videos</span>
         </div>
         <div className={styles.grid}>
           {pageIds.map(id => (
@@ -500,17 +516,16 @@ export default function GalleryPage() {
               </div>
             </div>
           ))}
-        </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className={styles.pagination}>
-            <button className={styles.pgBtn} disabled={page === 0} onClick={() => goPage(page - 1)}>← Prev</button>
-            <span className={styles.pgInfo}>{page + 1} / {totalPages}</span>
-            <button className={styles.pgBtn} disabled={page >= totalPages - 1} onClick={() => goPage(page + 1)}>Next →</button>
           </div>
-        )}
-      </main>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className={styles.pagination}>
+              <button className={styles.pgBtn} disabled={page === 0} onClick={() => goPage(page - 1)}>← Prev</button>
+              <button className={styles.pgBtn} disabled={page >= totalPages - 1} onClick={() => goPage(page + 1)}>Next →</button>
+            </div>
+          )}
+        </main>
 
       {/* Guest auth modal */}
       {guestAuthModal && (

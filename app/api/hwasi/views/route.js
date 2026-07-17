@@ -2,6 +2,8 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 import { getPremium, getViewCount, incrementViewCount, redis } from '@/lib/redis';
+import { signVideoId } from '@/lib/sign';
+import { encryptPayload } from '@/lib/crypto';
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
 
@@ -25,24 +27,34 @@ async function getWatchLimitMsg() {
   } catch { return null; }
 }
 
-// POST /api/hwasi/views — check + increment view count
-// body: { videoId, fingerprint }
-// Returns: { allowed, count, limit, remaining, isPremium, hoursLeft, limitMsg }
 export async function POST(req) {
   const session = await getUser(req);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!session) return NextResponse.json(await encryptPayload({ error: 'Unauthorized' }), { status: 401 });
+
+  const body = await req.json().catch(() => ({}));
+  const videoId = body.videoId;
+
+  if (!videoId) {
+    return NextResponse.json(await encryptPayload({ error: 'Missing videoId' }), { status: 400 });
+  }
 
   // Admin + Advisor always allowed
-  if (['admin','advisor'].includes(session.role)) return NextResponse.json({ allowed: true, isPremium: true });
+  if (['admin','advisor'].includes(session.role)) {
+    const token = await signVideoId(videoId);
+    return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, token }));
+  }
 
   // Check premium status
   const sub = await getPremium(session.sub);
-  if (sub) return NextResponse.json({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt });
+  if (sub) {
+    const token = await signVideoId(videoId);
+    return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt, token }));
+  }
 
   const FREE_LIMIT = await getWatchLimit();
   const limitMsg = await getWatchLimitMsg();
 
-  // Track by USER ID (most reliable — each account gets their own N free views)
+  // Track by USER ID
   const userId = session.sub || session.username;
   const userKey = `user:${userId}`;
   const count = await getViewCount(userKey);
@@ -51,29 +63,31 @@ export async function POST(req) {
     const now = new Date();
     const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
     const hoursLeft = Math.ceil((tomorrow - now) / 3600000);
-    return NextResponse.json({ allowed: false, count, limit: FREE_LIMIT, remaining: 0, hoursLeft, limitMsg });
+    return NextResponse.json(await encryptPayload({ allowed: false, count, limit: FREE_LIMIT, remaining: 0, hoursLeft, limitMsg }));
   }
 
   await incrementViewCount(userKey);
   const newCount = count + 1;
-  return NextResponse.json({
+  const token = await signVideoId(videoId);
+  
+  return NextResponse.json(await encryptPayload({
     allowed: true,
     isPremium: false,
     count: newCount,
     limit: FREE_LIMIT,
     remaining: FREE_LIMIT - newCount,
     limitMsg,
-  });
+    token
+  }));
 }
 
-// GET /api/hwasi/views — check without incrementing
 export async function GET(req) {
   const session = await getUser(req);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (['admin','advisor'].includes(session.role)) return NextResponse.json({ allowed: true, isPremium: true });
+  if (!session) return NextResponse.json(await encryptPayload({ error: 'Unauthorized' }), { status: 401 });
+  if (['admin','advisor'].includes(session.role)) return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true }));
 
   const sub = await getPremium(session.sub);
-  if (sub) return NextResponse.json({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt });
+  if (sub) return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt }));
 
   const FREE_LIMIT = await getWatchLimit();
   const limitMsg = await getWatchLimitMsg();
@@ -86,7 +100,7 @@ export async function GET(req) {
   const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
   const hoursLeft = Math.ceil((tomorrow - now) / 3600000);
 
-  return NextResponse.json({
+  return NextResponse.json(await encryptPayload({
     allowed: count < FREE_LIMIT,
     isPremium: false,
     count,
@@ -94,5 +108,5 @@ export async function GET(req) {
     remaining: Math.max(0, FREE_LIMIT - count),
     hoursLeft,
     limitMsg,
-  });
+  }));
 }

@@ -1,18 +1,7 @@
-require('dotenv').config({ path: '.env.local' });
-const { encryptPayload, decryptPayload } = require('./lib/crypto.js');
-
-async function test() {
-  try {
-    console.log('Testing encryption...');
-    const data = { maintenanceMode: true, upiId: 'test@upi', qrUrl: '' };
-    const encrypted = await encryptPayload(data);
-    console.log('Encrypted:', encrypted);
-    
-    const decrypted = await decryptPayload(encrypted.cipher, encrypted.iv);
-    console.log('Decrypted:', decrypted);
-  } catch(e) {
-    console.error('Test Failed:', e);
-  }
+const crypto = require('crypto');
+async function webCryptoHash(password) {
+  const data = new TextEncoder().encode(password + 'hwasi_salt_2024');
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
-
-test();
+webCryptoHash('Watch@2024').then(console.log);

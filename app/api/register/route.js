@@ -87,11 +87,11 @@ export async function POST(req) {
       // Add to pending queue
       pendingUsers.push(newUser);
       await savePendingUsers(pendingUsers);
-      return NextResponse.json({
+      return NextResponse.json(await encryptPayload({
         ok: true,
         pending: true,
         message: 'Registration submitted! An admin will review and approve your account shortly.',
-      });
+      }));
     }
 
     // Auto-approve: add to active users + auto-login
@@ -104,7 +104,7 @@ export async function POST(req) {
       displayName: newUser.displayName, role: 'viewer', avatar: newUser.avatar,
     }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('7d').sign(SECRET);
 
-    const res = NextResponse.json({ ok: true, pending: false, username: newUser.username });
+    const res = NextResponse.json(await encryptPayload({ ok: true, pending: false, username: newUser.username }));
     res.cookies.set('hwasi_token', token, {
       httpOnly: true, secure: true, sameSite: 'strict',
       maxAge: 60 * 60 * 24 * 7, path: '/',

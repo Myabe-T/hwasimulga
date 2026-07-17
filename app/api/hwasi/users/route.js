@@ -1,6 +1,7 @@
 export const runtime = 'edge';
 
 import { NextResponse } from 'next/server';
+import { encryptPayload } from '@/lib/crypto';
 import { requireAuth } from '@/lib/auth';
 import { getUsers, saveUsers, getRegUsers } from '@/lib/redis';
 
@@ -9,21 +10,21 @@ function uid() { return `usr_${Date.now().toString(36)}_${(++counter).toString(3
 
 export async function GET() {
   const { error, status } = await requireAuth(['admin','advisor']);
-  if (error) return NextResponse.json({ error }, { status });
+  if (error) return NextResponse.json(await encryptPayload());
   const [staticUsers, regUsers] = await Promise.all([getUsers(), getRegUsers()]);
   const allUsers = [...staticUsers, ...regUsers];
-  return NextResponse.json(allUsers.map(({ password, passwordHash, ...u }) => u));
+  return NextResponse.json(await encryptPayload());
 }
 
 export async function POST(req) {
   const { error, status } = await requireAuth(['admin','advisor']);
-  if (error) return NextResponse.json({ error }, { status });
+  if (error) return NextResponse.json(await encryptPayload());
   const { username, password, displayName, role } = await req.json();
   if (!username || !password || !displayName)
-    return NextResponse.json({ error: 'username, password, displayName required' }, { status: 400 });
+    return NextResponse.json(await encryptPayload());
   const users = await getUsers();
   if (users.find(u => u.username.toLowerCase() === username.toLowerCase()))
-    return NextResponse.json({ error: 'Username already exists' }, { status: 409 });
+    return NextResponse.json(await encryptPayload());
   const nu = {
     id: uid(), username: username.toLowerCase().trim(), password,
     displayName, role: role || 'viewer',
@@ -33,5 +34,5 @@ export async function POST(req) {
   users.push(nu);
   await saveUsers(users);
   const { password: _, ...safe } = nu;
-  return NextResponse.json(safe, { status: 201 });
+  return NextResponse.json(await encryptPayload());
 }
