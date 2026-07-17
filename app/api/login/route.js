@@ -25,6 +25,7 @@ export async function POST(req) {
     let username, password;
     if (rawBody.cipher && rawBody.iv) {
       const decrypted = await decryptPayload(rawBody.cipher, rawBody.iv);
+      if (!decrypted) return NextResponse.json(await encryptPayload({ error: 'Decryption failed. Check AES key.' }), { status: 400 });
       username = decrypted.username;
       password = decrypted.password;
     } else {
