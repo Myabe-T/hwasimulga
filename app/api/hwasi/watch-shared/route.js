@@ -58,8 +58,19 @@ export async function POST(req) {
     return NextResponse.json(await encryptPayload({ allowed: true, token: streamToken, isPremium: true }));
   }
 
+  // Check if video is Insta Viral — premium only even via share link
+  const instaRaw = await redis.get('hwasi:curated:instaviral');
+  let instaIds = [];
+  try { instaIds = instaRaw ? JSON.parse(instaRaw).map(Number) : []; } catch {}
+  const isInstaViral = instaIds.includes(Number(videoId));
+
   // Check premium from DB
   const sub = await getPremium(session.sub);
+
+  if (isInstaViral && !sub) {
+    return NextResponse.json(await encryptPayload({ allowed: false, code: 'INSTAVIRAL_PREMIUM_ONLY', msg: '💎 This Insta Viral video is for Premium members only. Upgrade to watch!' }), { status: 403 });
+  }
+
   if (sub) {
     const streamToken = await signVideoId(videoId);
     return NextResponse.json(await encryptPayload({ allowed: true, token: streamToken, isPremium: true, plan: sub.plan }));

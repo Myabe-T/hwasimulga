@@ -66,6 +66,7 @@ export default function GalleryPage() {
   const [view, setView] = useState('gallery'); // gallery | bookmarks | history
   const [homeTab, setHomeTab] = useState('foryou');
   const [viewStatus, setViewStatus] = useState(null);
+  const [isPremium, setIsPremium] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeInfo, setUpgradeInfo] = useState(null);
   const [bookmarks, setBookmarks] = useState(new Set());
@@ -137,6 +138,7 @@ export default function GalleryPage() {
         setCuratedLoading(false);
         setMyHistory(Array.isArray(h) ? h : []);
         setViewStatus(vs);
+        if (vs?.isPremium || ['admin','advisor'].includes(d.role)) setIsPremium(true);
         setBookmarks(new Set((bm.ids || []).map(Number)));
         // Premium welcome popup — show ONCE per account lifetime (localStorage, not sessionStorage)
         if (vs?.isPremium) {
@@ -307,7 +309,7 @@ export default function GalleryPage() {
     setModal({ id, index: idx >= 0 ? idx : 0, src: null, loading: true });
 
     const isInstaViral = instaviralIds.includes(Number(id));
-    const isPrivileged = viewStatus?.isPremium || user?.role === 'admin' || user?.role === 'advisor';
+    const isPrivileged = isPremium || viewStatus?.isPremium || user?.role === 'admin' || user?.role === 'advisor';
 
     if (isInstaViral && !isPrivileged) {
       setModal(null);
@@ -347,7 +349,7 @@ export default function GalleryPage() {
     }).catch(() => { });
     
     setModal(prev => prev?.id === id ? { ...prev, src: videoSrc, loading: false } : prev);
-  }, [allIds, viewStatus, user, instaviralIds]);
+  }, [allIds, viewStatus, user, instaviralIds, isPremium]);
 
   const closeModal = useCallback(() => setModal(null), []);
   const prevVideo = useCallback(() => { if (!modal || modal.index <= 0) return; openModal(allIds[modal.index - 1]); }, [modal, allIds, openModal]);
@@ -698,7 +700,7 @@ export default function GalleryPage() {
                 isAdmin={isAdminOrAdvisor}
                 showHash={isAdminOrAdvisor}
                 onPlay={() => openModal(id)}
-                onDownload={(e) => handleDownload(e, id)}
+                onDownload={instaviralIds.includes(Number(id)) ? null : (e) => handleDownload(e, id)}
                 onBookmark={(e) => toggleBookmark(e, id)}
                 onReport={(e) => { e.stopPropagation(); setReportModal(id); }}
                 onDelete={isAdminOrAdvisor ? (e) => { e.stopPropagation(); setDeleteModal({ id }); setDeleteReason('duplicate'); } : null}
@@ -741,7 +743,7 @@ export default function GalleryPage() {
                   hasThumb={thumbIds.has(id)} isBookmarked={true}
                   isAdmin={isAdminOrAdvisor} showHash={isAdminOrAdvisor}
                   onPlay={() => openModal(id)}
-                  onDownload={(e) => handleDownload(e, id)}
+                  onDownload={instaviralIds.includes(Number(id)) ? null : (e) => handleDownload(e, id)}
                   onBookmark={(e) => toggleBookmark(e, id)}
                   onReport={(e) => { e.stopPropagation(); setReportModal(id); }}
                   onDelete={isAdminOrAdvisor ? (e) => { e.stopPropagation(); setDeleteModal({ id }); } : null}

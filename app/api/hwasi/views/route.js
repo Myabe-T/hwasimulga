@@ -57,6 +57,16 @@ export async function POST(req) {
 
   // Check premium status
   const sub = await getPremium(session.sub);
+
+  // Check if video is Insta Viral — only premium can watch
+  const instaviralList = await redis.get('hwasi:curated:instaviral');
+  let instaviralIds = [];
+  try { instaviralIds = instaviralList ? JSON.parse(instaviralList) : []; } catch {}
+  const isInstaViral = instaviralIds.map(Number).includes(Number(videoId));
+  if (isInstaViral && !sub && !['admin','advisor'].includes(session.role)) {
+    return NextResponse.json(await encryptPayload({ allowed: false, code: 'INSTAVIRAL_PREMIUM_ONLY', msg: '💎 Insta Viral videos are exclusive to Premium members. Upgrade to unlock!' }));
+  }
+
   if (sub) {
     const token = await signVideoId(videoId);
     return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt, token }));
@@ -99,6 +109,7 @@ export async function GET(req) {
 
   const sub = await getPremium(session.sub);
   if (sub) return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt }));
+
 
   const FREE_LIMIT = await getWatchLimit();
   const limitMsg = await getWatchLimitMsg();

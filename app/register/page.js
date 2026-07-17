@@ -27,11 +27,10 @@ export default function RegisterPage() {
     secureFetch('/api/verify').then(r => r.json()).then(d => {
       if (d.auth) window.location.href = '/gallery';
     }).catch(() => {});
-    // Fetch settings to check if OTP is required
-    fetch('/api/hwasi/settings').then(r => r.json()).then(d => {
-      const s = d?.data ? d.data : d;
-      if (typeof s?.otpRequired === 'boolean') setOtpRequired(s.otpRequired);
-    }).catch(() => {});
+    // Fetch OTP required setting (public flag endpoint)
+    fetch('/api/hwasi/reg-settings').then(r => r.json()).then(d => {
+      if (typeof d?.otpRequired === 'boolean') setOtpRequired(d.otpRequired);
+    }).catch(() => setOtpRequired(false)); // Default OFF if fetch fails
     return () => clearInterval(timerRef.current);
   }, []);
 
@@ -165,7 +164,8 @@ export default function RegisterPage() {
             <span className={styles.logoText}>DesiHawas</span>
           </div>
 
-          {/* Step indicator */}
+          {/* Step indicator — only show when OTP is required */}
+          {otpRequired && (
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:20}}>
             {[1,2].map(s => (
               <div key={s} style={{display:'flex',alignItems:'center',gap:6}}>
@@ -178,6 +178,7 @@ export default function RegisterPage() {
               </div>
             ))}
           </div>
+          )}
 
           <h1 className={styles.heading}>{step === 1 ? 'Create Account' : 'Verify Email'}</h1>
           <p className={styles.sub}>
@@ -202,7 +203,7 @@ export default function RegisterPage() {
                 </div>
               </div>
               <div className={styles.field}>
-                <label className={styles.label}>Email * <span style={{fontSize:11,color:'rgba(255,255,255,.4)'}}>OTP will be sent here</span></label>
+                <label className={styles.label}>Email * {otpRequired && <span style={{fontSize:11,color:'rgba(255,255,255,.4)'}}>OTP will be sent here</span>}</label>
                 <div className={styles.inputWrap}>
                   <input className={`input ${styles.input}`} style={{paddingLeft:16}} type="email" placeholder="you@gmail.com" required
                     value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
