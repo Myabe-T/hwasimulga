@@ -687,7 +687,7 @@ export default function GalleryPage() {
           </div>
 
           {/* Video grid */}
-          {curatedLoading && homeTab === 'trending' ? (
+          {curatedLoading ? (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '20vh' }}>
               <div className={styles.splashSpinner} style={{ width: 40, height: 40, borderWidth: 3 }} />
             </div>
@@ -696,7 +696,7 @@ export default function GalleryPage() {
             {tabIds().map((id, i) => (
               <div key={id} style={{ position: 'relative' }}>
                 {homeTab === 'instaviral' && !isPremium && (
-                  <div style={{ position:'absolute',inset:0,zIndex:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(10,0,21,.78)',backdropFilter:'blur(6px)',borderRadius:14,cursor:'pointer' }}
+                  <div style={{ position:'absolute',inset:0,zIndex:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.45)',borderRadius:14,cursor:'pointer' }}
                     onClick={(e) => { e.stopPropagation(); setInstaViralBlock(true); }}>
                     <div style={{ fontSize:32, marginBottom:4 }}>💎</div>
                     <div style={{ fontSize:10, fontWeight:800, color:'#f59e0b', letterSpacing:1.2, textTransform:'uppercase' }}>Premium Only</div>
@@ -806,7 +806,9 @@ export default function GalleryPage() {
                 >
                   {shareCopied === modal.id ? '✓ Copied!' : '🔗 Share'}
                 </button>
-                <button className={styles.btnGhost} onClick={(e) => handleDownload(e, modal.id)}>⬇ Download</button>
+                {!instaviralIds.includes(Number(modal.id)) && (
+                  <button className={styles.btnGhost} onClick={(e) => handleDownload(e, modal.id)}>⬇ Download</button>
+                )}
                 <button className={styles.closeBtn} onClick={closeModal}>✕</button>
               </div>
             </div>
