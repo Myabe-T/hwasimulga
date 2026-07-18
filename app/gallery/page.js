@@ -47,7 +47,7 @@ const GRADIENT_PLACEHOLDER = (id) => {
 const HOME_TABS = [
   { id: 'instaviral', label: 'Insta Viral', icon: '💎' },
   { id: 'trending', label: 'Trending', icon: '🔥' },
-  { id: 'foryou', label: '🎬 Full Collection', icon: '' },
+  { id: 'foryou', label: 'Full Collection', icon: '🎬' },
   { id: 'popular', label: 'Popular', icon: '📈' },
   { id: 'recent', label: 'Recent', icon: '🕐' },
 ];
@@ -682,7 +682,9 @@ export default function GalleryPage() {
           <div className={styles.sectionHead}>
             <div className={styles.sectionAccent} />
             <h2 className={styles.sectionTitle}>
-              {HOME_TABS.find(t => t.id === homeTab)?.icon} All {HOME_TABS.find(t => t.id === homeTab)?.label}
+            {homeTab === 'foryou'
+              ? '🎬 Entire Collection — 700+ Videos'
+              : `${HOME_TABS.find(t => t.id === homeTab)?.icon} All ${HOME_TABS.find(t => t.id === homeTab)?.label}`}
             </h2>
           </div>
 
