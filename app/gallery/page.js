@@ -331,6 +331,10 @@ export default function GalleryPage() {
       
       if (!check.allowed) {
         setModal(null);
+        if (check.code === 'INSTAVIRAL_PREMIUM_ONLY') {
+          setInstaViralBlock(true);
+          return;
+        }
         setUpgradeInfo(check);
         setShowUpgrade(true);
         return;
@@ -1146,16 +1150,24 @@ export default function GalleryPage() {
         </div>
       )}
 
-      {/* ── ADMIN WARNING MESSAGE POPUP ── */}
+      {/* ── ADMIN / UTR NOTIFICATION POPUP ── */}
       {adminMessage && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', backdropFilter: 'blur(8px)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: 'linear-gradient(135deg,#130a20,#1a0d2e)', border: '1px solid rgba(251,191,36,.4)', borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, textAlign: 'center', boxShadow: '0 30px 80px rgba(0,0,0,.7)' }}>
-            <div style={{ fontSize: 48, marginBottom: 10 }}>⚠️</div>
-            <h3 style={{ fontWeight: 900, fontSize: 18, color: '#fbbf24', marginBottom: 8 }}>Admin Warning</h3>
-            <p style={{ fontSize: 14, color: 'rgba(255,255,255,.7)', lineHeight: 1.7, marginBottom: 20, whiteSpace: 'pre-wrap' }}>{adminMessage.message}</p>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(8px)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: adminMessage.type === 'utr_rejected' ? 'linear-gradient(135deg,#1a0505,#2d0a0a)' : 'linear-gradient(135deg,#130a20,#1a0d2e)', border: `1px solid ${adminMessage.type === 'utr_rejected' ? 'rgba(248,113,113,.4)' : 'rgba(251,191,36,.4)'}`, borderRadius: 20, padding: 28, width: '100%', maxWidth: 420, textAlign: 'center', boxShadow: '0 30px 80px rgba(0,0,0,.7)' }}>
+            <div style={{ fontSize: 48, marginBottom: 10 }}>{adminMessage.type === 'utr_rejected' ? '❌' : '⚠️'}</div>
+            <h3 style={{ fontWeight: 900, fontSize: 18, color: adminMessage.type === 'utr_rejected' ? '#f87171' : '#fbbf24', marginBottom: 8 }}>
+              {adminMessage.type === 'utr_rejected' ? 'Payment Verification Failed' : 'Admin Notice'}
+            </h3>
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,.75)', lineHeight: 1.7, marginBottom: 20, whiteSpace: 'pre-wrap' }}>{adminMessage.message}</p>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', marginBottom: 16 }}>From: {adminMessage.from} · {new Date(adminMessage.timestamp).toLocaleString('en-IN')}</div>
+            {adminMessage.type === 'utr_rejected' && (
+              <button style={{ padding: '11px 24px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#ec4899)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', marginBottom: 8, width: '100%' }}
+                onClick={() => { setAdminMessage(null); window.location.href = '/premium'; }}>
+                🔄 Resubmit Payment
+              </button>
+            )}
             <button
-              style={{ padding: '12px 28px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#f59e0b,#d97706)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}
+              style={{ padding: '11px 28px', borderRadius: 12, border: 'none', background: adminMessage.type === 'utr_rejected' ? 'rgba(255,255,255,.1)' : 'linear-gradient(135deg,#f59e0b,#d97706)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', width: '100%' }}
               onClick={() => setAdminMessage(null)}
             >✓ I Understand</button>
           </div>
