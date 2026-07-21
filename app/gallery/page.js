@@ -110,15 +110,23 @@ export default function GalleryPage() {
       // ── PHASE 1: load settings + thumbnails immediately so video grid shows ──
       const [s, t] = await Promise.all([
         secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:1, end:730 })),
-        fetch('/api/hwasi/thumbnails').then(x => x.json()).catch(() => ({})),
+        fetch(`/api/hwasi/thumbnails?v=${Date.now()}`).then(x => x.json()).catch(() => ({})),
       ]);
-      const st = s.error ? { start:1, end:730, deletedIds:[] } : s;
+      const st = s.error ? { start:1, end:730, deletedIds:[], extraRanges:[] } : s;
       const delSet = new Set(st.deletedIds || []);
       setSettings(st);
       setThumbIds(new Set((t.ids || []).map(Number)));
-      setAllIds(Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start).filter(id => !delSet.has(id)));
-      // Always load titles (for guests too)
-      fetch('/api/hwasi/titles').then(x=>x.json()).then(d=>setVideoTitles(d.titles||{})).catch(()=>{});
+
+      // Build video ID list: primary range + any extra ranges (e.g. 2500-2560)
+      const primaryIds = Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start);
+      const extraIds = (st.extraRanges || []).flatMap(r =>
+        Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
+      );
+      setAllIds([...new Set([...primaryIds, ...extraIds])].filter(id => !delSet.has(id)));
+
+      // Always load titles — add cache-bust param so Cloudflare never serves stale data
+      fetch(`/api/hwasi/titles?v=${Date.now()}`).then(x=>x.json()).then(d=>setVideoTitles(d.titles||{})).catch(()=>{});
+
 
       // Guest mode stops here — no auth-gated data
       if (!d.auth) return;

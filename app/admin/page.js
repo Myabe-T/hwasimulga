@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { secureFetch } from '@/lib/crypto';
 import styles from './admin.module.css';
 
 const BOTH = ['admin', 'advisor'];
@@ -94,7 +95,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     async function init() {
-      const r = await fetch('/api/verify');
+      // Use secureFetch so the encrypted {cipher,iv} response is properly decrypted
+      const r = await secureFetch('/api/verify');
       const d = await r.json();
       if (!d.auth || !['admin', 'advisor'].includes(d.role)) { window.location.href = '/gallery'; return; }
       setUser(d);
@@ -1703,31 +1705,72 @@ export default function AdminPage() {
                   <span style={{ fontSize: 22 }}>⚙️</span>
                   <div><h3 className={styles.cardTitle}>Video Range</h3><p className={styles.cardSub}>Control which video IDs are visible to all viewers</p></div>
                 </div>
-                <div className={styles.settingsRow}>
-                  <div style={{ flex: 1 }}>
-                    <label className={styles.fieldLabel}>Start ID</label>
-                    <input className="input" type="number" min="1" value={settings.start}
-                      onChange={e => setSettings(s => ({ ...s, start: +e.target.value }))} />
-                  </div>
-                  <div className={styles.settingsDash}>—</div>
-                  <div style={{ flex: 1 }}>
-                    <label className={styles.fieldLabel}>End ID</label>
-                    <input className="input" type="number" min="1" value={settings.end}
-                      onChange={e => setSettings(s => ({ ...s, end: +e.target.value }))} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label className={styles.fieldLabel}>Total Videos</label>
-                    <div className={styles.totalBox}>{(settings.end - settings.start + 1).toLocaleString()} videos</div>
+
+                {/* Primary range */}
+                <div style={{ marginBottom: 8 }}>
+                  <label className={styles.fieldLabel} style={{ marginBottom: 6, display: 'block' }}>Primary Range</label>
+                  <div className={styles.settingsRow}>
+                    <div style={{ flex: 1 }}>
+                      <label className={styles.fieldLabel}>Start ID</label>
+                      <input className="input" type="number" min="1" value={settings.start}
+                        onChange={e => setSettings(s => ({ ...s, start: +e.target.value }))} />
+                    </div>
+                    <div className={styles.settingsDash}>—</div>
+                    <div style={{ flex: 1 }}>
+                      <label className={styles.fieldLabel}>End ID</label>
+                      <input className="input" type="number" min="1" value={settings.end}
+                        onChange={e => setSettings(s => ({ ...s, end: +e.target.value }))} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label className={styles.fieldLabel}>Total Videos</label>
+                      <div className={styles.totalBox}>{(settings.end - settings.start + 1).toLocaleString()} videos</div>
+                    </div>
                   </div>
                 </div>
-                <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={saveSettings} disabled={savingSet}>
+
+                {/* Extra ranges */}
+                {(settings.extraRanges || []).map((rng, i) => (
+                  <div key={i} style={{ marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <label className={styles.fieldLabel} style={{ margin: 0 }}>Extra Range #{i + 1}</label>
+                      <button style={{ background: 'rgba(239,68,68,.15)', color: '#f87171', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, padding: '2px 10px', cursor: 'pointer', fontSize: 13 }}
+                        onClick={() => setSettings(s => ({ ...s, extraRanges: (s.extraRanges || []).filter((_, j) => j !== i) }))}>✕ Remove</button>
+                    </div>
+                    <div className={styles.settingsRow}>
+                      <div style={{ flex: 1 }}>
+                        <label className={styles.fieldLabel}>Start ID</label>
+                        <input className="input" type="number" min="1" value={rng.start}
+                          onChange={e => setSettings(s => ({ ...s, extraRanges: s.extraRanges.map((r, j) => j === i ? { ...r, start: +e.target.value } : r) }))} />
+                      </div>
+                      <div className={styles.settingsDash}>—</div>
+                      <div style={{ flex: 1 }}>
+                        <label className={styles.fieldLabel}>End ID</label>
+                        <input className="input" type="number" min="1" value={rng.end}
+                          onChange={e => setSettings(s => ({ ...s, extraRanges: s.extraRanges.map((r, j) => j === i ? { ...r, end: +e.target.value } : r) }))} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label className={styles.fieldLabel}>Total</label>
+                        <div className={styles.totalBox}>{(rng.end - rng.start + 1).toLocaleString()} videos</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Add extra range button */}
+                <button style={{ background: 'rgba(139,92,246,.15)', color: '#a78bfa', border: '1px dashed rgba(139,92,246,.4)', borderRadius: 8, padding: '8px 18px', cursor: 'pointer', fontSize: 14, marginBottom: 16, marginTop: 4 }}
+                  onClick={() => setSettings(s => ({ ...s, extraRanges: [...(s.extraRanges || []), { start: 2500, end: 2560 }] }))}
+                >+ Add Extra Range</button>
+
+                <button className="btn btn-primary" style={{ marginTop: 4, display: 'block' }} onClick={saveSettings} disabled={savingSet}>
                   {savingSet ? 'Saving…' : 'Save Range'}
                 </button>
                 <div className={styles.infoGrid}>
-                  <InfoRow label="Current Range" value={`#${settings.start} – #${settings.end}`} />
+                  <InfoRow label="Primary Range" value={`#${settings.start} – #${settings.end}`} />
                   <InfoRow label="CDN Source" value={settings.cdnId} />
-                  <InfoRow label="Videos in Range" value={(settings.end - settings.start + 1).toLocaleString()} />
-                  <InfoRow label="Missing / Hidden" value="Auto-detected at load time" />
+                  <InfoRow label="Primary Videos" value={(settings.end - settings.start + 1).toLocaleString()} />
+                  {(settings.extraRanges || []).map((r, i) => (
+                    <InfoRow key={i} label={`Extra Range #${i+1}`} value={`#${r.start} – #${r.end} (${r.end - r.start + 1} videos)`} />
+                  ))}
                 </div>
               </div>
             </div>

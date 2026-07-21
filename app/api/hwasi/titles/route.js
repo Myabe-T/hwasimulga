@@ -19,7 +19,9 @@ async function getUser(req) {
 // GET /api/hwasi/titles — returns all titles (public, for gallery)
 export async function GET() {
   const titles = await getVideoTitles();
-  return NextResponse.json({ titles });
+  return NextResponse.json({ titles }, {
+    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+  });
 }
 
 // POST /api/hwasi/titles — set a title (admin/advisor only)
