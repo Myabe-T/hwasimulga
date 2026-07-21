@@ -87,6 +87,9 @@ export default function GalleryPage() {
   const [premiumWelcomePopup, setPremiumWelcomePopup] = useState(false);
   const [adminMessage, setAdminMessage] = useState(null); // { message, from, timestamp }
   const FREE_BOOKMARK_LIMIT = 8;
+  const [theme, setTheme] = useState('dark'); // 'dark' | 'light'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Global epoch-based countdown (same for everyone)
   const EPOCH_START = 1704067200;
@@ -94,6 +97,15 @@ export default function GalleryPage() {
   const calcSecs = () => { const n = Math.floor(Date.now() / 1000); const e = (n - EPOCH_START) % PERIOD_SECS; return PERIOD_SECS - e; };
   const [globalSecs, setGlobalSecs] = useState(calcSecs);
   useEffect(() => { const id = setInterval(() => setGlobalSecs(calcSecs()), 1000); return () => clearInterval(id); }, []);
+
+  // Load saved theme
+  useEffect(() => { try { const s = localStorage.getItem('dh_theme'); if (s) setTheme(s); } catch {} }, []);
+  // Apply theme to <html>
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('dh_theme', theme); } catch {}
+  }, [theme]);
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
   const gH = Math.floor(globalSecs / 3600), gM = Math.floor((globalSecs % 3600) / 60), gS = globalSecs % 60;
   const globalTimer = `${String(gH).padStart(2, '0')}:${String(gM).padStart(2, '0')}:${String(gS).padStart(2, '0')}`;
 
@@ -596,186 +608,270 @@ export default function GalleryPage() {
     </div>
   );
 
+  // ── Search filter ──
+  const searchedTabIds = () => {
+    const base = tabIds();
+    if (!searchQuery.trim()) return base;
+    const q = searchQuery.toLowerCase().trim();
+    return base.filter(id => (videoTitles[String(id)] || '').toLowerCase().includes(q));
+  };
+
+  const initials = (user.avatar || user.username?.slice(0, 2) || 'U').toUpperCase();
+  const planLabel = viewStatus?.isPremium ? 'PREMIUM' : (user.role === 'admin' ? 'ADMIN' : user.role === 'advisor' ? 'ADVISOR' : 'FREE PLAN');
+
+  // Sidebar nav items
+  const sidebarNav = [
+    { id: 'gallery', icon: '🏠', label: 'Home', onClick: () => { setView('gallery'); setSidebarOpen(false); } },
+    { id: 'bookmarks', icon: '🔖', label: 'Bookmarks', onClick: () => { setView('bookmarks'); setSidebarOpen(false); } },
+    { id: 'history', icon: '🕐', label: 'History', onClick: () => { setView('history'); setSidebarOpen(false); } },
+    ...(isAdminOrAdvisor ? [{ id: 'admin', icon: '🛡', label: user.role === 'advisor' ? 'Advisor Panel' : 'Admin Panel', href: user.role === 'advisor' ? '/advisor' : '/admin' }] : []),
+  ];
+
   // ── LOGGED IN VIEW ──
   return (
-    <div className={styles.page}>
+    <div className={styles.shell} onClick={e => { if (userMenuOpen && !e.target.closest('[data-usermenu]')) setUserMenuOpen(false); }}>
 
-      {/* ── HEADER ── */}
-      <header className={styles.header}>
-        <div className={styles.headerInner}>
-          {/* Left: Logo */}
-          <div className={styles.brand}>
-            <img src="/logo.png" alt="" className={styles.brandLogo} />
-            <span className={styles.brandName}>DesiHawas</span>
+      {/* ══ SIDEBAR ══ */}
+      <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
+        {/* Brand */}
+        <div className={styles.sidebarBrand}>
+          <img src="/logo.png" alt="" className={styles.sidebarLogo} />
+          <span className={styles.sidebarBrandName}>DesiHawas</span>
+          <button className={styles.sidebarClose} onClick={() => setSidebarOpen(false)}>✕</button>
+        </div>
+
+        {/* Appearance toggle */}
+        <div className={styles.sidebarApp}>
+          <span className={styles.sidebarAppLabel}>Appearance</span>
+          <button className={styles.themeToggle} onClick={toggleTheme}>
+            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+          </button>
+        </div>
+
+        {/* Nav */}
+        <nav className={styles.sidebarNav}>
+          {sidebarNav.map(item => item.href ? (
+            <a key={item.id} href={item.href} className={styles.sidebarItem}>
+              <span className={styles.sidebarIcon}>{item.icon}</span>{item.label}
+            </a>
+          ) : (
+            <button key={item.id} className={`${styles.sidebarItem} ${view === item.id ? styles.sidebarActive : ''}`}
+              onClick={item.onClick}>
+              <span className={styles.sidebarIcon}>{item.icon}</span>{item.label}
+            </button>
+          ))}
+          <div className={styles.sidebarDivider} />
+          <a href="/premium" className={`${styles.sidebarItem} ${styles.sidebarPremium}`}>
+            <span className={styles.sidebarIcon}>👑</span>Buy Premium
+          </a>
+          <button className={styles.sidebarItem} onClick={() => { setView('profile'); setSidebarOpen(false); }}>
+            <span className={styles.sidebarIcon}>👤</span>My Profile
+          </button>
+        </nav>
+
+        {/* Footer */}
+        <div className={styles.sidebarFooter}>
+          <div className={styles.sidebarAvatar}>{initials}</div>
+          <div className={styles.sidebarUserInfo}>
+            <div className={styles.sidebarUserName}>{user.displayName || user.username}</div>
+            <div className={styles.sidebarUserPlan}>{planLabel}</div>
+          </div>
+          <button className={styles.sidebarLogout} onClick={logout} title="Sign Out">⏏</button>
+        </div>
+      </aside>
+
+      {/* Sidebar overlay (mobile) */}
+      {sidebarOpen && <div className={styles.sidebarOverlay} onClick={() => setSidebarOpen(false)} />}
+
+      {/* ══ MAIN ══ */}
+      <div className={styles.mainWrap}>
+
+        {/* ── HEADER ── */}
+        <header className={styles.header}>
+          {/* Hamburger (mobile) */}
+          <button className={styles.hamburger} onClick={() => setSidebarOpen(o => !o)}>☰</button>
+
+          {/* Brand (mobile only) */}
+          <a href="/gallery" className={styles.headerBrand}>
+            <img src="/logo.png" alt="" className={styles.headerBrandLogo} />
+            <span className={styles.headerBrandName}>DesiHawas</span>
+          </a>
+
+          {/* Search */}
+          <div className={styles.searchWrap}>
+            <input
+              className={styles.searchInput}
+              placeholder="Search videos..."
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setPage(0); setCuratedPage(0); }}
+            />
+            <span className={styles.searchIcon}>🔍</span>
           </div>
 
-          {/* Center: Nav (desktop only) */}
-          <nav className={styles.desktopNav}>
-            <button onClick={() => setView('gallery')} className={`${styles.navBtn} ${view === 'gallery' ? styles.navActive : ''}`}>🏠 Home</button>
-            <button onClick={() => setView('bookmarks')} className={`${styles.navBtn} ${view === 'bookmarks' ? styles.navActive : ''}`}>🔖 Bookmarks</button>
-            {isAdminOrAdvisor && <a href={user?.role === 'advisor' ? '/advisor' : '/admin'} className={styles.navBtn}>🛡 {user?.role === 'advisor' ? 'Advisor' : 'Admin'}</a>}
-          </nav>
-
-          {/* Right: chips + user */}
+          {/* Right side */}
           <div className={styles.headerRight}>
-            {viewStatus && !viewStatus.isPremium && user.role === 'viewer' && (
-              <div className={styles.freeChip} onClick={() => window.location.href = '/premium'}
-                title="Upgrade to Premium for unlimited access">
-                ✦ Upgrade
-              </div>
-            )}
-            {viewStatus?.isPremium && (
-              <button className={styles.premiumBadge} onClick={() => setPremiumInfo(viewStatus)}>
-                👑
-              </button>
-            )}
+            {/* Theme toggle */}
+            <button className={styles.themeBtn} onClick={toggleTheme} title="Toggle theme">
+              {theme === 'dark' ? '☀️' : '🌙'}
+            </button>
 
-            {/* User avatar — click to show dropdown */}
-            <div className={styles.userChipWrap}>
-              <div className={styles.userChip} onClick={() => setUserMenuOpen(o => !o)}>
-                <div className={styles.avatar}>{(user.avatar || user.username?.slice(0, 2) || 'U').toUpperCase()}</div>
+            {/* User chip */}
+            <div className={styles.userChipWrap} data-usermenu="true">
+              <div className={styles.userChip} onClick={() => setUserMenuOpen(o => !o)} data-usermenu="true">
+                <div className={styles.avatar}>{initials}</div>
                 <span className={styles.userName}>{user.displayName || user.username}</span>
-                <span style={{ fontSize: 10, opacity: .5, marginLeft: 2 }}>▾</span>
+                <span className={`${styles.userPlanBadge} ${viewStatus?.isPremium ? styles.userPlanBadgePrem : ''}`}>{planLabel}</span>
+                <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 2 }}>▾</span>
               </div>
+
               {userMenuOpen && (
-                <div className={styles.userDropdown}>
-                  <div className={styles.userDropdownHeader}>
-                    <div className={styles.userDropdownAvatar}>{(user.avatar || user.username?.slice(0, 2) || 'U').toUpperCase()}</div>
+                <div className={styles.userDropdown} data-usermenu="true">
+                  {/* Header */}
+                  <div className={styles.udHeader}>
+                    <div className={styles.udAvatar}>{initials}</div>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{user.displayName || user.username}</div>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', textTransform: 'capitalize' }}>{user.role}</div>
+                      <div className={styles.udName}>{user.displayName || user.username}</div>
+                      <div className={styles.udPlan}>{planLabel}</div>
                     </div>
                   </div>
-                  <div className={styles.userDropdownDivider} />
-                  <button className={styles.userDropdownItem} onClick={() => { setChangePwdModal(true); setUserMenuOpen(false); }}>
-                    🔑 Change Password
+                  {/* Appearance row */}
+                  <div className={styles.udAppRow}>
+                    APPEARANCE
+                    <button className={styles.themeToggle} onClick={toggleTheme}>
+                      {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+                    </button>
+                  </div>
+                  <button className={styles.udItem} onClick={() => { setView('profile'); setUserMenuOpen(false); }}>
+                    👤 My Profile
                   </button>
-                  <button className={styles.userDropdownItem} onClick={() => { logout(); }}>
+                  <button className={styles.udItem} onClick={() => { setView('bookmarks'); setUserMenuOpen(false); }}>
+                    🔖 My Bookmarks
+                  </button>
+                  {!viewStatus?.isPremium && user.role === 'viewer' && (
+                    <a href="/premium" className={styles.udItem} style={{ color: '#f59e0b' }}>
+                      👑 Buy Premium
+                    </a>
+                  )}
+                  <div className={styles.udDivider} />
+                  <button className={`${styles.udItem} ${styles.udItemDanger}`} onClick={logout}>
                     🚪 Sign Out
                   </button>
                 </div>
               )}
             </div>
-
-            <button className={styles.hamburger} onClick={() => setMobileMenuOpen(o => !o)}>
-              {mobileMenuOpen ? '✕' : '☰'}
-            </button>
           </div>
-        </div>
+        </header>
 
-        {/* Mobile dropdown menu */}
-        {mobileMenuOpen && (
-          <div className={styles.mobileMenu}>
-            <button onClick={() => { setView('gallery'); setMobileMenuOpen(false); }}>🏠 Home</button>
-            <button onClick={() => { setView('bookmarks'); setMobileMenuOpen(false); }}>🔖 Bookmarks</button>
-            {isAdminOrAdvisor && <a href={user?.role === 'advisor' ? '/advisor' : '/admin'}>🛡 {user?.role === 'advisor' ? 'Advisor' : 'Admin'}</a>}
-            <button onClick={() => { setChangePwdModal(true); setMobileMenuOpen(false); }}>🔑 Change Password</button>
-            <button onClick={logout} style={{ color: '#f87171' }}>🚪 Sign Out</button>
-          </div>
-        )}
-      </header>
-
-      {/* ── GALLERY (home + tabs) ── */}
-      {view === 'gallery' && (
-        <main className={styles.main}>
-          {/* Tab pills */}
-          <div className={styles.tabBar}>
-            {HOME_TABS.map(t => (
-              <button key={t.id} onClick={() => setHomeTab(t.id)}
-                className={`${styles.tab} ${homeTab === t.id ? styles.tabActive : ''}`}>
-                <span>{t.icon}</span><span>{t.label}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Section title */}
-          <div className={styles.sectionHead}>
-            <div className={styles.sectionAccent} />
-            <h2 className={styles.sectionTitle}>
-            {homeTab === 'foryou'
-              ? '🎦 Entire Collection'
-              : `${HOME_TABS.find(t => t.id === homeTab)?.icon} All ${HOME_TABS.find(t => t.id === homeTab)?.label}`}
-            </h2>
-          </div>
-
-          {/* Video grid */}
-          {curatedLoading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '20vh' }}>
-              <div className={styles.splashSpinner} style={{ width: 40, height: 40, borderWidth: 3 }} />
-            </div>
-          ) : (
-          <div className={styles.grid}>
-            {tabIds().map((id, i) => (
-              <div key={id} style={{ position: 'relative' }}>
-                {homeTab === 'instaviral' && !isPremium && (
-                  <div style={{ position:'absolute',inset:0,zIndex:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.45)',borderRadius:14,cursor:'pointer' }}
-                    onClick={(e) => { e.stopPropagation(); setInstaViralBlock(true); }}>
-                    <div style={{ fontSize:32, marginBottom:4 }}>💎</div>
-                    <div style={{ fontSize:10, fontWeight:800, color:'#f59e0b', letterSpacing:1.2, textTransform:'uppercase' }}>Premium Only</div>
-                  </div>
-                )}
-                <VideoCard id={id} index={i}
-                  title={videoTitles[String(id)] || null}
-                  hasThumb={thumbIds.has(id)}
-                  isBookmarked={bookmarks.has(id)}
-                  isAdmin={isAdminOrAdvisor}
-                  showHash={isAdminOrAdvisor}
-                  onPlay={() => openModal(id)}
-                  onDownload={instaviralIds.includes(Number(id)) ? null : (e) => handleDownload(e, id)}
-                  onBookmark={(e) => toggleBookmark(e, id)}
-                  onReport={(e) => { e.stopPropagation(); setReportModal(id); }}
-                  onDelete={isAdminOrAdvisor ? (e) => { e.stopPropagation(); setDeleteModal({ id }); setDeleteReason('duplicate'); } : null}
-                />
+        {/* ── GALLERY ── */}
+        {(view === 'gallery' || view === 'history') && (
+          <main className={styles.main}>
+            {/* Dynamic Island Tabs */}
+            <div className={styles.tabContainer}>
+              <div className={styles.tabPill}>
+                {HOME_TABS.map(t => (
+                  <button key={t.id} onClick={() => { setHomeTab(t.id); setPage(0); setCuratedPage(0); }}
+                    className={`${styles.tab} ${homeTab === t.id ? styles.tabActive : ''}`}>
+                    <span>{t.icon}</span><span>{t.label}</span>
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
-          )}
-          {/* Pagination — unified for all tabs */}
-          {(() => {
-            const t = tabTotal();
-            if (t <= 1) return null;
-            const isForYou = homeTab === 'foryou';
-            const p = isForYou ? page : curatedPage;
-            const setter = isForYou
-              ? (np) => { setPage(Math.max(0, Math.min(np, t - 1))); window.scrollTo({ top: 0, behavior: 'smooth' }); }
-              : (np) => { setCuratedPage(Math.max(0, Math.min(np, t - 1))); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-            return <Pagination page={p} total={t} onPage={setter} />;
-          })()}
-        </main>
-      )}
+            </div>
 
-      {/* ── BOOKMARKS ── */}
-      {view === 'bookmarks' && (
-        <main className={styles.main}>
-          <div className={styles.sectionHead}>
-            <div className={styles.sectionAccent} />
-            <h2 className={styles.sectionTitle}>🔖 Your Bookmarks</h2>
-          </div>
-          {bookmarkIds.length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}>🔖</div>
-              <h3>No bookmarks yet</h3>
-              <p>Tap the bookmark icon on any video to save it here</p>
-              <button className={styles.btnPrimary} onClick={() => setView('gallery')}>Browse Videos</button>
+            {/* Section title */}
+            <div className={styles.sectionHead}>
+              <div className={styles.sectionAccent} />
+              <h2 className={styles.sectionTitle}>
+                {searchQuery ? `🔍 "${searchQuery}"` : homeTab === 'foryou' ? '🎦 Entire Collection' : `${HOME_TABS.find(t => t.id === homeTab)?.icon} All ${HOME_TABS.find(t => t.id === homeTab)?.label}`}
+              </h2>
+              {searchQuery && <span className={styles.sectionCount}>{searchedTabIds().length} results</span>}
             </div>
-          ) : (
-            <div className={styles.grid}>
-              {bookmarkIds.map((id, i) => (
-                <VideoCard key={id} id={id} index={i}
-                  title={videoTitles[String(id)] || null}
-                  hasThumb={thumbIds.has(id)} isBookmarked={true}
-                  isAdmin={isAdminOrAdvisor} showHash={isAdminOrAdvisor}
-                  onPlay={() => openModal(id)}
-                  onDownload={instaviralIds.includes(Number(id)) ? null : (e) => handleDownload(e, id)}
-                  onBookmark={(e) => toggleBookmark(e, id)}
-                  onReport={(e) => { e.stopPropagation(); setReportModal(id); }}
-                  onDelete={isAdminOrAdvisor ? (e) => { e.stopPropagation(); setDeleteModal({ id }); } : null}
-                />
-              ))}
+
+            {/* Grid */}
+            {curatedLoading && homeTab !== 'foryou' ? (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '20vh' }}>
+                <div className={styles.splashSpinner} style={{ width: 40, height: 40 }} />
+              </div>
+            ) : (
+              <div className={styles.grid}>
+                {searchedTabIds().map((id, i) => (
+                  <div key={id} style={{ position: 'relative' }}>
+                    {homeTab === 'instaviral' && !isPremium && (
+                      <div style={{ position:'absolute',inset:0,zIndex:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.5)',borderRadius:12,cursor:'pointer' }}
+                        onClick={e => { e.stopPropagation(); setInstaViralBlock(true); }}>
+                        <div style={{ fontSize:30 }}>💎</div>
+                        <div style={{ fontSize:10, fontWeight:800, color:'#f59e0b', letterSpacing:1, textTransform:'uppercase', marginTop:4 }}>Premium Only</div>
+                      </div>
+                    )}
+                    <VideoCard id={id} index={i}
+                      title={videoTitles[String(id)] || null}
+                      hasThumb={thumbIds.has(id)}
+                      isBookmarked={bookmarks.has(id)}
+                      isAdmin={isAdminOrAdvisor}
+                      showHash={isAdminOrAdvisor}
+                      onPlay={() => openModal(id)}
+                      onDownload={instaviralIds.includes(Number(id)) ? null : e => handleDownload(e, id)}
+                      onBookmark={e => toggleBookmark(e, id)}
+                      onReport={e => { e.stopPropagation(); setReportModal(id); }}
+                      onDelete={isAdminOrAdvisor ? e => { e.stopPropagation(); setDeleteModal({ id }); setDeleteReason('duplicate'); } : null}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {!searchQuery && (() => {
+              const t = tabTotal();
+              if (t <= 1) return null;
+              const isForYou = homeTab === 'foryou';
+              const p = isForYou ? page : curatedPage;
+              const setter = isForYou
+                ? np => { setPage(Math.max(0, Math.min(np, t-1))); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+                : np => { setCuratedPage(Math.max(0, Math.min(np, t-1))); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+              return <Pagination page={p} total={t} onPage={setter} />;
+            })()}
+          </main>
+        )}
+
+        {/* ── BOOKMARKS ── */}
+        {view === 'bookmarks' && (
+          <main className={styles.main}>
+            <div className={styles.sectionHead}>
+              <div className={styles.sectionAccent} />
+              <h2 className={styles.sectionTitle}>🔖 Your Bookmarks</h2>
+              <span className={styles.sectionCount}>{bookmarkIds.length} saved</span>
             </div>
-          )}
-        </main>
-      )}
+            {bookmarkIds.length === 0 ? (
+              <div className={styles.emptyState}>
+                <div className={styles.emptyIcon}>🔖</div>
+                <h3>No bookmarks yet</h3>
+                <p>Tap the bookmark icon on any video to save it here</p>
+                <button className={styles.btnPrimary} onClick={() => setView('gallery')}>Browse Videos</button>
+              </div>
+            ) : (
+              <div className={styles.grid}>
+                {bookmarkIds.map((id, i) => (
+                  <VideoCard key={id} id={id} index={i}
+                    title={videoTitles[String(id)] || null}
+                    hasThumb={thumbIds.has(id)} isBookmarked={true}
+                    isAdmin={isAdminOrAdvisor} showHash={isAdminOrAdvisor}
+                    onPlay={() => openModal(id)}
+                    onDownload={instaviralIds.includes(Number(id)) ? null : e => handleDownload(e, id)}
+                    onBookmark={e => toggleBookmark(e, id)}
+                    onReport={e => { e.stopPropagation(); setReportModal(id); }}
+                    onDelete={isAdminOrAdvisor ? e => { e.stopPropagation(); setDeleteModal({ id }); } : null}
+                  />
+                ))}
+              </div>
+            )}
+          </main>
+        )}
+
+        {/* ── PROFILE VIEW ── */}
+        {view === 'profile' && (
+          <ProfileView user={user} viewStatus={viewStatus} plans={plans} myHistory={myHistory} bookmarkIds={bookmarkIds} onClose={() => setView('gallery')} onChangePwd={() => setChangePwdModal(true)} onLogout={logout} />
+        )}
+
 
       {modal && (
         <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
@@ -1173,7 +1269,7 @@ export default function GalleryPage() {
         </div>
       )}
 
-      {/* ── ADMIN / UTR NOTIFICATION POPUP ── */}
+      {/* Admin message */}
       {adminMessage && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(8px)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: adminMessage.type === 'utr_rejected' ? 'linear-gradient(135deg,#1a0505,#2d0a0a)' : 'linear-gradient(135deg,#130a20,#1a0d2e)', border: `1px solid ${adminMessage.type === 'utr_rejected' ? 'rgba(248,113,113,.4)' : 'rgba(251,191,36,.4)'}`, borderRadius: 20, padding: 28, width: '100%', maxWidth: 420, textAlign: 'center', boxShadow: '0 30px 80px rgba(0,0,0,.7)' }}>
@@ -1197,7 +1293,284 @@ export default function GalleryPage() {
         </div>
       )}
 
+      </div>
     </div>
+  );
+}
+
+/* ════════════════════════════════════
+   ProfileView — iTeraPlay style tabs
+   ════════════════════════════════════ */
+function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose, onChangePwd, onLogout }) {
+  const [tab, setTab] = useState('account');
+  const [displayName, setDisplayName] = useState(user.displayName || '');
+  const [email, setEmail] = useState(user.email || '');
+  const [saveMsg, setSaveMsg] = useState('');
+  const [sessions, setSessions] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ old: '', new: '', confirm: '' });
+  const [pwdMsg, setPwdMsg] = useState('');
+  const [showOld, setShowOld] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const tabs = ['account', 'stats', 'sessions', 'subscriptions', 'transactions'];
+
+  useEffect(() => {
+    if (tab === 'sessions') {
+      setLoading(true);
+      fetch('/api/hwasi/sessions').then(r => r.json()).then(d => setSessions(d.sessions || [])).catch(() => {}).finally(() => setLoading(false));
+    }
+    if (tab === 'transactions') {
+      setLoading(true);
+      fetch('/api/hwasi/utr').then(r => r.json()).then(d => setTransactions(d.transactions || [])).catch(() => {}).finally(() => setLoading(false));
+    }
+  }, [tab]);
+
+  async function saveAccount() {
+    setSaveMsg('');
+    try {
+      const r = await fetch('/api/hwasi/users/me', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName, email }) });
+      const d = await r.json();
+      if (d.ok) setSaveMsg('✓ Saved!');
+      else setSaveMsg(d.error || 'Failed');
+    } catch { setSaveMsg('Network error'); }
+  }
+
+  async function changePassword() {
+    setPwdMsg('');
+    if (pwdForm.new !== pwdForm.confirm) { setPwdMsg('New passwords do not match'); return; }
+    if (pwdForm.new.length < 6) { setPwdMsg('Password must be at least 6 characters'); return; }
+    try {
+      const r = await fetch('/api/hwasi/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldPassword: pwdForm.old, newPassword: pwdForm.new }) });
+      const d = await r.json();
+      if (!r.ok) { setPwdMsg(d.error || 'Failed'); return; }
+      setPwdMsg('✓ Password changed!');
+      setPwdForm({ old: '', new: '', confirm: '' });
+    } catch { setPwdMsg('Network error'); }
+  }
+
+  async function revokeSession(sessionId) {
+    await fetch('/api/hwasi/sessions', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }) }).catch(() => {});
+    setSessions(p => p.filter(s => s.id !== sessionId));
+  }
+
+  const initials = (user.displayName || user.username || 'U').slice(0, 2).toUpperCase();
+  const planLabel = viewStatus?.isPremium ? 'PREMIUM' : user.role === 'admin' ? 'ADMIN' : user.role === 'advisor' ? 'ADVISOR' : 'FREE PLAN';
+  const watchCount = myHistory?.length || 0;
+
+  const inp = { background: 'var(--inp)', border: '1px solid var(--inp-brd)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: 'var(--text1)', width: '100%', outline: 'none', fontFamily: 'inherit' };
+
+  return (
+    <main style={{ flex: 1, padding: '24px 20px 60px', maxWidth: 720, width: '100%', margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 13, fontFamily: 'inherit', padding: '4px 8px', borderRadius: 8, transition: 'background .15s' }}
+            onMouseOver={e => e.currentTarget.style.background = 'var(--shi)'} onMouseOut={e => e.currentTarget.style.background = 'none'}>
+            ← Back
+          </button>
+        </div>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text1)', margin: '0 0 4px' }}>Profile Settings</h1>
+        <p style={{ fontSize: 13, color: 'var(--text3)', margin: 0 }}>Manage your account information and preferences</p>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 24, overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {tabs.map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{ padding: '10px 16px', background: 'none', border: 'none', borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent', color: tab === t ? 'var(--accent)' : 'var(--text3)', fontWeight: 700, fontSize: 13, cursor: 'pointer', textTransform: 'capitalize', whiteSpace: 'nowrap', fontFamily: 'inherit', transition: 'color .15s', marginBottom: -1 }}>
+            {t.charAt(0).toUpperCase() + t.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {/* Account Tab */}
+      {tab === 'account' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Account Info */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>👤 Account Info</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+              <div style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg,#7c3aed,#ec4899)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{initials}</div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text1)' }}>{user.displayName || user.username}</div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: viewStatus?.isPremium ? '#a78bfa' : '#f59e0b', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>{planLabel}</div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Full Name</label>
+                <input style={inp} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Email Address</label>
+                <input style={inp} value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" type="email" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button onClick={saveAccount}
+                style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Save Changes
+              </button>
+              {saveMsg && <span style={{ fontSize: 13, color: saveMsg.startsWith('✓') ? '#4ade80' : '#f87171' }}>{saveMsg}</span>}
+            </div>
+          </div>
+
+          {/* Change Password */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>🔒 Change Password</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Current Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input style={inp} type={showOld ? 'text' : 'password'} placeholder="Enter current password" value={pwdForm.old} onChange={e => setPwdForm(p => ({ ...p, old: e.target.value }))} />
+                  <button onClick={() => setShowOld(v => !v)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 14 }}>{showOld ? '🚵' : '👁'}</button>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>New Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input style={inp} type={showNew ? 'text' : 'password'} placeholder="Min 6 characters" value={pwdForm.new} onChange={e => setPwdForm(p => ({ ...p, new: e.target.value }))} />
+                  <button onClick={() => setShowNew(v => !v)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 14 }}>{showNew ? '🚵' : '👁'}</button>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Confirm New Password</label>
+                <input style={inp} type="password" placeholder="Repeat new password" value={pwdForm.confirm} onChange={e => setPwdForm(p => ({ ...p, confirm: e.target.value }))} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button onClick={changePassword}
+                  style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Update Password
+                </button>
+                {pwdMsg && <span style={{ fontSize: 13, color: pwdMsg.startsWith('✓') ? '#4ade80' : '#f87171' }}>{pwdMsg}</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats Tab */}
+      {tab === 'stats' && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>📊 Activity Stats</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {[
+              { icon: '▶️', label: 'Watched Videos', value: watchCount, color: '#7c3aed' },
+              { icon: '🔖', label: 'Saved Bookmarks', value: bookmarkIds.length, color: '#10b981' },
+              { icon: '⬇️', label: 'Total Downloads', value: 0, color: '#ec4899' },
+              { icon: '💎', label: planLabel, value: '', sub: viewStatus?.isPremium ? 'Premium Access' : 'Free Plan', color: '#f59e0b' },
+              { icon: '📅', label: 'Joined On', value: '', sub: user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A', color: '#3b82f6' },
+            ].map((s, i) => (
+              <div key={i} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 14, padding: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontSize: 28 }}>{s.icon}</div>
+                {s.value !== '' && <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text1)' }}>{s.value}</div>}
+                <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.label}</div>
+                {s.sub && <div style={{ fontSize: 13, fontWeight: 700, color: s.color }}>{s.sub}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sessions Tab */}
+      {tab === 'sessions' && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>📱 Active Sessions</h2>
+          {loading ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>Loading...</div> :
+            sessions.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>No sessions found</div> :
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {sessions.map((s, i) => (
+                <div key={i} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text1)' }}>{s.device || 'Unknown Device'}</span>
+                      {s.isCurrent && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 100, background: 'rgba(16,185,129,.2)', color: '#34d399' }}>CURRENT</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text3)' }}>IP: {s.ip || 'N/A'}</div>
+                    {s.lastUsed && <div style={{ fontSize: 12, color: 'var(--text3)' }}>⏰ Last used: {new Date(s.lastUsed).toLocaleString('en-IN')}</div>}
+                  </div>
+                  {!s.isCurrent && (
+                    <button onClick={() => revokeSession(s.id)}
+                      style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,.12)', color: '#f87171', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+                      Revoke
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          }
+        </div>
+      )}
+
+      {/* Subscriptions Tab */}
+      {tab === 'subscriptions' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>👑 Subscription</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 16, background: viewStatus?.isPremium ? 'rgba(124,58,237,.1)' : 'rgba(245,158,11,.08)', border: `1px solid ${viewStatus?.isPremium ? 'rgba(124,58,237,.3)' : 'rgba(245,158,11,.25)'}`, borderRadius: 14, marginBottom: 20 }}>
+              <div style={{ fontSize: 32 }}>{viewStatus?.isPremium ? '👑' : '🔒'}</div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: viewStatus?.isPremium ? '#a78bfa' : '#f59e0b' }}>{viewStatus?.isPremium ? 'Premium Active' : 'Free Plan'}</div>
+                {viewStatus?.isPremium && viewStatus.expiresAt && (
+                  <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2 }}>Expires: {new Date(viewStatus.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                )}
+                {!viewStatus?.isPremium && <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2 }}>Upgrade for unlimited access</div>}
+              </div>
+            </div>
+            {!viewStatus?.isPremium && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>
+                {(plans ? Object.values(plans) : [{ id: 'basic', label: 'Basic', price: 100, days: 14, icon: '⚡' }, { id: 'plus', label: 'Plus', price: 300, days: 60, icon: '🚀', popular: true }, { id: 'pro', label: 'Pro', price: 599, days: 1095, icon: '👑' }]).map(p => (
+                  <a key={p.id} href="/premium"
+                    style={{ display: 'block', padding: '14px 8px', borderRadius: 14, border: p.popular ? '1px solid var(--accent)' : '1px solid var(--border)', background: p.popular ? 'var(--accent-s)' : 'var(--surface2)', textAlign: 'center', textDecoration: 'none', transition: 'transform .2s' }}
+                    onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={e => e.currentTarget.style.transform = 'none'}>
+                    <div style={{ fontSize: 22 }}>{p.icon}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', margin: '4px 0 2px' }}>{p.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text1)' }}>₹{p.price}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{p.days} days</div>
+                  </a>
+                ))}
+              </div>
+            )}
+            <a href="/premium"
+              style={{ display: 'block', padding: '12px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none', textAlign: 'center' }}>
+              {viewStatus?.isPremium ? 'Extend Plan →' : '👑 Upgrade to Premium →'}
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Transactions Tab */}
+      {tab === 'transactions' && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>💳 Transactions</h2>
+          {loading ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>Loading...</div> :
+            transactions.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>💳</div>
+                <div style={{ color: 'var(--text3)', fontSize: 14 }}>No transactions yet</div>
+                <a href="/premium" style={{ display: 'inline-block', marginTop: 12, padding: '10px 22px', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', borderRadius: 10, textDecoration: 'none', fontWeight: 700, fontSize: 13 }}>Get Premium</a>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {transactions.map((t, i) => (
+                  <div key={i} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text1)', marginBottom: 2 }}>UTR: {t.utr}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text3)' }}>{t.plan} · ₹{t.amount}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{t.submittedAt ? new Date(t.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</div>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 100, textTransform: 'uppercase', letterSpacing: '.05em', background: t.status === 'approved' ? 'rgba(16,185,129,.15)' : t.status === 'rejected' ? 'rgba(239,68,68,.15)' : 'rgba(245,158,11,.15)', color: t.status === 'approved' ? '#34d399' : t.status === 'rejected' ? '#f87171' : '#fbbf24' }}>
+                      {t.status || 'Pending'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          }
+        </div>
+      )}
+    </main>
   );
 }
 

@@ -2,26 +2,70 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Gallery dark tokens (default, no data-theme attr) ── */
 :root {
-  --bg: #030308;
+  /* Legacy page vars */
   --bg2: #07070f;
-  --surface: rgba(255,255,255,0.03);
-  --surface2: rgba(255,255,255,0.06);
-  --border: rgba(255,255,255,0.07);
   --border2: rgba(255,255,255,0.12);
-  --accent: #7c3aed;
   --accent2: #a78bfa;
   --accent3: #c4b5fd;
   --pink: #ec4899;
   --text: #f1f0ff;
-  --text2: #a09ab8;
-  --text3: #5a5470;
+  --text2-old: #a09ab8;
+  --text3-old: #5a5470;
   --danger: #ef4444;
   --success: #22c55e;
   --r: 12px;
   --r2: 8px;
   --shadow: 0 8px 32px rgba(0,0,0,0.6);
   --glow: 0 0 30px rgba(124,58,237,0.25);
+
+  /* Gallery design tokens — DARK (default) */
+  --bg:        #0d0d15;
+  --surface:   #13131f;
+  --surface2:  #1a1a2e;
+  --border:    rgba(255,255,255,.08);
+  --text1:     #f1f5f9;
+  --text2:     #94a3b8;
+  --text3:     #64748b;
+  --accent:    #7c3aed;
+  --accent-s:  rgba(124,58,237,.15);
+  --hdr:       rgba(13,13,21,.95);
+  --sidebar:   #13131f;
+  --card:      #1a1a2e;
+  --card-sh:   0 2px 8px rgba(0,0,0,.4);
+  --card-hov:  0 8px 24px rgba(0,0,0,.6);
+  --inp:       rgba(255,255,255,.07);
+  --inp-brd:   rgba(255,255,255,.12);
+  --shi:       rgba(255,255,255,.05);
+  --shia:      rgba(124,58,237,.18);
+  --tab-bg:    rgba(255,255,255,.06);
+}
+
+/* ── Light mode ── */
+[data-theme="light"] {
+  --bg:        #f3f4f6;
+  --surface:   #ffffff;
+  --surface2:  #f9fafb;
+  --border:    #e5e7eb;
+  --text1:     #111827;
+  --text2:     #374151;
+  --text3:     #6b7280;
+  --accent:    #7c3aed;
+  --accent-s:  rgba(124,58,237,.1);
+  --hdr:       rgba(255,255,255,.96);
+  --sidebar:   #ffffff;
+  --card:      #ffffff;
+  --card-sh:   0 1px 4px rgba(0,0,0,.08);
+  --card-hov:  0 8px 24px rgba(0,0,0,.14);
+  --inp:       #f3f4f6;
+  --inp-brd:   #d1d5db;
+  --shi:       rgba(0,0,0,.04);
+  --shia:      rgba(124,58,237,.1);
+  --tab-bg:    #f3f4f6;
+  --bg2:       #e5e7eb;
+  --text:      #111827;
+  --shadow:    0 8px 32px rgba(0,0,0,.15);
 }
 
 html { scroll-behavior: smooth; }
