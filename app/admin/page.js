@@ -117,19 +117,18 @@ export default function AdminPage() {
   }, []);
 
   async function loadAll(role) {
-    const userRole = role || user?.role || 'admin';
     const fetches = [
-      fetch('/api/hwasi/settings').then(x => x.json()),
+      secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:51, end:730, cdnId:'desimms', extraRanges:[] })),
       fetch('/api/hwasi/curated').then(x => x.json()).catch(() => ({})),
-      fetch('/api/hwasi/users').then(x => x.json()).catch(() => ([])),
-      fetch('/api/hwasi/history').then(x => x.json()).catch(() => ([])),
-      fetch('/api/hwasi/thumbnails').then(x => x.json()).catch(() => ({})),
-      fetch('/api/hwasi/premium').then(x => x.json()).catch(() => ({})),
-      fetch('/api/hwasi/reports').then(x => x.json()).catch(() => ({ reports: [] })),
-      fetch('/api/hwasi/deleted').then(x => x.json()).catch(() => ({ deleted: [] })),
-      fetch('/api/hwasi/pending-users').then(x => x.json()).catch(() => ({ users: [] })),
-      fetch('/api/hwasi/reg-approval').then(x => x.json()).catch(() => ({ required: false })),
-      fetch('/api/hwasi/sub-requests').then(x => x.json()).catch(() => ({ requests: [] })),
+      secureFetch('/api/hwasi/users').then(x => x.json()).catch(() => ([])),
+      secureFetch('/api/hwasi/history').then(x => x.json()).catch(() => ([])),
+      fetch(`/api/hwasi/thumbnails?v=${Date.now()}`).then(x => x.json()).catch(() => ({})),
+      secureFetch('/api/hwasi/premium').then(x => x.json()).catch(() => ({})),
+      secureFetch('/api/hwasi/reports').then(x => x.json()).catch(() => ({ reports: [] })),
+      secureFetch('/api/hwasi/deleted').then(x => x.json()).catch(() => ({ deleted: [] })),
+      secureFetch('/api/hwasi/pending-users').then(x => x.json()).catch(() => ({ users: [] })),
+      secureFetch('/api/hwasi/reg-approval').then(x => x.json()).catch(() => ({ required: false })),
+      secureFetch('/api/hwasi/sub-requests').then(x => x.json()).catch(() => ({ requests: [] })),
     ];
     const [s, c, u, h, t, p, rep, del, pu, ra, sr] = await Promise.all(fetches);
     if (s && !s.error) setSettings(s);
@@ -145,16 +144,13 @@ export default function AdminPage() {
     setPendingUsers(pu.users || []);
     setRegApproval(ra.required || false);
     setSubRequests(sr.requests || []);
-    // Load custom video titles
-    fetch('/api/hwasi/titles').then(x => x.json()).then(d => setVideoTitles(d.titles || {})).catch(() => { });
-    // Load plans config and device data
-    fetch('/api/hwasi/plans').then(x => x.json()).then(d => setPlansConfig(d.plans || null)).catch(() => { });
-    fetch('/api/hwasi/devices').then(x => x.json()).then(d => setDeviceData(d.devices || {})).catch(() => { });
-    // Load payment settings + UTR submissions
-    fetch('/api/hwasi/payment-settings').then(x => x.json()).then(d => { if (d.settings) setPaySettings(d.settings); }).catch(() => { });
-    fetch('/api/hwasi/utr').then(x => x.json()).then(d => setUtrList(d.submissions || [])).catch(() => { });
-    // Load watch limit
-    fetch('/api/hwasi/watch-limit').then(x => x.json()).then(d => { if (d.ok) setWatchLimit({ limit: d.limit, msg: d.msg || '' }); }).catch(() => { });
+    // Load custom video titles, plans, device data
+    fetch(`/api/hwasi/titles?v=${Date.now()}`).then(x => x.json()).then(d => setVideoTitles(d.titles || {})).catch(() => { });
+    secureFetch('/api/hwasi/plans').then(x => x.json()).then(d => setPlansConfig(d.plans || null)).catch(() => { });
+    secureFetch('/api/hwasi/devices').then(x => x.json()).then(d => setDeviceData(d.devices || {})).catch(() => { });
+    secureFetch('/api/hwasi/payment-settings').then(x => x.json()).then(d => { if (d.settings) setPaySettings(d.settings); }).catch(() => { });
+    secureFetch('/api/hwasi/utr').then(x => x.json()).then(d => setUtrList(d.submissions || [])).catch(() => { });
+    secureFetch('/api/hwasi/watch-limit').then(x => x.json()).then(d => { if (d.ok) setWatchLimit({ limit: d.limit, msg: d.msg || '' }); }).catch(() => { });
   }
 
   async function saveVideoTitle() {
@@ -704,27 +700,29 @@ export default function AdminPage() {
           {/* ══ CURATED ══ */}
           {tab === 'curated' && (
             <div className={styles.fadeIn}>
-              {['trending', 'latest'].map(type => (
+              {[
+                { key: 'trending',   label: 'Trending',   icon: '🔥' },
+                { key: 'popular',    label: 'Popular',    icon: '📈' },
+                { key: 'instaviral', label: 'Insta Viral', icon: '📸' },
+              ].map(({ key: type, label, icon }) => (
                 <div key={type} className={styles.card} style={{ marginBottom: 20 }}>
                   <div className={styles.cardHeader}>
-                    <span style={{ fontSize: 24 }}>{type === 'trending' ? '🔥' : '✨'}</span>
+                    <span style={{ fontSize: 24 }}>{icon}</span>
                     <div style={{ flex: 1 }}>
-                      <h3 className={styles.cardTitle}>{type === 'trending' ? 'Trending' : 'Latest'}</h3>
+                      <h3 className={styles.cardTitle}>{label}</h3>
                       <p className={styles.cardSub}>{(curated[type] || []).length} videos in this section</p>
                     </div>
-                    {/* Quick action buttons */}
                     <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
                       <button className={styles.randomBtn} onClick={() => pickRandom50(type)} title="Replace with 50 random videos from current range">
                         🎲 Random 50
                       </button>
                       {(curated[type] || []).length > 0 && (
-                        <button className={styles.clearBtn} onClick={() => { if (confirm(`Clear all ${type} videos?`)) clearCurated(type) }} title="Clear all">
+                        <button className={styles.clearBtn} onClick={() => { if (confirm(`Clear all ${label} videos?`)) clearCurated(type) }} title="Clear all">
                           🗑 Clear
                         </button>
                       )}
                     </div>
                   </div>
-                  {/* Chips */}
                   <div className={styles.chipRow}>
                     {(curated[type] || []).length === 0 && <span className={styles.emptyHint}>No videos added yet — use Random 50 or enter IDs below</span>}
                     {(curated[type] || []).map(id => (
@@ -734,10 +732,9 @@ export default function AdminPage() {
                       </div>
                     ))}
                   </div>
-                  {/* Manual add */}
                   <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
                     <input className="input" style={{ flex: 1, minWidth: 180 }} placeholder="Add video IDs: 51, 72, 88…"
-                      value={curInput[type]} onChange={e => setCurInput(p => ({ ...p, [type]: e.target.value }))}
+                      value={curInput[type] || ''} onChange={e => setCurInput(p => ({ ...p, [type]: e.target.value }))}
                       onKeyDown={e => e.key === 'Enter' && saveCurated(type)} />
                     <button className="btn btn-primary" onClick={() => saveCurated(type)}>Add Videos</button>
                   </div>

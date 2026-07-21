@@ -20,5 +20,5 @@ export async function POST(req) {
 export async function GET() {
   const { error, status } = await requireAuth(['admin','advisor']);
   if (error) return NextResponse.json({ error }, { status });
-  return NextResponse.json(await getHistory(500));
+  return NextResponse.json(await getHistory(1000));
 }
