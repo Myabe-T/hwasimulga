@@ -102,15 +102,17 @@ export default function GalleryPage() {
       const r = await secureFetch('/api/verify');
       const d = await r.json();
 
-      // ── PHASE 1: load settings + thumbnails immediately so video grid shows ──
-      const [s, t] = await Promise.all([
+      // ── PHASE 1: load settings + thumbnails + titles immediately ──
+      const [s, t, tr] = await Promise.all([
         secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:1, end:730 })),
         fetch(`/api/hwasi/thumbnails?v=${Date.now()}`).then(x => x.json()).catch(() => ({})),
+        fetch(`/api/hwasi/titles?v=${Date.now()}&_=${Math.random()}`).then(x => x.json()).catch(() => ({ titles: {} })),
       ]);
       const st = s.error ? { start:1, end:730, deletedIds:[], extraRanges:[] } : s;
       const delSet = new Set(st.deletedIds || []);
       setSettings(st);
       setThumbIds(new Set((t.ids || []).map(Number)));
+      setVideoTitles(tr.titles || {});
 
       // Build video ID list: primary range + any extra ranges (e.g. 2500-2560)
       const primaryIds = Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start);
@@ -118,10 +120,6 @@ export default function GalleryPage() {
         Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
       );
       setAllIds([...new Set([...primaryIds, ...extraIds])].filter(id => !delSet.has(id)));
-
-      // Always load titles — add cache-bust param so Cloudflare never serves stale data
-      fetch(`/api/hwasi/titles?v=${Date.now()}`).then(x=>x.json()).then(d=>setVideoTitles(d.titles||{})).catch(()=>{});
-
 
       // Guest mode stops here — no auth-gated data
       if (!d.auth) return;
@@ -695,7 +693,7 @@ export default function GalleryPage() {
             <div className={styles.sectionAccent} />
             <h2 className={styles.sectionTitle}>
             {homeTab === 'foryou'
-              ? '🎬 Entire Collection — 700+ Videos'
+              ? '🎦 Entire Collection'
               : `${HOME_TABS.find(t => t.id === homeTab)?.icon} All ${HOME_TABS.find(t => t.id === homeTab)?.label}`}
             </h2>
           </div>
@@ -717,6 +715,7 @@ export default function GalleryPage() {
                   </div>
                 )}
                 <VideoCard id={id} index={i}
+                  title={videoTitles[String(id)] || null}
                   hasThumb={thumbIds.has(id)}
                   isBookmarked={bookmarks.has(id)}
                   isAdmin={isAdminOrAdvisor}
@@ -763,6 +762,7 @@ export default function GalleryPage() {
             <div className={styles.grid}>
               {bookmarkIds.map((id, i) => (
                 <VideoCard key={id} id={id} index={i}
+                  title={videoTitles[String(id)] || null}
                   hasThumb={thumbIds.has(id)} isBookmarked={true}
                   isAdmin={isAdminOrAdvisor} showHash={isAdminOrAdvisor}
                   onPlay={() => openModal(id)}
@@ -777,7 +777,6 @@ export default function GalleryPage() {
         </main>
       )}
 
-      {/* ── VIDEO MODAL ── */}
       {modal && (
         <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
           <div className={styles.modalBox}>
@@ -785,7 +784,7 @@ export default function GalleryPage() {
               <div className={styles.modalMeta}>
                 <span className={styles.modalBadge}>▶ Now Playing</span>
                 <span className={styles.modalTitle}>
-                  {videoTitles[String(modal.id)] || videoTitle(modal.id)}
+                  {videoTitles[String(modal.id)] || `Video #${modal.id}`}
                   {(user?.role === 'admin' || user?.role === 'advisor') && (
                     <button
                       title="Edit title"
@@ -809,7 +808,7 @@ export default function GalleryPage() {
                       const d = await res.json();
                       const shareUrl = `${window.location.origin}/watch?v=${encodeURIComponent(d.token || '')}`;
                       if (navigator.share) {
-                        navigator.share({ title: videoTitles[String(modal.id)] || videoTitle(modal.id), url: shareUrl });
+                        navigator.share({ title: videoTitles[String(modal.id)] || `Video #${modal.id}`, url: shareUrl });
                       } else {
                         navigator.clipboard.writeText(shareUrl);
                       }
@@ -843,6 +842,22 @@ export default function GalleryPage() {
                 </div>
               )}
             </div>
+            {/* Thumbnail preview below video player */}
+            {thumbIds.has(modal.id) && (
+              <div style={{ padding: '12px 16px 0', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                <img
+                  src={`/api/hwasi/thumbnail/${modal.id}`}
+                  alt="thumbnail"
+                  style={{ width: 120, height: 72, objectFit: 'cover', borderRadius: 10, flexShrink: 0, border: '1px solid rgba(255,255,255,.1)' }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#e2e8f0', marginBottom: 4, lineHeight: 1.4 }}>
+                    {videoTitles[String(modal.id)] || `Video #${modal.id}`}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>DesiHawas · #{modal.id}</div>
+                </div>
+              </div>
+            )}
             <div className={styles.modalNav}>
               <button className={styles.navBtn2} onClick={prevVideo} disabled={modal.index === 0}>← Prev</button>
               <div className={styles.navDot} />
@@ -1200,12 +1215,14 @@ function Logo({ size }) {
 }
 
 /* ── VideoCard — iTeraPlay/TeraViralHub style ── */
-function VideoCard({ id, index, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete }) {
+function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
   const quality = videoQuality(id);
   const qColor = qualityColor(quality);
   const views = viewCount(id);
+  // Use passed title prop, fall back to Video #ID (honest fallback, no fake wordplay)
+  const displayTitle = title || `Video #${id}`;
 
   return (
     <div className={styles.vcard} style={{ animationDelay: `${Math.min(index, 15) * 20}ms` }}>
@@ -1244,11 +1261,14 @@ function VideoCard({ id, index, hasThumb, isBookmarked, isAdmin, showHash, onPla
       <div className={styles.vinfo}>
         <div className={styles.vinfoAvatar}><Logo size={18} /></div>
         <div className={styles.vinfoMeta}>
-          <p className={styles.vtitle}>{videoTitle(id)}</p>
-          <p className={styles.vsub}>
-            DesiHawas
-            {showHash && <span style={{ color: 'rgba(255,255,255,.3)', marginLeft: 6 }}>#{id}</span>}
-          </p>
+          <p className={styles.vtitle}>{displayTitle}</p>
+          {/* Only show DesiHawas brand + hash for admin/advisor */}
+          {showHash && (
+            <p className={styles.vsub}>
+              DesiHawas
+              <span style={{ color: 'rgba(255,255,255,.3)', marginLeft: 6 }}>#{id}</span>
+            </p>
+          )}
         </div>
       </div>
 
