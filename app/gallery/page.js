@@ -212,12 +212,11 @@ export default function GalleryPage() {
         return;
       }
       // ── Hardware-level fingerprint (same across all browsers on same device) ──
-      // Uses: WebGL GPU renderer + screen size + platform + CPU cores + device memory
-      // These DON'T change between Chrome / Brave / Firefox / Opera on same device
+      // Uses: GPU (normalized) + screen + platform + CPU + memory
       let fingerprint = 'unknown';
       let deviceLabel = 'Unknown Device';
       try {
-        // 1. WebGL GPU (most unique — Adreno 740 = Pixel 8, Apple GPU = iPhone, etc.)
+        // 1. WebGL GPU — normalize to strip ANGLE wrapper so Chrome/Firefox/Edge all match
         let gpu = '';
         try {
           const gl = document.createElement('canvas').getContext('webgl') || document.createElement('canvas').getContext('experimental-webgl');
@@ -227,41 +226,48 @@ export default function GalleryPage() {
           }
         } catch { }
 
-        // 2. Platform (iPhone / Linux armv8l / Win32 / MacIntel)
-        const platform = navigator.platform || navigator.userAgentData?.platform || '';
+        // Normalize GPU: strip "ANGLE (Vendor, GPU_NAME, ...)" to get just "GPU_NAME"
+        // Chrome/Edge use ANGLE wrapper; Firefox uses raw name — this makes them identical
+        const angleMatch = gpu.match(/ANGLE\s*\([^,]+,\s*([^,]+)/);
+        const normalizedGpu = angleMatch ? angleMatch[1].trim() : gpu.trim();
 
-        // 3. Screen hardware (device-specific, not browser-specific)
-        const sw = window.screen.width;
-        const sh = window.screen.height;
-        const dpr = Math.round((window.devicePixelRatio || 1) * 100); // e.g. 300 = DPR 3.0
+        // 2. Platform — stable across browsers
+        const platform = (navigator.platform || navigator.userAgentData?.platform || '').toLowerCase();
+
+        // 3. Screen — use max/min to be orientation-independent
+        const sw = Math.max(screen.width || 0, screen.height || 0);
+        const sh = Math.min(screen.width || 0, screen.height || 0);
+        const dpr = Math.round((window.devicePixelRatio || 1) * 10);
 
         // 4. Hardware specs
         const cores = navigator.hardwareConcurrency || 0;
         const mem = navigator.deviceMemory || 0;
 
-        // Combine into a stable hardware ID
-        const raw = `${platform}|${sw}x${sh}|dpr${dpr}|gpu:${gpu}|cores${cores}|mem${mem}`;
-        // Simple 32-char hash (djb2)
+        // Stable hardware ID using normalized GPU
+        const raw = `${platform}|${sw}x${sh}|dpr${dpr}|gpu:${normalizedGpu}|c${cores}|m${mem}`;
         let hash = 5381;
         for (let i = 0; i < raw.length; i++) hash = ((hash << 5) + hash) ^ raw.charCodeAt(i);
-        fingerprint = Math.abs(hash).toString(36).padStart(8, '0') + `-${sw}x${sh}-${platform.slice(0, 8)}`;
+        fingerprint = Math.abs(hash).toString(36).padStart(8, '0') + `-${sw}x${sh}`;
 
-        // Human-readable device label for admin panel
+        // Human-readable device label (use normalized GPU for Android)
         const ua = navigator.userAgent;
         if (/iPhone/.test(ua)) {
           const v = ua.match(/iPhone OS (\d+_\d+)/); deviceLabel = `iPhone (iOS ${v ? v[1].replace('_', '.') : '?'})`;
         } else if (/iPad/.test(ua)) {
           deviceLabel = 'iPad';
         } else if (/Android/.test(ua)) {
-          const brand = gpu.split(' ')[0] || 'Android'; deviceLabel = `${brand} Android`;
-        } else if (/Win/.test(platform)) {
+          // Use normalized GPU chip name (same across Chrome/Firefox)
+          const chip = normalizedGpu.split(' ').slice(0, 2).join(' ') || 'Android';
+          deviceLabel = `${chip} Android`;
+        } else if (/win/i.test(platform)) {
           deviceLabel = `Windows PC`;
-        } else if (/Mac/.test(platform)) {
-          deviceLabel = `Mac`;
-        } else if (/Linux/.test(platform)) {
+        } else if (/mac/i.test(platform)) {
+          deviceLabel = `macOS`;
+        } else if (/linux/i.test(platform)) {
           deviceLabel = `Linux`;
         }
-      } catch { fingerprint = navigator.userAgent.slice(0, 32); }
+      } catch { fingerprint = ('fp_' + navigator.userAgent).slice(0, 40); }
+
 
       // Active — ping server
       const hbRes = await fetch('/api/hwasi/heartbeat', {
@@ -1706,14 +1712,13 @@ function Logo({ size }) {
   );
 }
 
-/* ── VideoCard — iTeraPlay/TeraViralHub style ── */
+/* ── VideoCard — TeraViralHub style ── */
 function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
   const quality = videoQuality(id);
   const qColor = qualityColor(quality);
   const views = viewCount(id);
-  // Use passed title prop, fall back to Video #ID (honest fallback, no fake wordplay)
   const displayTitle = title || `Video #${id}`;
 
   return (
@@ -1754,7 +1759,6 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
         <div className={styles.vinfoAvatar}><Logo size={18} /></div>
         <div className={styles.vinfoMeta}>
           <p className={styles.vtitle}>{displayTitle}</p>
-          {/* Only show DesiHawas brand + hash for admin/advisor */}
           {showHash && (
             <p className={styles.vsub}>
               DesiHawas
@@ -1764,40 +1768,96 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
         </div>
       </div>
 
-      {/* Action buttons row */}
+      {/* Action buttons — large colored SVG icons like TeraViralHub */}
       <div className={styles.vactions}>
-        <ActionBtn icon="🔖" label="Save" active={isBookmarked} activeColor="#f59e0b" onClick={(e) => onBookmark(e)} />
-        {onDownload && <ActionBtn icon="⬇" label="Download" color="#10b981" onClick={(e) => onDownload(e)} />}
-        <ActionBtn icon="↗" label="Share" color="#3b82f6" onClick={async (e) => {
-          e.stopPropagation();
-          try {
-            const res = await fetch(`/api/hwasi/share/${id}`);
-            const d = await res.json();
-            const shareUrl = `${window.location.origin}/watch?v=${encodeURIComponent(d.token || '')}`;
-            if (navigator.share) navigator.share({ title: videoTitle(id), url: shareUrl });
-            else { navigator.clipboard?.writeText(shareUrl); }
-          } catch(err) {}
-        }} />
-        <ActionBtn icon="🚩" label="Report" color="#ef4444" onClick={(e) => onReport(e)} />
+
+        {/* Bookmark */}
+        <button className={styles.actionBtn}
+          style={{ background: isBookmarked ? 'rgba(245,158,11,.18)' : 'rgba(255,255,255,.06)' }}
+          onClick={e => onBookmark(e)} title={isBookmarked ? 'Saved' : 'Save'}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill={isBookmarked ? '#f59e0b' : 'none'} stroke={isBookmarked ? '#f59e0b' : '#e2e8f0'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span className={styles.actionBtnLabel} style={{ color: isBookmarked ? '#f59e0b' : '#94a3b8' }}>{isBookmarked ? 'Saved' : 'Save'}</span>
+        </button>
+
+        {/* Download */}
+        {onDownload && (
+          <button className={styles.actionBtn}
+            style={{ background: 'rgba(16,185,129,.13)' }}
+            onClick={e => onDownload(e)} title="Download">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span className={styles.actionBtnLabel} style={{ color: '#10b981' }}>Download</span>
+          </button>
+        )}
+
+        {/* Share */}
+        <button className={styles.actionBtn}
+          style={{ background: 'rgba(59,130,246,.1)' }}
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const res = await fetch(`/api/hwasi/share/${id}`);
+              const d = await res.json();
+              const shareUrl = `${window.location.origin}/watch?v=${encodeURIComponent(d.token || '')}`;
+              if (navigator.share) navigator.share({ title: displayTitle, url: shareUrl });
+              else { navigator.clipboard?.writeText(shareUrl); alert('Link copied!'); }
+            } catch(err) {}
+          }} title="Share">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+          <span className={styles.actionBtnLabel} style={{ color: '#60a5fa' }}>Share</span>
+        </button>
+
+        {/* Report */}
+        <button className={styles.actionBtn}
+          style={{ background: 'rgba(239,68,68,.08)' }}
+          onClick={e => onReport(e)} title="Report">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+            <line x1="4" y1="22" x2="4" y2="15"/>
+          </svg>
+          <span className={styles.actionBtnLabel} style={{ color: '#f87171' }}>Report</span>
+        </button>
+
+        {/* Delete (admin only) */}
         {isAdmin && onDelete && (
-          <ActionBtn icon="🗑" label="Delete" color="#dc2626" onClick={(e) => onDelete(e)} />
+          <button className={styles.actionBtn}
+            style={{ background: 'rgba(220,38,38,.1)' }}
+            onClick={e => onDelete(e)} title="Delete">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+            <span className={styles.actionBtnLabel} style={{ color: '#ef4444' }}>Delete</span>
+          </button>
         )}
       </div>
     </div>
   );
 }
 
-/* ── Small action button ── */
-function ActionBtn({ icon, label, color = 'rgba(255,255,255,.12)', activeColor, active, onClick }) {
+/* ── Action button — large colored SVG style ── */
+function ActionBtn({ icon, label, color, activeColor, active, onClick }) {
+  // Legacy fallback (not used by VideoCard but kept for compatibility)
   return (
-    <button className={styles.actionBtn}
-      style={{ background: active && activeColor ? activeColor + '33' : 'rgba(255,255,255,.06)', color: active && activeColor ? activeColor : 'rgba(255,255,255,.7)' }}
+    <button
+      style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '8px 4px', borderRadius: 10, border: 'none', background: active && activeColor ? activeColor + '22' : (color || 'rgba(255,255,255,.06)') + '22', cursor: 'pointer', transition: 'all .18s', fontFamily: 'inherit' }}
       onClick={onClick} title={label}>
-      <span style={{ fontSize: 13 }}>{icon}</span>
-      <span style={{ fontSize: 10, fontWeight: 700 }}>{label}</span>
+      <span style={{ fontSize: 16 }}>{icon}</span>
+      <span style={{ fontSize: 9, fontWeight: 700, color: active && activeColor ? activeColor : 'rgba(255,255,255,.6)' }}>{label}</span>
     </button>
   );
 }
+
 
 /* ── Gradient placeholder ── */
 function GradientPlaceholder({ seed }) {

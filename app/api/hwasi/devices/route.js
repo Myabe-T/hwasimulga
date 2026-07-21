@@ -1,7 +1,7 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
-import { getDeviceData, setUserBlocked } from '@/lib/redis';
+import { getDeviceData, setUserBlocked, clearDevice, clearAllDevices } from '@/lib/redis';
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
 
@@ -28,3 +28,19 @@ export async function POST(req) {
   await setUserBlocked(userId, Boolean(blocked), reason || null);
   return NextResponse.json({ ok: true });
 }
+
+// DELETE — admin/advisor: remove a specific device fingerprint OR all devices for a user
+export async function DELETE(req) {
+  const user = await getUser(req);
+  if (!user || !['admin','advisor'].includes(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const { userId, fingerprint, clearAll } = await req.json();
+  if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+  if (clearAll) {
+    await clearAllDevices(userId);
+  } else {
+    if (!fingerprint) return NextResponse.json({ error: 'fingerprint required' }, { status: 400 });
+    await clearDevice(userId, fingerprint);
+  }
+  return NextResponse.json({ ok: true });
+}
+

@@ -220,3 +220,27 @@ select.input option {
   background-size: 200% auto;
   animation: shimmer 1.4s linear infinite;
 }
+
+/* ── Light mode — logo & icon visibility ── */
+/* When white background is on, ensure logos/icons are clearly visible */
+[data-theme="light"] img[src*="logo"],
+[data-theme="light"] .sidebarLogo,
+[data-theme="light"] .headerBrandLogo,
+[data-theme="light"] .brandLogo {
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+/* Gallery action buttons — stronger contrast in light mode */
+[data-theme="light"] .actionBtn {
+  box-shadow: 0 1px 4px rgba(0,0,0,.12);
+}
+[data-theme="light"] .actionBtn:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,.18);
+}
+
+/* Video card in light mode */
+[data-theme="light"] .vcard {
+  box-shadow: 0 2px 12px rgba(0,0,0,.1);
+}

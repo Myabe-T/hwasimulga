@@ -1581,20 +1581,46 @@ export default function AdminPage() {
                             {entry.flagged && !entry.blocked && <span style={{ padding: '2px 8px', borderRadius: 10, background: 'rgba(245,158,11,.2)', color: '#fbbf24', fontSize: 11, fontWeight: 700 }}>⚠️ FLAGGED — sharing suspected</span>}
                             <div style={{ marginLeft: 'auto', fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{Object.keys(entry.devices || {}).length} device{Object.keys(entry.devices || {}).length !== 1 ? 's' : ''} seen</div>
                           </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
                             {Object.entries(entry.devices || {}).map(([fp, dev], i) => {
-                              const icon = dev.label?.includes('iPhone') || dev.label?.includes('iOS') ? '📱' :
-                                dev.label?.includes('Android') ? '📱' :
-                                dev.label?.includes('iPad') ? '📱' :
-                                dev.label?.includes('Windows') ? '💻' :
-                                dev.label?.includes('Mac') ? '🍎' : '🖥';
+                              const lbl = (dev.label || '').toLowerCase();
+                              const icon = lbl.includes('iphone') || lbl.includes('ios') ? '🍎' :
+                                lbl.includes('android') ? '🤖' :
+                                lbl.includes('ipad') ? '📱' :
+                                lbl.includes('windows') ? '🪟' :
+                                lbl.includes('mac') || lbl.includes('macos') ? '🍏' :
+                                lbl.includes('linux') ? '🐧' : '💻';
                               return (
-                                <div key={fp} style={{ padding: '6px 12px', background: 'rgba(255,255,255,.06)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 150 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{icon} {dev.label || `Device ${i + 1}`}</div>
-                                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>
-                                    First: {new Date(dev.firstSeen).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
-                                    {' · '}Last: {new Date(dev.lastSeen).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
+                                <div key={fp} style={{ padding: '7px 10px', background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, minWidth: 160, position: 'relative' }}>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 5 }}>
+                                      <span>{icon}</span> {dev.label || `Device ${i + 1}`}
+                                    </div>
+                                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', marginTop: 2 }}>
+                                      First: {new Date(dev.firstSeen).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
+                                      {' · '}Last: {new Date(dev.lastSeen).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
+                                    </div>
                                   </div>
+                                  {/* ✕ Remove this device fingerprint */}
+                                  <button
+                                    title="Remove this device"
+                                    onClick={async () => {
+                                      if (!confirm(`Remove "${dev.label || 'device'}" from ${entry.username}? They can re-add it on next login.`)) return;
+                                      const r = await fetch('/api/hwasi/devices', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: uid, fingerprint: fp }) });
+                                      if (r.ok) {
+                                        setDeviceData(d => {
+                                          const updated = { ...d };
+                                          const newDevices = { ...updated[uid].devices };
+                                          delete newDevices[fp];
+                                          updated[uid] = { ...updated[uid], devices: newDevices, flagged: Object.keys(newDevices).length > 3 };
+                                          return updated;
+                                        });
+                                        flash(`✅ Device removed from ${entry.username}`);
+                                      }
+                                    }}
+                                    style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,.18)', color: '#f87171', fontSize: 12, fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, lineHeight: 1 }}>
+                                    ✕
+                                  </button>
                                 </div>
                               );
                             })}
@@ -1623,11 +1649,24 @@ export default function AdminPage() {
                                 style={{ padding: '7px 16px', borderRadius: 10, border: '1px solid rgba(251,191,36,.3)', background: 'rgba(251,191,36,.1)', color: '#fbbf24', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
                                 onClick={() => { setDeviceMsgText(''); setDeviceMsgModal({ uid, displayName: entry.displayName, username: entry.username }); }}
                               >💬 Send Warning</button>
+                              {/* Clear ALL devices for this user */}
+                              <button
+                                style={{ padding: '7px 16px', borderRadius: 10, border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.08)', color: '#fca5a5', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
+                                onClick={async () => {
+                                  if (!confirm(`Clear ALL device history for ${entry.username}? They can re-login on a new device.`)) return;
+                                  const r = await fetch('/api/hwasi/devices', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: uid, clearAll: true }) });
+                                  if (r.ok) {
+                                    setDeviceData(d => ({ ...d, [uid]: { ...d[uid], devices: {}, flagged: false } }));
+                                    flash(`✅ All devices cleared for ${entry.username}`);
+                                  }
+                                }}
+                              >🗑 Clear All Devices</button>
                             </div>
                           )}
                         </div>
                       ))}
                     </div>
+
                   );
                 })()}
               </div>
