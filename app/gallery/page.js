@@ -7,13 +7,8 @@ import styles from './gallery.module.css';
 const PER_PAGE = 24;
 const thumbSrc = (id) => `/api/hwasi/thumbnail/${id}`;
 
-// Deterministic video title from ID
-const WORDS_A = ['Midnight', 'Golden', 'Silver', 'Crystal', 'Storm', 'Crimson', 'Azure', 'Ember', 'Neon', 'Velvet', 'Cosmic', 'Mystic', 'Shadow', 'Solar', 'Lunar', 'Twilight', 'Prism', 'Thunder', 'Winter', 'Summer'];
-const WORDS_B = ['Bloom', 'Wave', 'Echo', 'Peak', 'Drift', 'Flare', 'Rush', 'Glow', 'Pulse', 'Trail', 'Dream', 'Spark', 'Surge', 'Rise', 'Flow', 'Blaze', 'Haze', 'Fade', 'Clash', 'Drift'];
-function videoTitle(id) {
-  const n = Number(id);
-  return `${WORDS_A[n % WORDS_A.length]} ${WORDS_B[Math.floor(n / WORDS_A.length) % WORDS_B.length]}`;
-}
+// Fallback title — shows something honest instead of fake wordplay
+function videoTitle(id) { return `Video #${id}`; }
 
 // Deterministic quality badge from ID
 function videoQuality(id) { const n = Number(id); return n % 3 === 0 ? '1440P' : n % 2 === 0 ? '1080P' : '720P'; }

@@ -445,7 +445,8 @@ export default function AdminPage() {
 
   // Stats for dashboard
   const deletedCount = (settings.deletedIds || []).length;
-  const totalVideos = Math.max(0, (settings.end - settings.start + 1) - deletedCount);
+  const extraRangesCount = (settings.extraRanges || []).reduce((sum, r) => sum + Math.max(0, r.end - r.start + 1), 0);
+  const totalVideos = Math.max(0, (settings.end - settings.start + 1) + extraRangesCount - deletedCount);
   const totalWatched = history.length;
   const now = Date.now();
   const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
@@ -553,7 +554,7 @@ export default function AdminPage() {
             <div className={styles.fadeIn}>
               {/* ── Stats Row 1: Videos + Top Video ── */}
               <div className={styles.statsGrid}>
-                <StatCard icon="🎬" label="Total Videos" value={totalVideos.toLocaleString()} sub={`#${settings.start}–#${settings.end}${deletedCount ? ` · ${deletedCount} deleted` : ''}`} color="purple" />
+                <StatCard icon="🎦" label="Total Videos" value={totalVideos.toLocaleString()} sub={`#${settings.start}–#${settings.end}${extraRangesCount ? ` + ${extraRangesCount} extra` : ''}${deletedCount ? ` · ${deletedCount} deleted` : ''}`} color="purple" />
                 <StatCard icon="🏆" label="Top Video" value={topVideo} sub="most watched" color="green" />
                 <div
                   style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)', borderRadius: 14, padding: '16px 20px', cursor: 'pointer', transition: 'transform .2s,box-shadow .2s', position: 'relative', overflow: 'hidden' }}
@@ -1245,6 +1246,29 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              {/* ─ Email OTP Verification Toggle ─ */}
+              <div className={styles.card} style={{ marginBottom: 20 }}>
+                <div className={styles.cardHeader}>
+                  <span style={{ fontSize: 22 }}>📧</span>
+                  <div style={{ flex: 1 }}>
+                    <h3 className={styles.cardTitle}>Email Verification (OTP)</h3>
+                    <p className={styles.cardSub}>When ON, new users must verify email with OTP before logging in. Only works with popular email providers.</p>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                    <span style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600 }}>{settings.otpRequired ? '🟢 ON' : '⚫ OFF'}</span>
+                    <div style={{ position: 'relative', width: 44, height: 24 }} onClick={async () => {
+                      const next = !settings.otpRequired;
+                      setSettings(s => ({ ...s, otpRequired: next }));
+                      await secureFetch('/api/hwasi/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...settings, otpRequired: next }) });
+                      flash(next ? '📧 Email OTP ON — users must verify email on register' : '🔓 Email OTP OFF — direct registration, no email needed');
+                    }}>
+                      <div style={{ position: 'absolute', inset: 0, borderRadius: 12, background: settings.otpRequired ? 'linear-gradient(135deg,#7c3aed,#4f46e5)' : 'rgba(255,255,255,.15)', transition: 'background .2s' }} />
+                      <div style={{ position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', left: settings.otpRequired ? 23 : 3, transition: 'left .2s', boxShadow: '0 1px 4px rgba(0,0,0,.3)' }} />
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               {/* ─ Pending Registrations ─ */}
               {pendingUsers.length > 0 && (
                 <div className={styles.card} style={{ marginBottom: 20 }}>
@@ -1316,14 +1340,27 @@ export default function AdminPage() {
                 {users.map(u => (
                   <div key={u.id} className={styles.userCard}>
                     <div className={styles.userCardTop}>
-                      <div className={styles.userCardAvatar} style={{ background: u.role === 'admin' ? 'linear-gradient(135deg,#7c3aed,#ec4899)' : 'linear-gradient(135deg,#0f766e,#0d9488)' }}>
+                      <div className={styles.userCardAvatar} style={{
+                        background: u.role === 'admin' ? 'linear-gradient(135deg,#7c3aed,#ec4899)' :
+                          u.role === 'advisor' ? 'linear-gradient(135deg,#d97706,#f59e0b)' :
+                          'linear-gradient(135deg,#0f766e,#0d9488)'
+                      }}>
                         {u.avatar || u.displayName?.slice(0, 2) || '??'}
                       </div>
                       <div className={`${styles.statusDot} ${styles.statusActive}`}>● active</div>
                     </div>
                     <div className={styles.userCardName}>{u.displayName}</div>
                     <div className={styles.userCardEmail}>@{u.username}</div>
-                    <div className={`${styles.userCardRole} ${u.role === 'admin' ? styles.roleAdmin : styles.roleViewer}`}>{u.role === 'admin' ? 'Administrator' : 'Viewer'}</div>
+                    <div className={styles.userCardRole} style={{
+                      background: u.role === 'admin' ? 'rgba(124,58,237,.15)' :
+                        u.role === 'advisor' ? 'rgba(217,119,6,.15)' : 'rgba(13,148,136,.15)',
+                      color: u.role === 'admin' ? '#a78bfa' :
+                        u.role === 'advisor' ? '#fbbf24' : '#2dd4bf',
+                      border: `1px solid ${u.role === 'admin' ? 'rgba(124,58,237,.3)' : u.role === 'advisor' ? 'rgba(217,119,6,.3)' : 'rgba(13,148,136,.3)'}`,
+                      padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, display: 'inline-block'
+                    }}>
+                      {u.role === 'admin' ? '👑 Administrator' : u.role === 'advisor' ? '💼 Advisor' : 'Viewer'}
+                    </div>
                     <div className={styles.userCardJoined}>Joined {new Date(u.createdAt).toLocaleDateString()}</div>
                     <div className={styles.userCardActions}>
                       <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => setEditUser({ ...u, password: '' })}>
@@ -1870,14 +1907,19 @@ export default function AdminPage() {
             </div>
             <div className={styles.editForm}>
               <div><label className={styles.fieldLabel}>Display Name</label>
-                <input className="input" value={editUser.displayName} onChange={e => setEditUser(p => ({ ...p, displayName: e.target.value }))} /></div>
+                <input className="input" value={editUser.displayName || ''} onChange={e => setEditUser(p => ({ ...p, displayName: e.target.value }))} /></div>
+              <div><label className={styles.fieldLabel}>Username</label>
+                <input className="input" value={editUser.username || ''} onChange={e => setEditUser(p => ({ ...p, username: e.target.value }))} /></div>
+              <div><label className={styles.fieldLabel}>Email (optional)</label>
+                <input className="input" type="email" value={editUser.email || ''} placeholder="user@example.com" onChange={e => setEditUser(p => ({ ...p, email: e.target.value }))} /></div>
               <div><label className={styles.fieldLabel}>New Password (blank = keep current)</label>
                 <input className="input" type={showPass ? 'text' : 'password'} value={editUser.password || ''} placeholder="Leave blank to keep…"
                   onChange={e => setEditUser(p => ({ ...p, password: e.target.value }))} /></div>
               <div><label className={styles.fieldLabel}>Role</label>
                 <select className="input" value={editUser.role} onChange={e => setEditUser(p => ({ ...p, role: e.target.value }))}>
                   <option value="viewer">Viewer</option>
-                  <option value="admin">Admin</option>
+                  <option value="advisor">💼 Advisor</option>
+                  <option value="admin">👑 Admin</option>
                 </select></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
