@@ -87,9 +87,13 @@ export default function GalleryPage() {
   const [premiumWelcomePopup, setPremiumWelcomePopup] = useState(false);
   const [adminMessage, setAdminMessage] = useState(null); // { message, from, timestamp }
   const FREE_BOOKMARK_LIMIT = 8;
-  const [theme, setTheme] = useState('dark'); // 'dark' | 'light'
+  const [theme, setTheme] = useState('dark');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false); // mobile search overlay
+  const [sidebarOpen, setSidebarOpen] = useState(false); // always-drawer pattern
+  const [ageVerified, setAgeVerified] = useState(true); // 18+ gate
+  const [cookieConsent, setCookieConsent] = useState(true); // cookie banner
+  const [mobileGridCols, setMobileGridCols] = useState(1); // 1 or 2 columns on mobile
 
   // Global epoch-based countdown (same for everyone)
   const EPOCH_START = 1704067200;
@@ -98,14 +102,34 @@ export default function GalleryPage() {
   const [globalSecs, setGlobalSecs] = useState(calcSecs);
   useEffect(() => { const id = setInterval(() => setGlobalSecs(calcSecs()), 1000); return () => clearInterval(id); }, []);
 
-  // Load saved theme
-  useEffect(() => { try { const s = localStorage.getItem('dh_theme'); if (s) setTheme(s); } catch {} }, []);
-  // Apply theme to <html>
+  // Theme + age gate + cookie on mount
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem('dh_theme');
+      if (s) setTheme(s);
+      if (!localStorage.getItem('dh_age_ok')) setAgeVerified(false);
+      if (!localStorage.getItem('dh_cookie')) setCookieConsent(false);
+      const g = localStorage.getItem('dh_grid');
+      if (g) setMobileGridCols(Number(g) || 1);
+    } catch {}
+  }, []);
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     try { localStorage.setItem('dh_theme', theme); } catch {}
   }, [theme]);
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+  function toggleMobileGrid(cols) {
+    setMobileGridCols(cols);
+    try { localStorage.setItem('dh_grid', String(cols)); } catch {}
+  }
+  function acceptAge() {
+    try { localStorage.setItem('dh_age_ok', '1'); } catch {}
+    setAgeVerified(true);
+  }
+  function acceptCookie() {
+    try { localStorage.setItem('dh_cookie', '1'); } catch {}
+    setCookieConsent(true);
+  }
   const gH = Math.floor(globalSecs / 3600), gM = Math.floor((globalSecs % 3600) / 60), gS = globalSecs % 60;
   const globalTimer = `${String(gH).padStart(2, '0')}:${String(gM).padStart(2, '0')}:${String(gS).padStart(2, '0')}`;
 
@@ -503,9 +527,27 @@ export default function GalleryPage() {
     </div>
   );
 
-  // GUEST view — not logged in but show gallery
+  // GUEST view
   if (!user) return (
     <div className={styles.page}>
+      {/* Age gate */}
+      {!ageVerified && (
+        <div className={styles.ageGate}>
+          <div style={{ textAlign:'center', maxWidth:440, padding:'40px 28px', background:'linear-gradient(145deg,#0f0518,#1a0533)', border:'1px solid rgba(124,58,237,.35)', borderRadius:24, boxShadow:'0 40px 100px rgba(0,0,0,.7)' }}>
+            <div style={{ fontSize:60, marginBottom:12 }}>🔞</div>
+            <h2 style={{ fontSize:24, fontWeight:900, color:'#f1f5f9', marginBottom:8 }}>Adult Content Warning</h2>
+            <p style={{ fontSize:14, color:'rgba(255,255,255,.6)', lineHeight:1.7, marginBottom:24 }}>
+              This website contains content intended for <strong style={{ color:'#f59e0b' }}>adults only</strong>. You must be at least <strong>18 years old</strong> to proceed.
+            </p>
+            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:16 }}>
+              <button onClick={acceptAge} style={{ padding:'15px', borderRadius:14, border:'none', cursor:'pointer', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'#fff', fontWeight:800, fontSize:16 }}>✅ I am 18+ — Enter</button>
+              <a href="https://google.com" style={{ padding:'12px', borderRadius:12, border:'1px solid rgba(255,255,255,.15)', color:'rgba(255,255,255,.5)', textDecoration:'none', fontSize:13, fontWeight:600, display:'block' }}>🚫 I am Under 18 — Exit</a>
+            </div>
+            <p style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>By entering, you agree to our <a href="/terms" style={{ color:'#a78bfa', textDecoration:'none' }}>Terms of Service</a>.</p>
+          </div>
+        </div>
+      )}
+
       {/* Guest header */}
       <header className={styles.header}>
         <div className={styles.headerInner}>
@@ -514,19 +556,18 @@ export default function GalleryPage() {
             <span className={styles.brandName}>DesiHawas</span>
           </div>
           <nav className={styles.desktopNav}>
-            <span className={styles.navBtn} style={{ color: 'rgba(255,255,255,.45)', cursor: 'default' }}>🎬 Gallery</span>
+            <span className={styles.navBtn} style={{ cursor:'default' }}>🎬 Gallery</span>
           </nav>
           <div className={styles.headerRight}>
             <a href="/login" className={styles.guestLoginBtn}>Login</a>
             <a href="/register" className={styles.guestRegBtn}>Register Free 🚀</a>
           </div>
         </div>
-        {/* Sale timer */}
         <div className={styles.guestSaleBanner}>
           🔥 Flash Sale —
-          <span style={{ fontFamily: 'Courier New', fontWeight: 900, color: '#f59e0b', margin: '0 6px' }}>{globalTimer}</span>
-          left · <s style={{ opacity: .4 }}>₹{plans?.basic?.originalPrice || 200}/₹{plans?.plus?.originalPrice || 500}/₹{plans?.pro?.originalPrice || 999}</s> → <strong style={{ color: '#34d399' }}>₹{plans?.basic?.price || 100}/₹{plans?.plus?.price || 300}/₹{plans?.pro?.price || 599}</strong>
-          <a href="/register" style={{ marginLeft: 10, color: '#f59e0b', fontWeight: 700, textDecoration: 'none' }}>Unlock →</a>
+          <span style={{ fontFamily:'Courier New', fontWeight:900, color:'#f59e0b', margin:'0 6px' }}>{globalTimer}</span>
+          left · <s style={{ opacity:.4 }}>₹{plans?.basic?.originalPrice || 200}/₹{plans?.plus?.originalPrice || 500}/₹{plans?.pro?.originalPrice || 999}</s> → <strong style={{ color:'#34d399' }}>₹{plans?.basic?.price || 100}/₹{plans?.plus?.price || 300}/₹{plans?.pro?.price || 599}</strong>
+          <a href="/register" style={{ marginLeft:10, color:'#f59e0b', fontWeight:700, textDecoration:'none' }}>Unlock →</a>
         </div>
       </header>
 
@@ -536,77 +577,57 @@ export default function GalleryPage() {
           <div className={styles.sectionAccent} />
           <h2 className={styles.sectionTitle}>Browse All Videos</h2>
         </div>
-        <div className={styles.grid}>
-          {pageIds.map(id => (
-            <div key={id} className={styles.card} onClick={() => openModal(id)}>
-              <div className={styles.thumb}>
-                {thumbIds.has(id) ? (
-                  <img src={thumbSrc(id)} alt="" className={styles.thumbImg} loading="lazy" />
-                ) : (
-                  <div className={styles.thumbPlaceholder} style={{ background: GRADIENT_PLACEHOLDER(id) }} />
-                )}
-                <div className={styles.cardOverlay}>
-                  <button className={styles.playBtn}>▶</button>
-                </div>
-                {/* Lock icon for guests */}
-                <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(6px)', padding: '3px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, color: '#fbbf24' }}>
-                  🔒 Login
-                </div>
-                <div className={styles.qualityBadge} style={{ background: qualityColor(videoQuality(id)), color: '#fff' }}>{videoQuality(id)}</div>
-              </div>
-              <div className={styles.cardInfo}>
-                <div className={styles.cardTitle}>{videoTitles[String(id)] || videoTitle(id)}</div>
-                <div className={styles.cardMeta}>
-                  <span>👁 {viewCount(id)}</span>
-                </div>
-              </div>
-            </div>
+        <div className={`${styles.grid} ${mobileGridCols === 2 ? styles.gridCols2 : ''}`}>
+          {pageIds.map((id, i) => (
+            <VideoCard key={id} id={id} index={i}
+              title={videoTitles[String(id)] || null}
+              hasThumb={thumbIds.has(id)}
+              isBookmarked={false} isAdmin={false} showHash={false}
+              onPlay={() => setGuestAuthModal(true)}
+              onDownload={null}
+              onBookmark={() => setGuestAuthModal(true)}
+              onReport={() => setGuestAuthModal(true)}
+              onDelete={null}
+            />
           ))}
+        </div>
+        {totalPages > 1 && (
+          <div className={styles.pagination}>
+            <button className={styles.pgBtn} disabled={page === 0} onClick={() => goPage(page - 1)}>← Prev</button>
+            <button className={styles.pgBtn} disabled={page >= totalPages - 1} onClick={() => goPage(page + 1)}>Next →</button>
           </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className={styles.pagination}>
-              <button className={styles.pgBtn} disabled={page === 0} onClick={() => goPage(page - 1)}>← Prev</button>
-              <button className={styles.pgBtn} disabled={page >= totalPages - 1} onClick={() => goPage(page + 1)}>Next →</button>
-            </div>
-          )}
-        </main>
+        )}
+      </main>
 
       {/* Guest auth modal */}
       {guestAuthModal && (
         <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) setGuestAuthModal(false); }}>
-          <div className={styles.smallModal} style={{ textAlign: 'center' }}>
-            <img src="/logo.png" alt="" style={{ width: 50, height: 50, borderRadius: 10, marginBottom: 12 }} />
-            <h3 style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>🔒 Login to Watch</h3>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,.5)', marginBottom: 14, lineHeight: 1.5 }}>
-              Create a free account to watch videos.<br />Get premium for unlimited access!
-            </p>
-            <div style={{ padding: '10px 14px', background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 12, marginBottom: 16, fontSize: 13 }}>
-              🔥 Sale ends in <strong style={{ fontFamily: 'Courier New', color: '#f59e0b' }}>{globalTimer}</strong>
+          <div className={styles.smallModal} style={{ textAlign:'center' }}>
+            <img src="/logo.png" alt="" style={{ width:50, height:50, borderRadius:10, marginBottom:12 }} />
+            <h3 style={{ fontWeight:800, fontSize:18, marginBottom:6, color:'var(--text1)' }}>🔒 Login to Watch</h3>
+            <p style={{ fontSize:13, color:'var(--text3)', marginBottom:14, lineHeight:1.5 }}>Create a free account to watch videos.<br />Get premium for unlimited access!</p>
+            <div style={{ padding:'10px 14px', background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.25)', borderRadius:12, marginBottom:16, fontSize:13 }}>
+              🔥 Sale ends in <strong style={{ fontFamily:'Courier New', color:'#f59e0b' }}>{globalTimer}</strong>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-              <a href="/login" style={{ padding: '12px', borderRadius: 12, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 700, display: 'block' }}>🔑 Login</a>
-              <a href="/register" style={{ padding: '12px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 700, display: 'block' }}>🚀 Register</a>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:16 }}>
+              <a href="/login" style={{ padding:'12px', borderRadius:12, background:'var(--inp)', border:'1px solid var(--inp-brd)', color:'var(--text1)', textDecoration:'none', fontSize:14, fontWeight:700, display:'block' }}>🔑 Login</a>
+              <a href="/register" style={{ padding:'12px', borderRadius:12, background:'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'#fff', textDecoration:'none', fontSize:14, fontWeight:700, display:'block' }}>🚀 Register</a>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-              {[
-                ['⚡ Basic', `₹${plans?.basic?.price || 100}`, `${plans?.basic?.days || 14}d`],
-                ['🚀 Plus', `₹${plans?.plus?.price || 300}`, `${plans?.plus?.days || 60}d`],
-                ['👑 Pro', `₹${plans?.pro?.price || 599}`, '3yr'],
-              ].map(([label, price, period]) => (
-                <div key={label} style={{ padding: '10px 6px', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 12, textAlign: 'center' }}>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)' }}>{label}</div>
-                  <div style={{ fontWeight: 800, fontSize: 14 }}>{price}</div>
-                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>{period}</div>
-                </div>
-              ))}
-            </div>
+            <button className={styles.cancelBtn} onClick={() => setGuestAuthModal(false)}>Close</button>
           </div>
+        </div>
+      )}
+
+      {/* Cookie consent */}
+      {!cookieConsent && (
+        <div className={styles.cookieBanner}>
+          <p style={{ fontSize:13, color:'var(--text2)', margin:0, flex:1 }}>🍪 We use cookies to enhance your experience. <a href="/terms" style={{ color:'var(--accent)' }}>Learn more</a></p>
+          <button onClick={acceptCookie} style={{ padding:'8px 20px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', whiteSpace:'nowrap' }}>Accept</button>
         </div>
       )}
     </div>
   );
+
 
   // ── Search filter ──
   const searchedTabIds = () => {
@@ -618,18 +639,52 @@ export default function GalleryPage() {
 
   const initials = (user.avatar || user.username?.slice(0, 2) || 'U').toUpperCase();
   const planLabel = viewStatus?.isPremium ? 'PREMIUM' : (user.role === 'admin' ? 'ADMIN' : user.role === 'advisor' ? 'ADVISOR' : 'FREE PLAN');
-
-  // Sidebar nav items
-  const sidebarNav = [
-    { id: 'gallery', icon: '🏠', label: 'Home', onClick: () => { setView('gallery'); setSidebarOpen(false); } },
-    { id: 'bookmarks', icon: '🔖', label: 'Bookmarks', onClick: () => { setView('bookmarks'); setSidebarOpen(false); } },
-    { id: 'history', icon: '🕐', label: 'History', onClick: () => { setView('history'); setSidebarOpen(false); } },
-    ...(isAdminOrAdvisor ? [{ id: 'admin', icon: '🛡', label: user.role === 'advisor' ? 'Advisor Panel' : 'Admin Panel', href: user.role === 'advisor' ? '/advisor' : '/admin' }] : []),
-  ];
+  const isPrem = viewStatus?.isPremium || false;
 
   // ── LOGGED IN VIEW ──
   return (
     <div className={styles.shell} onClick={e => { if (userMenuOpen && !e.target.closest('[data-usermenu]')) setUserMenuOpen(false); }}>
+
+      {/* Age gate (on first visit, even logged in) */}
+      {!ageVerified && (
+        <div className={styles.ageGate}>
+          <div style={{ textAlign:'center', maxWidth:440, padding:'40px 28px', background:'linear-gradient(145deg,#0f0518,#1a0533)', border:'1px solid rgba(124,58,237,.35)', borderRadius:24, boxShadow:'0 40px 100px rgba(0,0,0,.7)' }}>
+            <div style={{ fontSize:60, marginBottom:12 }}>🔞</div>
+            <h2 style={{ fontSize:24, fontWeight:900, color:'#f1f5f9', marginBottom:8 }}>Adult Content Warning</h2>
+            <p style={{ fontSize:14, color:'rgba(255,255,255,.6)', lineHeight:1.7, marginBottom:24 }}>
+              This website contains content intended for <strong style={{ color:'#f59e0b' }}>adults only</strong>. You must be at least <strong>18 years old</strong> to proceed.
+            </p>
+            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:16 }}>
+              <button onClick={acceptAge} style={{ padding:'15px', borderRadius:14, border:'none', cursor:'pointer', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'#fff', fontWeight:800, fontSize:16 }}>✅ I am 18+ — Enter</button>
+              <a href="https://google.com" style={{ padding:'12px', borderRadius:12, border:'1px solid rgba(255,255,255,.15)', color:'rgba(255,255,255,.5)', textDecoration:'none', fontSize:13, fontWeight:600, display:'block' }}>🚫 I am Under 18 — Exit</a>
+            </div>
+            <p style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>By entering, you agree to our <a href="/terms" style={{ color:'#a78bfa', textDecoration:'none' }}>Terms of Service</a>.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile search overlay */}
+      {searchOpen && (
+        <div className={styles.searchOverlay}>
+          <div className={styles.searchOverlayRow}>
+            <input
+              autoFocus
+              className={styles.searchOverlayInput}
+              placeholder="Search videos by title..."
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setPage(0); setCuratedPage(0); }}
+            />
+            <button className={styles.searchOverlayClose} onClick={() => { setSearchOpen(false); setSearchQuery(''); }}>✕</button>
+          </div>
+          {searchQuery.trim() ? (
+            <p style={{ fontSize:13, color:'var(--text3)', padding:'0 4px' }}>
+              Showing results for &ldquo;<strong style={{ color:'var(--text1)' }}>{searchQuery}</strong>&rdquo;
+            </p>
+          ) : (
+            <p className={styles.searchOverlayHint}>🔍 Type to search titles…</p>
+          )}
+        </div>
+      )}
 
       {/* ══ SIDEBAR ══ */}
       <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
@@ -648,39 +703,80 @@ export default function GalleryPage() {
           </button>
         </div>
 
+        {/* Mobile grid toggle (visible only on ≤900px) */}
+        <div className={styles.sidebarGridToggle} style={{ display:'block' }}>
+          <div className={styles.sidebarGridLabel}>📱 Video Layout</div>
+          <div className={styles.sidebarGridBtns}>
+            <button className={`${styles.gridToggleBtn} ${mobileGridCols === 1 ? styles.gridToggleActive : ''}`} onClick={() => toggleMobileGrid(1)}>
+              <span>▬</span> Single
+            </button>
+            <button className={`${styles.gridToggleBtn} ${mobileGridCols === 2 ? styles.gridToggleActive : ''}`} onClick={() => toggleMobileGrid(2)}>
+              <span>⊞</span> 2 per row
+            </button>
+          </div>
+        </div>
+
         {/* Nav */}
         <nav className={styles.sidebarNav}>
-          {sidebarNav.map(item => item.href ? (
-            <a key={item.id} href={item.href} className={styles.sidebarItem}>
-              <span className={styles.sidebarIcon}>{item.icon}</span>{item.label}
+          <button className={`${styles.sidebarItem} ${view === 'gallery' ? styles.sidebarActive : ''}`}
+            onClick={() => { setView('gallery'); setHomeTab('full'); setSidebarOpen(false); }}>
+            <span className={styles.sidebarIcon}>🏠</span>Home
+          </button>
+
+          <button className={`${styles.sidebarItem} ${view === 'bookmarks' ? styles.sidebarActive : ''}`}
+            onClick={() => { setView('bookmarks'); setSidebarOpen(false); }}>
+            <span className={styles.sidebarIcon}>🔖</span>Bookmarks
+          </button>
+
+          <button className={`${styles.sidebarItem}`}
+            onClick={() => { setView('gallery'); setHomeTab('recent'); setSidebarOpen(false); }}>
+            <span className={styles.sidebarIcon}>🕐</span>History
+          </button>
+
+          {isAdminOrAdvisor && (
+            <a href={user.role === 'advisor' ? '/advisor' : '/admin'} className={styles.sidebarItem}>
+              <span className={styles.sidebarIcon}>🛡️</span>
+              {user.role === 'advisor' ? 'Advisor Panel' : 'Admin Panel'}
+            </a>
+          )}
+
+          <div className={styles.sidebarDivider} />
+
+          {/* Premium/Free label */}
+          {isPrem ? (
+            <a href="/premium" className={`${styles.sidebarItem} ${styles.sidebarExtend}`}>
+              <span className={styles.sidebarIcon}>⚡</span>Extend Premium
             </a>
           ) : (
-            <button key={item.id} className={`${styles.sidebarItem} ${view === item.id ? styles.sidebarActive : ''}`}
-              onClick={item.onClick}>
-              <span className={styles.sidebarIcon}>{item.icon}</span>{item.label}
-            </button>
-          ))}
-          <div className={styles.sidebarDivider} />
-          <a href="/premium" className={`${styles.sidebarItem} ${styles.sidebarPremium}`}>
-            <span className={styles.sidebarIcon}>👑</span>Buy Premium
-          </a>
-          <button className={styles.sidebarItem} onClick={() => { setView('profile'); setSidebarOpen(false); }}>
+            <a href="/premium" className={`${styles.sidebarItem} ${styles.sidebarPremium}`}>
+              <span className={styles.sidebarIcon}>👑</span>Buy Premium
+            </a>
+          )}
+
+          <button className={`${styles.sidebarItem} ${view === 'profile' ? styles.sidebarActive : ''}`}
+            onClick={() => { setView('profile'); setSidebarOpen(false); }}>
             <span className={styles.sidebarIcon}>👤</span>My Profile
           </button>
+
+          <a href="/terms" className={styles.sidebarItem} style={{ fontSize:12 }}>
+            <span className={styles.sidebarIcon}>📋</span>Terms of Service
+          </a>
         </nav>
 
-        {/* Footer */}
+        {/* Footer with logout text */}
         <div className={styles.sidebarFooter}>
           <div className={styles.sidebarAvatar}>{initials}</div>
           <div className={styles.sidebarUserInfo}>
             <div className={styles.sidebarUserName}>{user.displayName || user.username}</div>
             <div className={styles.sidebarUserPlan}>{planLabel}</div>
           </div>
-          <button className={styles.sidebarLogout} onClick={logout} title="Sign Out">⏏</button>
+          <button className={styles.sidebarLogoutBtn} onClick={logout} title="Logout">
+            ⏏ Logout
+          </button>
         </div>
       </aside>
 
-      {/* Sidebar overlay (mobile) */}
+      {/* Sidebar overlay — click to close */}
       {sidebarOpen && <div className={styles.sidebarOverlay} onClick={() => setSidebarOpen(false)} />}
 
       {/* ══ MAIN ══ */}
@@ -688,16 +784,18 @@ export default function GalleryPage() {
 
         {/* ── HEADER ── */}
         <header className={styles.header}>
-          {/* Hamburger (mobile) */}
-          <button className={styles.hamburger} onClick={() => setSidebarOpen(o => !o)}>☰</button>
+          {/* Hamburger — always visible */}
+          <button className={styles.hamburger} onClick={() => setSidebarOpen(o => !o)} aria-label="Menu">
+            ☰
+          </button>
 
-          {/* Brand (mobile only) */}
+          {/* Brand — always visible */}
           <a href="/gallery" className={styles.headerBrand}>
             <img src="/logo.png" alt="" className={styles.headerBrandLogo} />
             <span className={styles.headerBrandName}>DesiHawas</span>
           </a>
 
-          {/* Search */}
+          {/* Search (desktop) */}
           <div className={styles.searchWrap}>
             <input
               className={styles.searchInput}
@@ -705,11 +803,17 @@ export default function GalleryPage() {
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(0); setCuratedPage(0); }}
             />
+            {searchQuery && (
+              <button className={styles.searchClearBtn} onClick={() => setSearchQuery('')}>✕</button>
+            )}
             <span className={styles.searchIcon}>🔍</span>
           </div>
 
           {/* Right side */}
           <div className={styles.headerRight}>
+            {/* Mobile search icon */}
+            <button className={styles.searchMobileBtn} onClick={() => setSearchOpen(true)} aria-label="Search">🔍</button>
+
             {/* Theme toggle */}
             <button className={styles.themeBtn} onClick={toggleTheme} title="Toggle theme">
               {theme === 'dark' ? '☀️' : '🌙'}
@@ -720,13 +824,12 @@ export default function GalleryPage() {
               <div className={styles.userChip} onClick={() => setUserMenuOpen(o => !o)} data-usermenu="true">
                 <div className={styles.avatar}>{initials}</div>
                 <span className={styles.userName}>{user.displayName || user.username}</span>
-                <span className={`${styles.userPlanBadge} ${viewStatus?.isPremium ? styles.userPlanBadgePrem : ''}`}>{planLabel}</span>
-                <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 2 }}>▾</span>
+                <span className={`${styles.userPlanBadge} ${isPrem ? styles.userPlanBadgePrem : ''}`}>{planLabel}</span>
+                <span style={{ fontSize:10, color:'var(--text3)', marginLeft:2 }}>▾</span>
               </div>
 
               {userMenuOpen && (
                 <div className={styles.userDropdown} data-usermenu="true">
-                  {/* Header */}
                   <div className={styles.udHeader}>
                     <div className={styles.udAvatar}>{initials}</div>
                     <div>
@@ -734,7 +837,6 @@ export default function GalleryPage() {
                       <div className={styles.udPlan}>{planLabel}</div>
                     </div>
                   </div>
-                  {/* Appearance row */}
                   <div className={styles.udAppRow}>
                     APPEARANCE
                     <button className={styles.themeToggle} onClick={toggleTheme}>
@@ -747,8 +849,8 @@ export default function GalleryPage() {
                   <button className={styles.udItem} onClick={() => { setView('bookmarks'); setUserMenuOpen(false); }}>
                     🔖 My Bookmarks
                   </button>
-                  {!viewStatus?.isPremium && user.role === 'viewer' && (
-                    <a href="/premium" className={styles.udItem} style={{ color: '#f59e0b' }}>
+                  {!isPrem && user.role === 'viewer' && (
+                    <a href="/premium" className={styles.udItem} style={{ color:'#f59e0b' }}>
                       👑 Buy Premium
                     </a>
                   )}
@@ -761,6 +863,14 @@ export default function GalleryPage() {
             </div>
           </div>
         </header>
+
+        {/* Cookie consent banner */}
+        {!cookieConsent && (
+          <div className={styles.cookieBanner}>
+            <p style={{ fontSize:13, color:'var(--text2)', margin:0, flex:1 }}>🍪 We use cookies to enhance your experience. <a href="/terms" style={{ color:'var(--accent)' }}>Learn more</a></p>
+            <button onClick={acceptCookie} style={{ padding:'8px 20px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', whiteSpace:'nowrap' }}>Accept</button>
+          </div>
+        )}
 
         {/* ── GALLERY ── */}
         {(view === 'gallery' || view === 'history') && (
@@ -792,7 +902,7 @@ export default function GalleryPage() {
                 <div className={styles.splashSpinner} style={{ width: 40, height: 40 }} />
               </div>
             ) : (
-              <div className={styles.grid}>
+              <div className={`${styles.grid} ${mobileGridCols === 2 ? styles.gridCols2 : ''}`}>
                 {searchedTabIds().map((id, i) => (
                   <div key={id} style={{ position: 'relative' }}>
                     {homeTab === 'instaviral' && !isPremium && (
@@ -1318,13 +1428,14 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
   useEffect(() => {
     if (tab === 'sessions') {
       setLoading(true);
-      fetch('/api/hwasi/sessions').then(r => r.json()).then(d => setSessions(d.sessions || [])).catch(() => {}).finally(() => setLoading(false));
+      fetch('/api/hwasi/sessions/me').then(r => r.json()).then(d => setSessions(d.sessions || [])).catch(() => {}).finally(() => setLoading(false));
     }
     if (tab === 'transactions') {
       setLoading(true);
-      fetch('/api/hwasi/utr').then(r => r.json()).then(d => setTransactions(d.transactions || [])).catch(() => {}).finally(() => setLoading(false));
+      fetch('/api/hwasi/utr').then(r => r.json()).then(d => setTransactions(d.transactions || d.requests || [])).catch(() => {}).finally(() => setLoading(false));
     }
   }, [tab]);
+
 
   async function saveAccount() {
     setSaveMsg('');
@@ -1476,22 +1587,29 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
       {/* Sessions Tab */}
       {tab === 'sessions' && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>📱 Active Sessions</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>📱 Active Sessions</h2>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 20 }}>Your current login sessions across devices.</p>
           {loading ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>Loading...</div> :
-            sessions.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>No sessions found</div> :
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            sessions.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>No active sessions found.</div> :
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {sessions.map((s, i) => (
-                <div key={i} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div key={i} style={{ background: s.current ? 'rgba(16,185,129,.07)' : 'var(--surface2)', border: `1px solid ${s.current ? 'rgba(16,185,129,.3)' : 'var(--border)'}`, borderRadius: 14, padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text1)' }}>{s.device || 'Unknown Device'}</span>
-                      {s.isCurrent && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 100, background: 'rgba(16,185,129,.2)', color: '#34d399' }}>CURRENT</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 24 }}>{s.deviceIcon || '💻'}</span>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text1)' }}>{s.device || 'Unknown Device'}</span>
+                          {s.current && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 100, background: 'rgba(16,185,129,.2)', color: '#34d399', letterSpacing: '.04em' }}>✓ CURRENT</span>}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.browser || 'Browser'} · {s.ip || '—'}</div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text3)' }}>IP: {s.ip || 'N/A'}</div>
-                    {s.lastUsed && <div style={{ fontSize: 12, color: 'var(--text3)' }}>⏰ Last used: {new Date(s.lastUsed).toLocaleString('en-IN')}</div>}
+                    {s.loginAt && <div style={{ fontSize: 11, color: 'var(--text3)' }}>🕐 Logged in: {new Date(s.loginAt).toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</div>}
+                    {s.expiresAt && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>⏳ Expires: {new Date(s.expiresAt).toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric' })}</div>}
                   </div>
-                  {!s.isCurrent && (
-                    <button onClick={() => revokeSession(s.id)}
+                  {!s.current && (
+                    <button onClick={() => {}}
                       style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,.12)', color: '#f87171', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
                       Revoke
                     </button>
@@ -1502,6 +1620,7 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
           }
         </div>
       )}
+
 
       {/* Subscriptions Tab */}
       {tab === 'subscriptions' && (
