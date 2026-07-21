@@ -20,7 +20,12 @@ async function getUser(req) {
 export async function GET() {
   const titles = await getVideoTitles();
   return NextResponse.json({ titles }, {
-    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'CDN-Cache-Control': 'no-store',
+      'Cloudflare-CDN-Cache-Control': 'no-store',
+    }
   });
 }
 

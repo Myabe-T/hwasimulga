@@ -76,6 +76,8 @@ export default function AdminPage() {
   const [plansMsg, setPlansMsg] = useState('');
   const [plansSaving, setPlansSaving] = useState(false);
   const [deviceData, setDeviceData] = useState({});
+  const [deviceSearch, setDeviceSearch] = useState('');
+  const [deviceFilter, setDeviceFilter] = useState('all'); // 'all' | '1' | '2' | '3plus' | '5plus'
   const [blockModal, setBlockModal] = useState(null);
   const [blockReason, setBlockReason] = useState('');
   // Payment settings state
@@ -174,11 +176,20 @@ export default function AdminPage() {
 
   async function saveSettings() {
     setSavingSet(true);
-    const r = await fetch('/api/hwasi/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
+    const r = await secureFetch('/api/hwasi/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
     const d = await r.json();
     setSavingSet(false);
-    if (r.ok) flash(`✅ Range saved — viewers see #${d.start}–#${d.end}`);
-    else flash('❌ ' + d.error, 'err');
+    if (r.ok && !d.error) {
+      // Update local state from saved response
+      setSettings(s => ({ ...s, ...d }));
+      const primary = `#${d.start || settings.start}–#${d.end || settings.end}`;
+      const extra = (d.extraRanges || settings.extraRanges || []).map(x => `#${x.start}–#${x.end}`).join(', ');
+      flash(`✅ Range saved — viewers see ${primary}${extra ? ' + ' + extra : ''}`);
+    } else flash('❌ ' + (d.error || 'Save failed'), 'err');
   }
 
   async function saveCurated(type) {
@@ -700,6 +711,46 @@ export default function AdminPage() {
           {/* ══ CURATED ══ */}
           {tab === 'curated' && (
             <div className={styles.fadeIn}>
+              {/* Full Collection Shuffle */}
+              <div className={styles.card} style={{ marginBottom: 20 }}>
+                <div className={styles.cardHeader}>
+                  <span style={{ fontSize: 24 }}>🎦</span>
+                  <div style={{ flex: 1 }}>
+                    <h3 className={styles.cardTitle}>Full Collection Order</h3>
+                    <p className={styles.cardSub}>Shuffle the order viewers see in the Full Collection tab</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className={styles.randomBtn}
+                      onClick={async () => {
+                        const cur = await secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => settings);
+                        const s = cur.error ? settings : cur;
+                        const primary = Array.from({ length: Math.max(0, s.end - s.start + 1) }, (_, i) => i + s.start);
+                        const extra = (s.extraRanges || []).flatMap(r => Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start));
+                        const all = [...new Set([...primary, ...extra])];
+                        // Fisher-Yates shuffle
+                        for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+                        const top = all.slice(0, 100);
+                        const r2 = await fetch('/api/hwasi/curated', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...curated, fullCollection: top }) });
+                        if (r2.ok) { const d = await r2.json(); setCurated(d); flash(`✅ Full Collection shuffled — first 100 IDs randomized`); }
+                      }}
+                    >🎲 Shuffle First 100</button>
+                    {(curated.fullCollection || []).length > 0 && (
+                      <button className={styles.clearBtn}
+                        onClick={async () => {
+                          const r2 = await fetch('/api/hwasi/curated', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...curated, fullCollection: [] }) });
+                          if (r2.ok) { const d = await r2.json(); setCurated(d); flash('✅ Full Collection order reset to default (sequential)'); }
+                        }}
+                      >🗑 Reset to Sequential</button>
+                    )}
+                  </div>
+                </div>
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', marginTop: 4 }}>
+                  {(curated.fullCollection || []).length > 0
+                    ? `🔀 Custom order active — first ${(curated.fullCollection).length} videos shown in shuffled order, rest follow sequentially`
+                    : 'ℹ️ No shuffle active — videos shown in sequential order (ID #start → #end)'}
+                </p>
+              </div>
+
               {[
                 { key: 'trending',   label: 'Trending',   icon: '🔥' },
                 { key: 'popular',    label: 'Popular',    icon: '📈' },
@@ -1429,7 +1480,6 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ══ DEVICE SECURITY ══ */}
           {tab === 'devices' && (
             <div className={styles.fadeIn}>
               <div className={styles.card}>
@@ -1439,76 +1489,110 @@ export default function AdminPage() {
                     <h3 className={styles.cardTitle}>Device Security</h3>
                     <p className={styles.cardSub}>Accounts with &gt;3 unique device fingerprints are auto-flagged</p>
                   </div>
-                  <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { fetch('/api/hwasi/devices').then(x => x.json()).then(d => setDeviceData(d.devices || {})); }}>↻ Refresh</button>
+                  <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { secureFetch('/api/hwasi/devices').then(x => x.json()).then(d => setDeviceData(d.devices || {})); }}>↻ Refresh</button>
                 </div>
-                {Object.keys(deviceData).length === 0 ? (
-                  <p style={{ color: 'var(--text3)', textAlign: 'center', padding: '32px 0' }}>No device data yet. Data appears once users log in.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
-                    {Object.entries(deviceData).map(([uid, entry]) => (
-                      <div key={uid} style={{ padding: 16, background: entry.blocked ? 'rgba(239,68,68,.08)' : entry.flagged ? 'rgba(245,158,11,.08)' : 'rgba(255,255,255,.03)', border: `1px solid ${entry.blocked ? 'rgba(239,68,68,.25)' : entry.flagged ? 'rgba(245,158,11,.25)' : 'rgba(255,255,255,.08)'}`, borderRadius: 14 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-                          <div style={{ fontWeight: 700 }}>{entry.displayName || entry.username || `User #${uid}`}</div>
-                          <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)' }}>@{entry.username}</div>
-                          {entry.blocked && <span style={{ padding: '2px 8px', borderRadius: 10, background: 'rgba(239,68,68,.2)', color: '#f87171', fontSize: 11, fontWeight: 700 }}>🚫 BLOCKED</span>}
-                          {entry.flagged && !entry.blocked && <span style={{ padding: '2px 8px', borderRadius: 10, background: 'rgba(245,158,11,.2)', color: '#fbbf24', fontSize: 11, fontWeight: 700 }}>⚠️ FLAGGED — sharing suspected</span>}
-                          <div style={{ marginLeft: 'auto', fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{Object.keys(entry.devices || {}).length} device{Object.keys(entry.devices || {}).length !== 1 ? 's' : ''} seen</div>
-                        </div>
 
-                        {/* Device list — shows readable labels */}
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                          {Object.entries(entry.devices || {}).map(([fp, dev], i) => {
-                            const icon = dev.label?.includes('iPhone') || dev.label?.includes('iOS') ? '📱' :
-                              dev.label?.includes('Android') ? '📱' :
-                                dev.label?.includes('iPad') ? '📱' :
-                                  dev.label?.includes('Windows') ? '💻' :
-                                    dev.label?.includes('Mac') ? '🍎' : '🖥';
-                            return (
-                              <div key={fp} style={{ padding: '6px 12px', background: 'rgba(255,255,255,.06)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 150 }}>
-                                <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{icon} {dev.label || `Device ${i + 1}`}</div>
-                                <div style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>
-                                  First: {new Date(dev.firstSeen).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
-                                  {' · '}Last: {new Date(dev.lastSeen).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,.25)', marginBottom: 8 }}>
-                          Hardware fingerprints — same across all browsers (Chrome/Brave/Firefox) on same physical device
-                        </div>
-
-                        {user?.role === 'admin' && (
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {!entry.blocked ? (
-                              <button
-                                style={{ padding: '7px 16px', borderRadius: 10, border: 'none', background: 'rgba(239,68,68,.15)', color: '#f87171', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
-                                onClick={() => {
-                                  setBlockReason('');
-                                  setBlockModal({ uid, displayName: entry.displayName, username: entry.username });
-                                }}
-                              >🚫 Block Account</button>
-                            ) : (
-                              <button
-                                style={{ padding: '7px 16px', borderRadius: 10, border: 'none', background: 'rgba(34,197,94,.15)', color: '#4ade80', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
-                                onClick={async () => {
-                                  await fetch('/api/hwasi/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: uid, blocked: false }) });
-                                  setDeviceData(d => ({ ...d, [uid]: { ...d[uid], blocked: false, flagged: false } }));
-                                  flash(`✅ Unblocked ${entry.displayName || entry.username}`);
-                                }}
-                              >✅ Unblock Account</button>
-                            )}
-                            {/* Send Warning Message */}
-                            <button
-                              style={{ padding: '7px 16px', borderRadius: 10, border: '1px solid rgba(251,191,36,.3)', background: 'rgba(251,191,36,.1)', color: '#fbbf24', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
-                              onClick={() => { setDeviceMsgText(''); setDeviceMsgModal({ uid, displayName: entry.displayName, username: entry.username }); }}
-                            >💬 Send Warning</button>
-                          </div>
-                        )}
-                      </div>
+                {/* Search + Filter bar */}
+                {Object.keys(deviceData).length > 0 && (
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <input
+                      className="input" style={{ flex: 1, minWidth: 200, padding: '8px 14px', fontSize: 13 }}
+                      placeholder="🔍 Search by username or display name..."
+                      value={deviceSearch}
+                      onChange={e => setDeviceSearch(e.target.value)}
+                    />
+                    {[['all', 'All Users'], ['1', '1 Device'], ['2', '2 Devices'], ['3plus', '3+ Devices'], ['5plus', '5+ Devices']].map(([val, label]) => (
+                      <button key={val}
+                        onClick={() => setDeviceFilter(val)}
+                        style={{
+                          padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
+                          background: deviceFilter === val ? 'rgba(139,92,246,.4)' : 'rgba(255,255,255,.07)',
+                          color: deviceFilter === val ? '#e9d5ff' : 'rgba(255,255,255,.6)',
+                          transition: 'all .15s'
+                        }}
+                      >{label}</button>
                     ))}
                   </div>
                 )}
+
+                {Object.keys(deviceData).length === 0 ? (
+                  <p style={{ color: 'var(--text3)', textAlign: 'center', padding: '32px 0' }}>No device data yet. Data appears once users log in.</p>
+                ) : (() => {
+                  // Apply search + filter
+                  const entries = Object.entries(deviceData).filter(([uid, entry]) => {
+                    const devCount = Object.keys(entry.devices || {}).length;
+                    const matchSearch = !deviceSearch ||
+                      (entry.username || '').toLowerCase().includes(deviceSearch.toLowerCase()) ||
+                      (entry.displayName || '').toLowerCase().includes(deviceSearch.toLowerCase());
+                    const matchFilter =
+                      deviceFilter === 'all' ? true :
+                      deviceFilter === '1'     ? devCount === 1 :
+                      deviceFilter === '2'     ? devCount === 2 :
+                      deviceFilter === '3plus' ? devCount >= 3 :
+                      deviceFilter === '5plus' ? devCount >= 5 : true;
+                    return matchSearch && matchFilter;
+                  });
+                  if (entries.length === 0) return <p style={{ color: 'var(--text3)', textAlign: 'center', padding: '24px 0' }}>No users match this filter.</p>;
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+                      {entries.map(([uid, entry]) => (
+                        <div key={uid} style={{ padding: 16, background: entry.blocked ? 'rgba(239,68,68,.08)' : entry.flagged ? 'rgba(245,158,11,.08)' : 'rgba(255,255,255,.03)', border: `1px solid ${entry.blocked ? 'rgba(239,68,68,.25)' : entry.flagged ? 'rgba(245,158,11,.25)' : 'rgba(255,255,255,.08)'}`, borderRadius: 14 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                            <div style={{ fontWeight: 700 }}>{entry.displayName || entry.username || `User #${uid}`}</div>
+                            <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)' }}>@{entry.username}</div>
+                            {entry.blocked && <span style={{ padding: '2px 8px', borderRadius: 10, background: 'rgba(239,68,68,.2)', color: '#f87171', fontSize: 11, fontWeight: 700 }}>🚫 BLOCKED</span>}
+                            {entry.flagged && !entry.blocked && <span style={{ padding: '2px 8px', borderRadius: 10, background: 'rgba(245,158,11,.2)', color: '#fbbf24', fontSize: 11, fontWeight: 700 }}>⚠️ FLAGGED — sharing suspected</span>}
+                            <div style={{ marginLeft: 'auto', fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{Object.keys(entry.devices || {}).length} device{Object.keys(entry.devices || {}).length !== 1 ? 's' : ''} seen</div>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                            {Object.entries(entry.devices || {}).map(([fp, dev], i) => {
+                              const icon = dev.label?.includes('iPhone') || dev.label?.includes('iOS') ? '📱' :
+                                dev.label?.includes('Android') ? '📱' :
+                                dev.label?.includes('iPad') ? '📱' :
+                                dev.label?.includes('Windows') ? '💻' :
+                                dev.label?.includes('Mac') ? '🍎' : '🖥';
+                              return (
+                                <div key={fp} style={{ padding: '6px 12px', background: 'rgba(255,255,255,.06)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 150 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{icon} {dev.label || `Device ${i + 1}`}</div>
+                                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>
+                                    First: {new Date(dev.firstSeen).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
+                                    {' · '}Last: {new Date(dev.lastSeen).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.25)', marginBottom: 8 }}>
+                            Hardware fingerprints — same across all browsers (Chrome/Brave/Firefox) on same physical device
+                          </div>
+                          {user?.role === 'admin' && (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              {!entry.blocked ? (
+                                <button
+                                  style={{ padding: '7px 16px', borderRadius: 10, border: 'none', background: 'rgba(239,68,68,.15)', color: '#f87171', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
+                                  onClick={() => { setBlockReason(''); setBlockModal({ uid, displayName: entry.displayName, username: entry.username }); }}
+                                >🚫 Block Account</button>
+                              ) : (
+                                <button
+                                  style={{ padding: '7px 16px', borderRadius: 10, border: 'none', background: 'rgba(34,197,94,.15)', color: '#4ade80', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
+                                  onClick={async () => {
+                                    await fetch('/api/hwasi/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: uid, blocked: false }) });
+                                    setDeviceData(d => ({ ...d, [uid]: { ...d[uid], blocked: false, flagged: false } }));
+                                    flash(`✅ Unblocked ${entry.displayName || entry.username}`);
+                                  }}
+                                >✅ Unblock Account</button>
+                              )}
+                              <button
+                                style={{ padding: '7px 16px', borderRadius: 10, border: '1px solid rgba(251,191,36,.3)', background: 'rgba(251,191,36,.1)', color: '#fbbf24', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
+                                onClick={() => { setDeviceMsgText(''); setDeviceMsgModal({ uid, displayName: entry.displayName, username: entry.username }); }}
+                              >💬 Send Warning</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}

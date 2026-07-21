@@ -142,7 +142,7 @@ export default function GalleryPage() {
         secureFetch('/api/hwasi/views').then(x=>x.json()).catch(()=>({ allowed:true })),
         fetch('/api/hwasi/bookmarks').then(x=>x.json()).catch(()=>({ ids:[] })),
       ]).then(([c, h, vs, bm]) => {
-        setCurated(c.error ? { trending:[], latest:[] } : c);
+        setCurated(c.error ? { trending:[], popular:[], instaviral:[], fullCollection:[] } : c);
         setCuratedLoading(false);
         setMyHistory(Array.isArray(h) ? h : []);
         setViewStatus(vs);
@@ -270,7 +270,12 @@ export default function GalleryPage() {
   // Exclude instaviral IDs from all normal tabs — Insta Viral is ALWAYS premium-only
   const safeAllIds = allIds.filter(id => !instaviralIds.includes(Number(id)));
   const safeTotalPages = Math.max(1, Math.ceil(safeAllIds.length / PER_PAGE));
-  const sortedForYou = [...safeAllIds];
+  // Full Collection: use admin-shuffled order when set, else sequential
+  const fullCollectionPriority = (curated.fullCollection || []).map(Number).filter(id => safeAllIds.includes(id));
+  const fullCollectionRemainder = safeAllIds.filter(id => !fullCollectionPriority.includes(id));
+  const sortedForYou = fullCollectionPriority.length > 0
+    ? [...fullCollectionPriority, ...fullCollectionRemainder]
+    : [...safeAllIds];
   const forYouIds = sortedForYou.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
   const popularIds = [...safeAllIds].sort((a, b) => Number(viewCount(b)) - Number(viewCount(a)));
 
