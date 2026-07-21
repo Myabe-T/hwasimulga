@@ -36,15 +36,21 @@ export async function POST(req) {
   const { shareToken } = body || {};
   if (!shareToken) return NextResponse.json(await encryptPayload({ error: 'Missing shareToken' }), { status: 400 });
 
-  // Look up share code in Redis
-  const stored = await redis.get(`share:${shareToken}`);
+  // Look up share code — new HASH format first, fallback to legacy STRING key
+  let stored = await redis.hget('hwasi:shares', shareToken);
+  if (!stored) stored = await redis.get(`share:${shareToken}`).catch(() => null);
   if (!stored) {
     return NextResponse.json(await encryptPayload({ error: 'Invalid or expired share link' }), { status: 400 });
   }
 
   let videoId;
   try {
-    const parsed = JSON.parse(stored);
+    const parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
+    // Check expiry for HASH-stored tokens (STRING tokens use Redis TTL)
+    if (parsed.expiresAt && parsed.expiresAt < Date.now()) {
+      await redis.hdel('hwasi:shares', shareToken).catch(() => {});
+      return NextResponse.json(await encryptPayload({ error: 'Share link has expired' }), { status: 400 });
+    }
     videoId = parsed.id;
   } catch {
     return NextResponse.json(await encryptPayload({ error: 'Corrupted share data' }), { status: 400 });

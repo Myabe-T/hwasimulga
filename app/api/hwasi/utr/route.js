@@ -71,15 +71,16 @@ export async function DELETE(req) {
     await redis.rpush(KEY, ...filtered);
   }
 
-  // Send a one-time notification to the user via device-message system
+  // Send a one-time notification to the user via notifications HASH
   if (userId) {
-    const msgKey = `hwasi:device_msg:${userId}`;
+    const { KEYS } = await import('@/lib/redis');
     const notification = JSON.stringify({
-      msg: `⚠️ Your UTR payment ID "${utrId}" could not be verified. Please double-check your UTR/transaction ID and resubmit, or contact support.`,
-      ts: Date.now(),
-      type: 'utr_rejected'
+      message: `⚠️ Your UTR payment ID "${utrId}" could not be verified. Please double-check your UTR/transaction ID and resubmit, or contact support.`,
+      from: '⚠️ Payment System',
+      timestamp: new Date().toISOString(),
+      type: 'utr_rejected',
     });
-    await redis.set(msgKey, notification, { ex: 60 * 60 * 24 * 3 }); // expires in 3 days
+    await redis.hset(KEYS.NOTIFICATIONS, { [String(userId)]: notification });
   }
 
   return NextResponse.json(await encryptPayload({ ok: true, removed }));
