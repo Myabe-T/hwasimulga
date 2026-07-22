@@ -1579,6 +1579,42 @@ export default function AdminPage() {
                   </div>
                 )}
               </div>
+
+              {/* ── Free Watch Limit ── */}
+              <div className={styles.card} style={{ marginTop: 20 }}>
+                <div className={styles.cardHeader}>
+                  <span style={{ fontSize: 22 }}>👁️</span>
+                  <div>
+                    <h3 className={styles.cardTitle}>Free Watch Limit</h3>
+                    <p className={styles.cardSub}>Daily free video limit for non-premium users (default: 5)</p>
+                  </div>
+                </div>
+                {watchLimitMsg && <div style={{ padding: '8px 14px', borderRadius: 8, background: watchLimitMsg.includes('✅') ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.1)', color: watchLimitMsg.includes('✅') ? '#4ade80' : '#f87171', marginBottom: 12, fontSize: 13 }}>{watchLimitMsg}</div>}
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
+                  <div style={{ flex: '0 0 160px' }}>
+                    <label className={styles.fieldLabel}>Daily Limit (Videos)</label>
+                    <input className="input" type="number" min="1" max="100" value={watchLimit.limit}
+                      onChange={e => setWatchLimit(p => ({ ...p, limit: Number(e.target.value) }))} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <label className={styles.fieldLabel}>Custom Message (shown to free users when limit hit)</label>
+                    <input className="input" placeholder="e.g. 🎉 Limit increased to 10 today only! Enjoy!" value={watchLimit.msg}
+                      onChange={e => setWatchLimit(p => ({ ...p, msg: e.target.value }))} />
+                  </div>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16 }}>
+                  📋 Each user account gets their own daily limit (resets at midnight UTC). When they hit the limit, they see an upgrade prompt. If you set a message above, it will replace the default "upgrade" text.
+                </p>
+                <button className="btn btn-primary" disabled={watchLimitSaving} onClick={async () => {
+                  setWatchLimitSaving(true); setWatchLimitMsg('');
+                  const r = await fetch('/api/hwasi/watch-limit', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(watchLimit) });
+                  const d = await r.json();
+                  setWatchLimitSaving(false);
+                  if (d.ok) setWatchLimitMsg('✅ Watch limit saved!');
+                  else setWatchLimitMsg('❌ Failed to save');
+                  setTimeout(() => setWatchLimitMsg(''), 3000);
+                }}>📺 Save Watch Limit</button>
+              </div>
             </div>
           )}
 

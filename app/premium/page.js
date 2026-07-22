@@ -18,7 +18,7 @@ function useTimer() {
 const PLAN_META = {
   basic: { icon:'⚡', color:'#7c3aed', glow:'rgba(124,58,237,0.5)', features:['Unlimited videos all day','HD streaming up to 1080p','Download videos to device','Full watch history'] },
   plus:  { icon:'🚀', color:'#0ea5e9', glow:'rgba(14,165,233,0.5)',  features:['Everything in Basic','Access to newest uploads first','Priority playback speed','Extended HD 1440p quality'], popular:true },
-  pro:   { icon:'👑', color:'#f59e0b', glow:'rgba(245,158,11,0.5)',  features:['Everything in Plus','3 years unlimited access','VIP support line','Exclusive members-only content'] },
+  pro:   { icon:'👑', color:'#f59e0b', glow:'rgba(245,158,11,0.5)',  features:['Everything in Plus','2 years unlimited access','VIP support line','Exclusive members-only content'] },
 };
 
 const TEASER_QUOTES = [
@@ -32,7 +32,7 @@ const TEASER_QUOTES = [
 export default function PremiumPage() {
   const [plans,        setPlans]        = useState(null);
   const [selected,     setSelected]     = useState(null);
-  const [step,         setStep]         = useState('plans');
+  const [step,         setStep]         = useState('plans');   // plans | pay | rzp_success
   const [status,       setStatus]       = useState(null);
   const [loading,      setLoading]      = useState(true);
   const [paySettings,  setPaySettings]  = useState({ maintenanceMode: false, upiId: 'admin@upi', qrUrl: '' });
@@ -41,8 +41,14 @@ export default function PremiumPage() {
   const [utrError,     setUtrError]     = useState('');
   const [utrSending,   setUtrSending]   = useState(false);
   const [teaserIdx,    setTeaserIdx]    = useState(0);
+  // Razorpay
+  const [rzpLoaded,    setRzpLoaded]    = useState(false);
+  const [rzpLoading,   setRzpLoading]   = useState(false);
+  const [rzpError,     setRzpError]     = useState('');
+  const [rzpPaymentId, setRzpPaymentId] = useState('');
   const timer = useTimer();
 
+  // Load initial data
   useEffect(() => {
     Promise.all([
       fetch('/api/hwasi/plans').then(r=>r.json()).catch(()=>({})),
@@ -62,6 +68,19 @@ export default function PremiumPage() {
     return () => clearInterval(id);
   }, []);
 
+  // Load Razorpay checkout.js script
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.Razorpay) { setRzpLoaded(true); return; }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => setRzpLoaded(true);
+    script.onerror = () => console.warn('Razorpay script failed to load');
+    document.head.appendChild(script);
+  }, []);
+
+  // ── UTR manual submit ──
   async function submitUtr() {
     if (utrInput.trim().length < 6) { setUtrError('Enter a valid UTR / Transaction ID (min 6 chars)'); return; }
     setUtrSending(true); setUtrError('');
@@ -77,6 +96,80 @@ export default function PremiumPage() {
     setUtrSending(false);
   }
 
+  // ── Razorpay checkout ──
+  async function payWithRazorpay() {
+    if (!selected || !rzpLoaded) {
+      setRzpError(!rzpLoaded ? 'Razorpay is loading, please wait…' : 'Please select a plan first.');
+      return;
+    }
+    setRzpLoading(true); setRzpError('');
+    try {
+      const res = await fetch('/api/razorpay/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: selected.id }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setRzpError(err.error || 'Could not create payment order. Contact support.');
+        setRzpLoading(false);
+        return;
+      }
+      const order = await res.json();
+      setRzpLoading(false);
+
+      const options = {
+        key:         order.key,
+        amount:      order.amount,
+        currency:    order.currency || 'INR',
+        order_id:    order.orderId,
+        name:        'DesiHawas Premium',
+        description: `${selected.label} Plan — ${order.days} days access`,
+        image:       '/logo.png',
+        prefill: {
+          name:  order.displayName || order.username || '',
+          email: order.email || '',
+        },
+        notes: { userId: order.userId, plan: order.plan },
+        theme: { color: selected.color || '#7c3aed' },
+        modal: { backdropclose: false, escape: false },
+        handler: async function(response) {
+          // Payment captured — verify signature & activate premium
+          try {
+            const vRes = await fetch('/api/razorpay/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_order_id:   response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature:  response.razorpay_signature,
+                plan:                order.plan,
+              }),
+            });
+            const vData = await vRes.json();
+            if (vData.ok) {
+              setRzpPaymentId(response.razorpay_payment_id);
+              setStep('rzp_success');
+            } else {
+              setRzpError(vData.error || 'Payment received but activation failed. Contact support with ID: ' + response.razorpay_payment_id);
+            }
+          } catch {
+            setRzpError('Verification error. Contact support. Payment ID: ' + response.razorpay_payment_id);
+          }
+        },
+      };
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function(resp) {
+        setRzpError(`Payment failed: ${resp.error?.description || 'Unknown error'}. Please try again.`);
+      });
+      rzp.open();
+    } catch (e) {
+      setRzpError('Failed to open payment. Try the UPI manual option below.');
+      setRzpLoading(false);
+    }
+  }
+
+  // ── Loading screen ──
   if (loading) return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#050010'}}>
       <div style={{textAlign:'center'}}>
@@ -126,6 +219,27 @@ export default function PremiumPage() {
     </div>
   );
 
+  /* ── Razorpay Payment Success Screen ── */
+  if (step === 'rzp_success') return (
+    <div style={{minHeight:'100vh',background:'linear-gradient(145deg,#050010,#0a001a)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24}}>
+      <div style={{fontSize:80,marginBottom:16,filter:'drop-shadow(0 0 30px rgba(74,222,128,.5))'}}>🎉</div>
+      <h2 style={{fontSize:30,fontWeight:900,marginBottom:8,background:'linear-gradient(to right,#4ade80,#22c55e)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
+        Payment Successful!
+      </h2>
+      <p style={{fontSize:15,color:'rgba(255,255,255,.6)',maxWidth:420,marginBottom:16,lineHeight:1.7}}>
+        Your <strong style={{color:'#fff'}}>{selected?.label}</strong> plan is now active! Enjoy <strong style={{color:'#4ade80'}}>{selected?.days} days</strong> of unlimited access.
+      </p>
+      {rzpPaymentId && (
+        <div style={{padding:'10px 20px',background:'rgba(74,222,128,.08)',border:'1px solid rgba(74,222,128,.2)',borderRadius:12,fontSize:13,color:'#4ade80',marginBottom:24,fontFamily:'monospace'}}>
+          Payment ID: {rzpPaymentId}
+        </div>
+      )}
+      <Link href="/gallery" style={{padding:'14px 32px',borderRadius:16,background:'linear-gradient(135deg,#7c3aed,#ec4899)',color:'#fff',fontWeight:800,textDecoration:'none',fontSize:15,boxShadow:'0 12px 32px rgba(124,58,237,.4)'}}>
+        🎬 Start Watching Now →
+      </Link>
+    </div>
+  );
+
   return (
     <div style={{minHeight:'100vh',background:'linear-gradient(160deg,#050010 0%,#080015 40%,#0a0020 100%)',color:'#fff',fontFamily:"'Inter',system-ui,sans-serif"}}>
       <style>{`
@@ -136,7 +250,6 @@ export default function PremiumPage() {
         @keyframes slide-in { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
         @keyframes spin { to{transform:rotate(360deg)} }
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-        @keyframes fade-quote { 0%,15%{opacity:0;transform:translateY(6px)} 20%,80%{opacity:1;transform:translateY(0)} 90%,100%{opacity:0;transform:translateY(-6px)} }
       `}</style>
 
       {/* ── Fixed ambient orbs ── */}
@@ -172,7 +285,7 @@ export default function PremiumPage() {
               <span style={{background:'linear-gradient(to right,#ec4899,#8b5cf6,#0ea5e9)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Experience</span>
             </h1>
 
-            {/* Teaser quote carousel */}
+            {/* Teaser quote */}
             <div style={{minHeight:52,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:20}}>
               <div key={teaserIdx} style={{maxWidth:520,fontSize:15,color:'rgba(255,255,255,.65)',lineHeight:1.7,animation:'slide-in .4s ease'}}>
                 <span style={{marginRight:8}}>{TEASER_QUOTES[teaserIdx].icon}</span>
@@ -190,7 +303,7 @@ export default function PremiumPage() {
           {/* ── Feature highlights ── */}
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:44}}>
             {[
-              {icon:'🎬',label:'Huge Library',sub:'Thousands of videos'},
+              {icon:'🎬',label:'Huge Library',sub:'700+ videos'},
               {icon:'🔥',label:'Daily Uploads',sub:'Fresh content every day'},
               {icon:'📱',label:'All Devices',sub:'Phone, tablet, PC'},
               {icon:'⬇️',label:'Download',sub:'Watch offline anytime'},
@@ -211,7 +324,7 @@ export default function PremiumPage() {
               const save = (plan.originalPrice||0) - (plan.price||0);
               return (
                 <div key={plan.id}
-                  onClick={() => { setSelected({...plan,...meta}); setStep('pay'); setUtrSubmitted(false); setUtrInput(''); setUtrError(''); }}
+                  onClick={() => { setSelected({...plan,...meta}); setStep('pay'); setUtrSubmitted(false); setUtrInput(''); setUtrError(''); setRzpError(''); }}
                   style={{
                     position:'relative',cursor:'pointer',borderRadius:20,
                     border:`1px solid ${meta.popular?meta.color:'rgba(255,255,255,.1)'}`,
@@ -272,7 +385,7 @@ export default function PremiumPage() {
               ))}
             </div>
             <p style={{fontSize:12,color:'rgba(255,255,255,.25)',maxWidth:500,margin:'0 auto',lineHeight:1.7}}>
-              After payment, your plan is activated within 15–30 minutes. Prices reset after the timer. Lock in today's discount now.
+              Razorpay payments activate instantly. UPI/UTR payments activate within 15–30 minutes. Prices reset after the timer.
             </p>
           </div>
         </div>
@@ -301,18 +414,65 @@ export default function PremiumPage() {
             </div>
           </div>
 
-          {/* Steps */}
-          <div style={{borderRadius:20,border:'1px solid rgba(255,255,255,.08)',background:'rgba(255,255,255,.03)',padding:'22px',marginBottom:20}}>
-            <h3 style={{fontWeight:800,fontSize:16,marginBottom:16,display:'flex',alignItems:'center',gap:8}}>
+          {/* ── OPTION 1: Razorpay instant payment ── */}
+          <div style={{borderRadius:20,border:'1px solid rgba(34,197,94,.25)',background:'rgba(34,197,94,.05)',padding:'22px',marginBottom:16}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+              <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(34,197,94,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>⚡</div>
+              <div>
+                <div style={{fontWeight:800,fontSize:15,color:'#4ade80'}}>Pay Instantly with Razorpay</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,.4)'}}>Card, UPI, Net Banking, Wallet • Instant activation</div>
+              </div>
+            </div>
+
+            {rzpError && (
+              <div style={{padding:'10px 14px',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',borderRadius:10,color:'#f87171',fontSize:13,marginBottom:12}}>
+                ⚠️ {rzpError}
+              </div>
+            )}
+
+            <button
+              onClick={payWithRazorpay}
+              disabled={rzpLoading || !rzpLoaded}
+              style={{
+                width:'100%',padding:'15px',borderRadius:14,border:'none',
+                background: rzpLoading ? 'rgba(255,255,255,.1)' : `linear-gradient(135deg,${selected.color},#4ade80)`,
+                color:'#fff',fontWeight:800,fontSize:16,cursor:rzpLoading?'not-allowed':'pointer',
+                display:'flex',alignItems:'center',justifyContent:'center',gap:10,
+                boxShadow:rzpLoading?'none':`0 8px 24px ${selected.glow}`,
+                transition:'all .2s',opacity:rzpLoading?0.6:1,
+              }}
+            >
+              {rzpLoading ? (
+                <>
+                  <span style={{width:18,height:18,border:'2px solid rgba(255,255,255,.3)',borderTop:'2px solid #fff',borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}} />
+                  Opening Checkout...
+                </>
+              ) : !rzpLoaded ? '⏳ Loading Razorpay...' : `⚡ Pay ₹${selected.price} via Razorpay`}
+            </button>
+            <div style={{fontSize:11,color:'rgba(255,255,255,.3)',textAlign:'center',marginTop:8}}>
+              🔒 Secured by Razorpay · Your data is safe
+            </div>
+          </div>
+
+          {/* ── Divider ── */}
+          <div style={{display:'flex',alignItems:'center',gap:12,margin:'20px 0',color:'rgba(255,255,255,.2)',fontSize:12}}>
+            <div style={{flex:1,height:1,background:'rgba(255,255,255,.1)'}}/>
+            OR PAY MANUALLY VIA UPI
+            <div style={{flex:1,height:1,background:'rgba(255,255,255,.1)'}}/>
+          </div>
+
+          {/* ── OPTION 2: UPI Manual + UTR ── */}
+          <div style={{borderRadius:20,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.03)',padding:'22px'}}>
+            <h3 style={{fontWeight:800,fontSize:15,marginBottom:14,display:'flex',alignItems:'center',gap:8}}>
               <span style={{width:28,height:28,borderRadius:'50%',background:'rgba(124,58,237,.2)',border:'1px solid rgba(124,58,237,.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13}}>📋</span>
-              How to Pay
+              Pay via UPI (Manual)
             </h3>
-            <ol style={{padding:0,margin:0,listStyle:'none',display:'flex',flexDirection:'column',gap:12}}>
+            <ol style={{padding:0,margin:'0 0 16px',listStyle:'none',display:'flex',flexDirection:'column',gap:10}}>
               {[
-                {n:'1',text:<>Open any UPI app (GPay, PhonePe, Paytm) and send <strong style={{color:'#fff'}}>₹{selected.price}</strong> to:</>},
-                {n:'2',text:'Copy the UTR / Transaction ID from your payment confirmation screen'},
+                {n:'1',text:<>Open GPay, PhonePe, or Paytm → send <strong style={{color:'#fff'}}>₹{selected.price}</strong> to:</>},
+                {n:'2',text:'Copy the UTR / Transaction ID from your payment confirmation'},
                 {n:'3',text:'Paste the UTR ID below and click Submit'},
-                {n:'4',text:<>Your plan will be activated within <strong style={{color:'#4ade80'}}>15–30 minutes</strong> ✅</>},
+                {n:'4',text:<>Plan activated within <strong style={{color:'#4ade80'}}>15–30 minutes</strong> ✅</>},
               ].map(s=>(
                 <li key={s.n} style={{display:'flex',gap:12,alignItems:'flex-start',fontSize:13,color:'rgba(255,255,255,.7)',lineHeight:1.6}}>
                   <span style={{width:24,height:24,borderRadius:'50%',background:'rgba(124,58,237,.25)',border:'1px solid rgba(124,58,237,.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,flexShrink:0,color:'#a78bfa'}}>{s.n}</span>
@@ -320,38 +480,31 @@ export default function PremiumPage() {
                 </li>
               ))}
             </ol>
-          </div>
 
-          {/* UPI ID box */}
-          <div style={{borderRadius:16,border:'1px solid rgba(124,58,237,.3)',background:'rgba(124,58,237,.08)',padding:'16px 18px',marginBottom:20}}>
-            <div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,.4)',letterSpacing:'.06em',marginBottom:6}}>💳 UPI ID</div>
-            <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-              <div style={{fontFamily:'monospace',fontSize:18,fontWeight:800,color:'#a78bfa',flex:1}}>{upiId}</div>
-              <button
-                onClick={()=>{ navigator.clipboard.writeText(upiId); }}
-                style={{padding:'8px 16px',borderRadius:10,border:'1px solid rgba(124,58,237,.4)',background:'rgba(124,58,237,.15)',color:'#a78bfa',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}
-              >📋 Copy</button>
+            {/* UPI ID box */}
+            <div style={{borderRadius:14,border:'1px solid rgba(124,58,237,.3)',background:'rgba(124,58,237,.08)',padding:'14px 16px',marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,.4)',letterSpacing:'.06em',marginBottom:6}}>💳 UPI ID</div>
+              <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+                <div style={{fontFamily:'monospace',fontSize:18,fontWeight:800,color:'#a78bfa',flex:1}}>{upiId}</div>
+                <button
+                  onClick={()=>{ navigator.clipboard.writeText(upiId); }}
+                  style={{padding:'8px 16px',borderRadius:10,border:'1px solid rgba(124,58,237,.4)',background:'rgba(124,58,237,.15)',color:'#a78bfa',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}
+                >📋 Copy</button>
+              </div>
             </div>
-          </div>
 
-          {/* QR Code */}
-          {paySettings.qrUrl && (
-            <div style={{textAlign:'center',marginBottom:20,padding:'20px',borderRadius:16,border:'1px solid rgba(255,255,255,.08)',background:'rgba(255,255,255,.03)'}}>
-              <div style={{fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:12,fontWeight:600}}>Or scan QR code to pay:</div>
-              <img src={paySettings.qrUrl} alt="Payment QR" style={{width:200,height:200,objectFit:'contain',borderRadius:12,border:'2px solid rgba(255,255,255,.15)',background:'#fff',padding:10}} />
-            </div>
-          )}
+            {/* QR Code */}
+            {paySettings.qrUrl && (
+              <div style={{textAlign:'center',marginBottom:16,padding:'16px',borderRadius:14,border:'1px solid rgba(255,255,255,.08)',background:'rgba(255,255,255,.03)'}}>
+                <div style={{fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:10,fontWeight:600}}>Or scan QR code to pay:</div>
+                <img src={paySettings.qrUrl} alt="Payment QR" style={{width:180,height:180,objectFit:'contain',borderRadius:10,border:'2px solid rgba(255,255,255,.15)',background:'#fff',padding:8}} />
+              </div>
+            )}
 
-          {/* UTR Submission */}
-          <div style={{borderRadius:20,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.03)',padding:'22px'}}>
+            {/* UTR Submission */}
             {!utrSubmitted ? (
               <>
-                <h3 style={{fontWeight:800,fontSize:16,marginBottom:6,display:'flex',alignItems:'center',gap:8}}>
-                  <span>📤</span> Submit Payment Proof
-                </h3>
-                <p style={{fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:16,lineHeight:1.7}}>
-                  After paying, paste your UTR / Reference / Transaction ID here. We'll verify and activate your plan in <strong style={{color:'#4ade80'}}>15–30 minutes</strong>.
-                </p>
+                <h4 style={{fontWeight:700,fontSize:14,marginBottom:6}}>📤 Submit Your UTR / Transaction ID</h4>
                 <input
                   style={{width:'100%',padding:'13px 16px',borderRadius:12,border:`1px solid ${utrError?'rgba(239,68,68,.4)':'rgba(255,255,255,.12)'}`,background:'rgba(255,255,255,.06)',color:'#fff',fontSize:14,marginBottom:8,outline:'none',transition:'border-color .2s'}}
                   placeholder="e.g. 426912345678 (UTR / Ref ID)"
@@ -365,7 +518,7 @@ export default function PremiumPage() {
                 <button
                   onClick={submitUtr}
                   disabled={utrSending || !utrInput.trim()}
-                  style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:utrInput.trim()&&!utrSending?`linear-gradient(135deg,${selected.color},#7c3aed)`:'rgba(255,255,255,.08)',color:utrInput.trim()&&!utrSending?'#fff':'rgba(255,255,255,.3)',fontWeight:800,fontSize:15,cursor:utrInput.trim()&&!utrSending?'pointer':'not-allowed',transition:'all .2s',boxShadow:utrInput.trim()&&!utrSending?`0 8px 24px ${selected.glow}`:'none'}}
+                  style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:utrInput.trim()&&!utrSending?`linear-gradient(135deg,${selected.color},#7c3aed)`:'rgba(255,255,255,.08)',color:utrInput.trim()&&!utrSending?'#fff':'rgba(255,255,255,.3)',fontWeight:800,fontSize:15,cursor:utrInput.trim()&&!utrSending?'pointer':'not-allowed',transition:'all .2s'}}
                 >
                   {utrSending ? (
                     <span style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
