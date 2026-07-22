@@ -42,7 +42,7 @@
 .sidebarPremium:hover { background:rgba(245,158,11,.12) !important; }
 .sidebarExtend { color:#a78bfa !important; font-weight:700 !important; }
 .sidebarExtend:hover { background:rgba(124,58,237,.12) !important; }
-.sidebarIcon { font-size:17px; flex-shrink:0; width:22px; text-align:center; }
+.sidebarIcon { width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:16px; }
 .sidebarDivider { height:1px; background:var(--border); margin:6px 8px; }
 
 /* Mobile grid toggle row */
@@ -89,12 +89,13 @@
 .searchMobileBtn { display:none; width:34px; height:34px; border-radius:50%; background:var(--inp); border:1px solid var(--inp-brd); color:var(--text2); font-size:17px; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
 
 /* Search overlay (mobile) */
-.searchOverlay { position:fixed; inset:0; background:var(--bg); z-index:300; display:flex; flex-direction:column; padding:16px; }
-.searchOverlayRow { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+.searchOverlay { position:fixed; inset:0; background:var(--bg); z-index:300; display:flex; flex-direction:column; padding:16px; overflow:hidden; }
+.searchOverlayRow { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-shrink:0; }
 .searchOverlayInput { flex:1; height:46px; background:var(--inp); border:2px solid var(--accent); border-radius:14px; padding:0 16px; font-size:15px; color:var(--text1); outline:none; font-family:inherit; }
 .searchOverlayInput::placeholder { color:var(--text3); }
 .searchOverlayClose { width:44px; height:44px; border-radius:12px; background:var(--inp); border:1px solid var(--inp-brd); color:var(--text2); font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .searchOverlayHint { font-size:13px; color:var(--text3); text-align:center; padding:40px 20px; }
+.searchOverlayResults { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:20px; }
 
 /* Right */
 .headerRight { display:flex; align-items:center; gap:8px; flex-shrink:0; margin-left:auto; }
@@ -125,7 +126,7 @@
 .udDivider { height:1px; background:var(--border); margin:4px 0; }
 
 /* ── Main content ── */
-.main { flex:1; padding:20px 20px 60px; max-width:1400px; width:100%; margin:0 auto; }
+.main { flex:1; padding:20px 20px 60px; max-width:1400px; width:100%; margin:0 auto; overflow-x:hidden; }
 
 /* Tab Pills */
 .tabContainer { display:flex; justify-content:center; padding:0 0 20px; }
@@ -142,8 +143,12 @@
 .sectionCount { font-size:13px; color:var(--text3); font-weight:600; margin-left:4px; }
 
 /* Grid */
-.grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+.grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; overflow-x:hidden; }
+.grid > * { min-width: 0; }
 .gridCols2 { grid-template-columns:repeat(2,1fr) !important; }
+/* Compact action buttons in 2-col mode */
+.gridCols2 .actionBtn { padding:6px 2px 5px; gap:3px; }
+.gridCols2 .actionBtnLabel { font-size:7px; }
 
 /* Video Card */
 .vcard { position:relative; border-radius:12px; overflow:hidden; background:var(--card); border:1px solid var(--border); box-shadow:var(--card-sh); animation:fadeUp .3s ease both; transition:transform .2s,box-shadow .2s,border-color .2s; cursor:pointer; }

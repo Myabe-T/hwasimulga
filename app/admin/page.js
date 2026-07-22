@@ -1489,33 +1489,99 @@ export default function AdminPage() {
               {/* ── UTR Submissions ── */}
               <div className={styles.card} style={{ marginTop: 20 }}>
                 <div className={styles.cardHeader}>
-                  <span style={{ fontSize: 22 }}>📋</span>
-                  <div><h3 className={styles.cardTitle}>UTR Submissions</h3><p className={styles.cardSub}>{utrList.length} pending payment claim(s)</p></div>
-                  <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => fetch('/api/hwasi/utr').then(x => x.json()).then(d => setUtrList(d.submissions || []))}>↻</button>
+                  <span style={{ fontSize: 22 }}>💳</span>
+                  <div><h3 className={styles.cardTitle}>UTR Submissions</h3><p className={styles.cardSub}>{utrList.filter(u => u.status !== 'approved' && u.status !== 'rejected').length} pending · {utrList.length} total</p></div>
+                  <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => fetch('/api/hwasi/utr').then(x => x.json()).then(d => setUtrList(d.submissions || []))}>↻ Refresh</button>
                 </div>
                 {utrList.length === 0 ? (
                   <p style={{ color: 'var(--text3)', textAlign: 'center', padding: '20px 0' }}>No UTR submissions yet</p>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead><tr style={{ color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase' }}>
-                      <th style={{ padding: '8px', textAlign: 'left' }}>User</th>
-                      <th style={{ padding: '8px', textAlign: 'left' }}>UTR ID</th>
-                      <th style={{ padding: '8px', textAlign: 'left' }}>Plan</th>
-                      <th style={{ padding: '8px', textAlign: 'left' }}>When</th>
-                    </tr></thead>
-                    <tbody>{utrList.map((u, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,.05)' }}>
-                        <td style={{ padding: '10px 8px' }}><div style={{ fontWeight: 700 }}>{u.displayName}</div><div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>@{u.username}</div></td>
-                        <td style={{ padding: '10px 8px', fontFamily: 'monospace', color: '#a78bfa', fontWeight: 700 }}>{u.utrId}</td>
-                        <td style={{ padding: '10px 8px' }}><span style={{ padding: '2px 10px', borderRadius: 100, background: 'rgba(124,58,237,.15)', border: '1px solid rgba(124,58,237,.3)', fontSize: 11, fontWeight: 700, color: '#a78bfa' }}>{u.plan}</span></td>
-                        <td style={{ padding: '10px 8px', fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{new Date(u.timestamp).toLocaleString('en-IN')}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead><tr style={{ color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+                        <th style={{ padding: '10px 10px', textAlign: 'left' }}>User</th>
+                        <th style={{ padding: '10px 10px', textAlign: 'left' }}>UTR / Transaction ID</th>
+                        <th style={{ padding: '10px 10px', textAlign: 'left' }}>Plan & Amount</th>
+                        <th style={{ padding: '10px 10px', textAlign: 'left' }}>When</th>
+                        <th style={{ padding: '10px 10px', textAlign: 'left' }}>Actions</th>
+                      </tr></thead>
+                      <tbody>{utrList.map((u, i) => {
+                        // Map plan name to price
+                        const priceMap = { basic: '₹99', plus: '₹299', pro: '₹599', '99': '₹99', '299': '₹299', '599': '₹599' };
+                        const planKey = (u.plan || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const planPrice = priceMap[planKey] || priceMap[u.plan] || '';
+                        const planColors = { basic: '#7c3aed', plus: '#0ea5e9', pro: '#f59e0b' };
+                        const planColor = planColors[planKey] || '#a78bfa';
+                        const isApproved = u.status === 'approved';
+                        const isRejected = u.status === 'rejected';
+                        return (
+                          <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,.05)', opacity: (isApproved || isRejected) ? 0.5 : 1 }}>
+                            <td style={{ padding: '12px 10px' }}>
+                              <div style={{ fontWeight: 700 }}>{u.displayName}</div>
+                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>@{u.username}</div>
+                            </td>
+                            <td style={{ padding: '12px 10px' }}>
+                              <code style={{ fontFamily: 'monospace', color: '#a78bfa', fontWeight: 700, fontSize: 13, background: 'rgba(124,58,237,.1)', padding: '3px 8px', borderRadius: 6 }}>{u.utrId}</code>
+                            </td>
+                            <td style={{ padding: '12px 10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ padding: '3px 10px', borderRadius: 100, background: planColor + '22', border: `1px solid ${planColor}55`, fontSize: 11, fontWeight: 700, color: planColor, textTransform: 'capitalize' }}>{u.plan}</span>
+                                {planPrice && <span style={{ fontSize: 13, fontWeight: 900, color: '#34d399' }}>{planPrice}</span>}
+                              </div>
+                            </td>
+                            <td style={{ padding: '12px 10px', fontSize: 11, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>
+                              {new Date(u.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td style={{ padding: '12px 10px' }}>
+                              {isApproved ? (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: '#34d399' }}>✅ Approved</span>
+                              ) : isRejected ? (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: '#f87171' }}>✕ Rejected</span>
+                              ) : (
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                  {/* Approve: grant premium + mark approved + remove from list */}
+                                  <button
+                                    style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'rgba(16,185,129,.2)', color: '#34d399', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                                    onClick={async () => {
+                                      if (!confirm(`Approve UTR "${u.utrId}" for ${u.username}?\nThis will grant ${u.plan} (${planPrice}) premium.`)) return;
+                                      // Grant premium
+                                      const gr = await fetch('/api/hwasi/premium', {
+                                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ userId: u.userId, plan: planKey === '99' ? 'basic' : planKey === '299' ? 'plus' : planKey === '599' ? 'pro' : u.plan })
+                                      });
+                                      if (!gr.ok) { flash('❌ Failed to grant premium', 'err'); return; }
+                                      // Remove from list (or mark approved)
+                                      setUtrList(prev => prev.map((x, j) => j === i ? { ...x, status: 'approved' } : x));
+                                      flash(`✅ Premium granted to ${u.username}!`);
+                                    }}
+                                  >✅ Approve</button>
+                                  {/* Reject: send notification to user + remove from list */}
+                                  <button
+                                    style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,.15)', color: '#f87171', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                                    onClick={async () => {
+                                      if (!confirm(`Reject UTR "${u.utrId}" from ${u.username}?\nUser will be notified to recheck their transaction.`)) return;
+                                      const dr = await fetch('/api/hwasi/utr', {
+                                        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ utrId: u.utrId, userId: u.userId })
+                                      });
+                                      if (!dr.ok) { flash('❌ Failed to reject', 'err'); return; }
+                                      setUtrList(prev => prev.map((x, j) => j === i ? { ...x, status: 'rejected' } : x));
+                                      flash(`✕ UTR rejected. ${u.username} will be notified at next login.`);
+                                    }}
+                                  >✕ Reject</button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}</tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </div>
           )}
+
 
           {tab === 'devices' && (
             <div className={styles.fadeIn}>

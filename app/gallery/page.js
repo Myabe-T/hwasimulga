@@ -635,13 +635,17 @@ export default function GalleryPage() {
   );
 
 
-  // ── Search filter ──
+  // ── Search filter ── searches ALL videos by title, not just current page
   const searchedTabIds = () => {
-    const base = tabIds();
-    if (!searchQuery.trim()) return base;
-    const q = searchQuery.toLowerCase().trim();
-    return base.filter(id => (videoTitles[String(id)] || '').toLowerCase().includes(q));
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return tabIds();
+    // Search across all video IDs for matching titles
+    return allIds.filter(id => {
+      const title = (videoTitles[String(id)] || '').toLowerCase();
+      return title.includes(q);
+    });
   };
+
 
   const initials = (user.avatar || user.username?.slice(0, 2) || 'U').toUpperCase();
   const planLabel = viewStatus?.isPremium ? 'PREMIUM' : (user.role === 'admin' ? 'ADMIN' : user.role === 'advisor' ? 'ADVISOR' : 'FREE PLAN');
@@ -669,9 +673,10 @@ export default function GalleryPage() {
         </div>
       )}
 
-      {/* Mobile search overlay */}
+      {/* Mobile search overlay — full screen with live results */}
       {searchOpen && (
         <div className={styles.searchOverlay}>
+          {/* Input row */}
           <div className={styles.searchOverlayRow}>
             <input
               autoFocus
@@ -680,12 +685,39 @@ export default function GalleryPage() {
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(0); setCuratedPage(0); }}
             />
-            <button className={styles.searchOverlayClose} onClick={() => { setSearchOpen(false); setSearchQuery(''); }}>✕</button>
+            <button className={styles.searchOverlayClose}
+              onClick={() => { setSearchOpen(false); setSearchQuery(''); }}>✕</button>
           </div>
+
+          {/* Results inside overlay */}
           {searchQuery.trim() ? (
-            <p style={{ fontSize:13, color:'var(--text3)', padding:'0 4px' }}>
-              Showing results for &ldquo;<strong style={{ color:'var(--text1)' }}>{searchQuery}</strong>&rdquo;
-            </p>
+            <>
+              <p style={{ fontSize:12, color:'var(--text3)', padding:'0 2px 10px', flexShrink:0 }}>
+                <strong style={{ color:'var(--text1)' }}>{searchedTabIds().length}</strong> results for &ldquo;<strong style={{ color:'var(--accent)' }}>{searchQuery}</strong>&rdquo;
+              </p>
+              <div className={styles.searchOverlayResults}>
+                {searchedTabIds().length === 0 ? (
+                  <p className={styles.searchOverlayHint}>No videos found. Try a different search term.</p>
+                ) : (
+                  <div className={`${styles.grid} ${mobileGridCols === 2 ? styles.gridCols2 : ''}`}>
+                    {searchedTabIds().slice(0, 60).map((id, i) => (
+                      <VideoCard key={id} id={id} index={i}
+                        title={videoTitles[String(id)] || null}
+                        hasThumb={thumbIds.has(id)}
+                        isBookmarked={bookmarks.has(id)}
+                        isAdmin={isAdminOrAdvisor}
+                        showHash={isAdminOrAdvisor}
+                        onPlay={() => { setSearchOpen(false); openModal(id); }}
+                        onDownload={null}
+                        onBookmark={e => toggleBookmark(e, id)}
+                        onReport={e => { e.stopPropagation(); setReportModal(id); }}
+                        onDelete={null}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <p className={styles.searchOverlayHint}>🔍 Type to search titles…</p>
           )}
@@ -726,22 +758,43 @@ export default function GalleryPage() {
         <nav className={styles.sidebarNav}>
           <button className={`${styles.sidebarItem} ${view === 'gallery' ? styles.sidebarActive : ''}`}
             onClick={() => { setView('gallery'); setHomeTab('full'); setSidebarOpen(false); }}>
-            <span className={styles.sidebarIcon}>🏠</span>Home
+            <span className={styles.sidebarIcon} style={{ background:'rgba(59,130,246,.18)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+              </svg>
+            </span>
+            Home
           </button>
 
           <button className={`${styles.sidebarItem} ${view === 'bookmarks' ? styles.sidebarActive : ''}`}
             onClick={() => { setView('bookmarks'); setSidebarOpen(false); }}>
-            <span className={styles.sidebarIcon}>🔖</span>Bookmarks
+            <span className={styles.sidebarIcon} style={{ background:'rgba(245,158,11,.18)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+              </svg>
+            </span>
+            Bookmarks
           </button>
 
           <button className={`${styles.sidebarItem}`}
             onClick={() => { setView('gallery'); setHomeTab('recent'); setSidebarOpen(false); }}>
-            <span className={styles.sidebarIcon}>🕐</span>History
+            <span className={styles.sidebarIcon} style={{ background:'rgba(16,185,129,.18)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </span>
+            History
           </button>
 
           {isAdminOrAdvisor && (
             <a href={user.role === 'advisor' ? '/advisor' : '/admin'} className={styles.sidebarItem}>
-              <span className={styles.sidebarIcon}>🛡️</span>
+              <span className={styles.sidebarIcon} style={{ background:'rgba(239,68,68,.18)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </span>
               {user.role === 'advisor' ? 'Advisor Panel' : 'Admin Panel'}
             </a>
           )}
@@ -751,21 +804,43 @@ export default function GalleryPage() {
           {/* Premium/Free label */}
           {isPrem ? (
             <a href="/premium" className={`${styles.sidebarItem} ${styles.sidebarExtend}`}>
-              <span className={styles.sidebarIcon}>⚡</span>Extend Premium
+              <span className={styles.sidebarIcon} style={{ background:'rgba(124,58,237,.22)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+              </span>
+              Extend Premium
             </a>
           ) : (
             <a href="/premium" className={`${styles.sidebarItem} ${styles.sidebarPremium}`}>
-              <span className={styles.sidebarIcon}>👑</span>Buy Premium
+              <span className={styles.sidebarIcon} style={{ background:'rgba(245,158,11,.22)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"/>
+                </svg>
+              </span>
+              Buy Premium
             </a>
           )}
 
           <button className={`${styles.sidebarItem} ${view === 'profile' ? styles.sidebarActive : ''}`}
             onClick={() => { setView('profile'); setSidebarOpen(false); }}>
-            <span className={styles.sidebarIcon}>👤</span>My Profile
+            <span className={styles.sidebarIcon} style={{ background:'rgba(236,72,153,.18)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f472b6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </span>
+            My Profile
           </button>
 
           <a href="/terms" className={styles.sidebarItem} style={{ fontSize:12 }}>
-            <span className={styles.sidebarIcon}>📋</span>Terms of Service
+            <span className={styles.sidebarIcon} style={{ background:'rgba(107,114,128,.15)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+              </svg>
+            </span>
+            Terms of Service
           </a>
         </nav>
 
@@ -778,6 +853,7 @@ export default function GalleryPage() {
           </div>
           <button className={styles.sidebarLogoutBtn} onClick={logout} title="Logout">
             ⏏ Logout
+
           </button>
         </div>
       </aside>
