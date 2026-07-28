@@ -86,6 +86,7 @@ export default function AdminPage() {
   const [paySettingsMsg, setPaySettingsMsg] = useState('');
   // UTR submissions
   const [utrList, setUtrList] = useState([]);
+  const [utrFilter, setUtrFilter] = useState('pending'); // pending | approved | rejected
   // Device message modal
   const [deviceMsgModal, setDeviceMsgModal] = useState(null);
   const [deviceMsgText, setDeviceMsgText] = useState('');
@@ -762,12 +763,18 @@ export default function AdminPage() {
                     <span style={{ fontSize: 24 }}>{icon}</span>
                     <div style={{ flex: 1 }}>
                       <h3 className={styles.cardTitle}>{label}</h3>
-                      <p className={styles.cardSub}>{(curated[type] || []).length} videos in this section</p>
+                      <p className={styles.cardSub}>
+                        {(curated[type] || []).length} videos in this section
+                        {type === 'instaviral' && ' · No limit · 👑 Premium only'}
+                      </p>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-                      <button className={styles.randomBtn} onClick={() => pickRandom50(type)} title="Replace with 50 random videos from current range">
-                        🎲 Random 50
-                      </button>
+                      {/* Random 50 only for Trending and Popular — NOT Insta Viral */}
+                      {type !== 'instaviral' && (
+                        <button className={styles.randomBtn} onClick={() => pickRandom50(type)} title="Replace with 50 random videos from current range">
+                          🎲 Random 50
+                        </button>
+                      )}
                       {(curated[type] || []).length > 0 && (
                         <button className={styles.clearBtn} onClick={() => { if (confirm(`Clear all ${label} videos?`)) clearCurated(type) }} title="Clear all">
                           🗑 Clear
@@ -776,7 +783,13 @@ export default function AdminPage() {
                     </div>
                   </div>
                   <div className={styles.chipRow}>
-                    {(curated[type] || []).length === 0 && <span className={styles.emptyHint}>No videos added yet — use Random 50 or enter IDs below</span>}
+                    {(curated[type] || []).length === 0 && (
+                      <span className={styles.emptyHint}>
+                        {type === 'instaviral'
+                          ? 'No videos added yet — enter IDs below (no limit, admin/advisor only)'
+                          : 'No videos added yet — use Random 50 or enter IDs below'}
+                      </span>
+                    )}
                     {(curated[type] || []).map(id => (
                       <div key={id} className={styles.chip}>
                         <span>#{id}</span>
@@ -1486,98 +1499,130 @@ export default function AdminPage() {
                 >{paySettingsSaving ? 'Saving...' : '💾 Save Payment Settings'}</button>
               </div>
 
-              {/* ── UTR Submissions ── */}
               <div className={styles.card} style={{ marginTop: 20 }}>
                 <div className={styles.cardHeader}>
                   <span style={{ fontSize: 22 }}>💳</span>
-                  <div><h3 className={styles.cardTitle}>UTR Submissions</h3><p className={styles.cardSub}>{utrList.filter(u => u.status !== 'approved' && u.status !== 'rejected').length} pending · {utrList.length} total</p></div>
+                  <div><h3 className={styles.cardTitle}>UTR Submissions</h3><p className={styles.cardSub}>{utrList.filter(u => u.status !== 'approved' && u.status !== 'rejected').length} pending · {utrList.filter(u => u.status === 'approved').length} accepted · {utrList.filter(u => u.status === 'rejected').length} rejected · {utrList.length} total</p></div>
                   <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => fetch('/api/hwasi/utr').then(x => x.json()).then(d => setUtrList(d.submissions || []))}>↻ Refresh</button>
                 </div>
-                {utrList.length === 0 ? (
-                  <p style={{ color: 'var(--text3)', textAlign: 'center', padding: '20px 0' }}>No UTR submissions yet</p>
-                ) : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                      <thead><tr style={{ color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
-                        <th style={{ padding: '10px 10px', textAlign: 'left' }}>User</th>
-                        <th style={{ padding: '10px 10px', textAlign: 'left' }}>UTR / Transaction ID</th>
-                        <th style={{ padding: '10px 10px', textAlign: 'left' }}>Plan & Amount</th>
-                        <th style={{ padding: '10px 10px', textAlign: 'left' }}>When</th>
-                        <th style={{ padding: '10px 10px', textAlign: 'left' }}>Actions</th>
-                      </tr></thead>
-                      <tbody>{utrList.map((u, i) => {
-                        // Map plan name to price
-                        const priceMap = { basic: '₹99', plus: '₹299', pro: '₹599', '99': '₹99', '299': '₹299', '599': '₹599' };
-                        const planKey = (u.plan || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                        const planPrice = priceMap[planKey] || priceMap[u.plan] || '';
-                        const planColors = { basic: '#7c3aed', plus: '#0ea5e9', pro: '#f59e0b' };
-                        const planColor = planColors[planKey] || '#a78bfa';
-                        const isApproved = u.status === 'approved';
-                        const isRejected = u.status === 'rejected';
-                        return (
-                          <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,.05)', opacity: (isApproved || isRejected) ? 0.5 : 1 }}>
-                            <td style={{ padding: '12px 10px' }}>
-                              <div style={{ fontWeight: 700 }}>{u.displayName}</div>
-                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>@{u.username}</div>
-                            </td>
-                            <td style={{ padding: '12px 10px' }}>
-                              <code style={{ fontFamily: 'monospace', color: '#a78bfa', fontWeight: 700, fontSize: 13, background: 'rgba(124,58,237,.1)', padding: '3px 8px', borderRadius: 6 }}>{u.utrId}</code>
-                            </td>
-                            <td style={{ padding: '12px 10px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ padding: '3px 10px', borderRadius: 100, background: planColor + '22', border: `1px solid ${planColor}55`, fontSize: 11, fontWeight: 700, color: planColor, textTransform: 'capitalize' }}>{u.plan}</span>
-                                {planPrice && <span style={{ fontSize: 13, fontWeight: 900, color: '#34d399' }}>{planPrice}</span>}
-                              </div>
-                            </td>
-                            <td style={{ padding: '12px 10px', fontSize: 11, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>
-                              {new Date(u.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                            </td>
-                            <td style={{ padding: '12px 10px' }}>
-                              {isApproved ? (
-                                <span style={{ fontSize: 11, fontWeight: 700, color: '#34d399' }}>✅ Approved</span>
-                              ) : isRejected ? (
-                                <span style={{ fontSize: 11, fontWeight: 700, color: '#f87171' }}>✕ Rejected</span>
-                              ) : (
-                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                  {/* Approve: grant premium + mark approved + remove from list */}
-                                  <button
-                                    style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'rgba(16,185,129,.2)', color: '#34d399', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
-                                    onClick={async () => {
-                                      if (!confirm(`Approve UTR "${u.utrId}" for ${u.username}?\nThis will grant ${u.plan} (${planPrice}) premium.`)) return;
-                                      // Grant premium
-                                      const gr = await fetch('/api/hwasi/premium', {
-                                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ userId: u.userId, plan: planKey === '99' ? 'basic' : planKey === '299' ? 'plus' : planKey === '599' ? 'pro' : u.plan })
-                                      });
-                                      if (!gr.ok) { flash('❌ Failed to grant premium', 'err'); return; }
-                                      // Remove from list (or mark approved)
-                                      setUtrList(prev => prev.map((x, j) => j === i ? { ...x, status: 'approved' } : x));
-                                      flash(`✅ Premium granted to ${u.username}!`);
-                                    }}
-                                  >✅ Approve</button>
-                                  {/* Reject: send notification to user + remove from list */}
-                                  <button
-                                    style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,.15)', color: '#f87171', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
-                                    onClick={async () => {
-                                      if (!confirm(`Reject UTR "${u.utrId}" from ${u.username}?\nUser will be notified to recheck their transaction.`)) return;
-                                      const dr = await fetch('/api/hwasi/utr', {
-                                        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ utrId: u.utrId, userId: u.userId })
-                                      });
-                                      if (!dr.ok) { flash('❌ Failed to reject', 'err'); return; }
-                                      setUtrList(prev => prev.map((x, j) => j === i ? { ...x, status: 'rejected' } : x));
-                                      flash(`✕ UTR rejected. ${u.username} will be notified at next login.`);
-                                    }}
-                                  >✕ Reject</button>
+
+                {/* Filter tabs */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+                  {[
+                    { key: 'pending',  label: '⏳ Pending',  color: '#fbbf24', count: utrList.filter(u => u.status !== 'approved' && u.status !== 'rejected').length },
+                    { key: 'approved', label: '✅ Accepted', color: '#34d399', count: utrList.filter(u => u.status === 'approved').length },
+                    { key: 'rejected', label: '✕ Rejected',  color: '#f87171', count: utrList.filter(u => u.status === 'rejected').length },
+                    { key: 'all',      label: '📋 All',       color: '#a78bfa', count: utrList.length },
+                  ].map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => setUtrFilter(f.key)}
+                      style={{
+                        padding: '6px 14px', borderRadius: 10, border: `1px solid ${utrFilter === f.key ? f.color + '88' : 'rgba(255,255,255,.1)'}`,
+                        background: utrFilter === f.key ? f.color + '18' : 'rgba(255,255,255,.03)',
+                        color: utrFilter === f.key ? f.color : 'rgba(255,255,255,.5)',
+                        fontWeight: utrFilter === f.key ? 700 : 500, fontSize: 12, cursor: 'pointer', transition: 'all .15s',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      {f.label}
+                      <span style={{ padding: '1px 7px', borderRadius: 20, background: utrFilter === f.key ? f.color + '33' : 'rgba(255,255,255,.08)', fontSize: 11, fontWeight: 700 }}>{f.count}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {(() => {
+                  const filtered = utrFilter === 'all' ? utrList
+                    : utrFilter === 'pending'  ? utrList.filter(u => u.status !== 'approved' && u.status !== 'rejected')
+                    : utrFilter === 'approved' ? utrList.filter(u => u.status === 'approved')
+                    : utrList.filter(u => u.status === 'rejected');
+
+                  if (filtered.length === 0) return (
+                    <p style={{ color: 'var(--text3)', textAlign: 'center', padding: '20px 0' }}>
+                      {utrList.length === 0 ? 'No UTR submissions yet' : `No ${utrFilter} submissions`}
+                    </p>
+                  );
+                  return (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead><tr style={{ color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+                          <th style={{ padding: '10px 10px', textAlign: 'left' }}>User</th>
+                          <th style={{ padding: '10px 10px', textAlign: 'left' }}>UTR / Transaction ID</th>
+                          <th style={{ padding: '10px 10px', textAlign: 'left' }}>Plan &amp; Amount</th>
+                          <th style={{ padding: '10px 10px', textAlign: 'left' }}>When</th>
+                          <th style={{ padding: '10px 10px', textAlign: 'left' }}>Status / Actions</th>
+                        </tr></thead>
+                        <tbody>{filtered.map((u, fi) => {
+                          const i = utrList.indexOf(u);
+                          // Map plan name to price
+                          const priceMap = { basic: '₹100', plus: '₹300', pro: '₹599', '99': '₹99', '299': '₹299', '599': '₹599', '100': '₹100', '300': '₹300' };
+                          const planKey = (u.plan || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                          const planPrice = priceMap[planKey] || priceMap[u.plan] || '';
+                          const planColors = { basic: '#7c3aed', plus: '#0ea5e9', pro: '#f59e0b' };
+                          const planColor = planColors[planKey] || '#a78bfa';
+                          const isApproved = u.status === 'approved';
+                          const isRejected = u.status === 'rejected';
+                          return (
+                            <tr key={fi} style={{ borderTop: '1px solid rgba(255,255,255,.05)' }}>
+                              <td style={{ padding: '12px 10px' }}>
+                                <div style={{ fontWeight: 700 }}>{u.displayName}</div>
+                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>@{u.username}</div>
+                              </td>
+                              <td style={{ padding: '12px 10px' }}>
+                                <code style={{ fontFamily: 'monospace', color: '#a78bfa', fontWeight: 700, fontSize: 13, background: 'rgba(124,58,237,.1)', padding: '3px 8px', borderRadius: 6 }}>{u.utrId}</code>
+                              </td>
+                              <td style={{ padding: '12px 10px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ padding: '3px 10px', borderRadius: 100, background: planColor + '22', border: `1px solid ${planColor}55`, fontSize: 11, fontWeight: 700, color: planColor, textTransform: 'capitalize' }}>{u.plan}</span>
+                                  {planPrice && <span style={{ fontSize: 13, fontWeight: 900, color: '#34d399' }}>{planPrice}</span>}
                                 </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}</tbody>
-                    </table>
-                  </div>
-                )}
+                              </td>
+                              <td style={{ padding: '12px 10px', fontSize: 11, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>
+                                {new Date(u.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              </td>
+                              <td style={{ padding: '12px 10px' }}>
+                                {isApproved ? (
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#34d399' }}>✅ Approved</span>
+                                ) : isRejected ? (
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#f87171' }}>✕ Rejected</span>
+                                ) : (
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                    <button
+                                      style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'rgba(16,185,129,.2)', color: '#34d399', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                                      onClick={async () => {
+                                        if (!confirm(`Approve UTR "${u.utrId}" for ${u.username}?\nThis will grant ${u.plan} (${planPrice}) premium.`)) return;
+                                        const gr = await fetch('/api/hwasi/premium', {
+                                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ userId: u.userId, plan: planKey === '99' || planKey === '100' ? 'basic' : planKey === '299' || planKey === '300' ? 'plus' : planKey === '599' ? 'pro' : u.plan })
+                                        });
+                                        if (!gr.ok) { flash('❌ Failed to grant premium', 'err'); return; }
+                                        setUtrList(prev => prev.map((x, j) => j === i ? { ...x, status: 'approved' } : x));
+                                        flash(`✅ Premium granted to ${u.username}!`);
+                                      }}
+                                    >✅ Approve</button>
+                                    <button
+                                      style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,.15)', color: '#f87171', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                                      onClick={async () => {
+                                        if (!confirm(`Reject UTR "${u.utrId}" from ${u.username}?\nUser will be notified.`)) return;
+                                        const dr = await fetch('/api/hwasi/utr', {
+                                          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ utrId: u.utrId, userId: u.userId })
+                                        });
+                                        if (!dr.ok) { flash('❌ Failed to reject', 'err'); return; }
+                                        setUtrList(prev => prev.map((x, j) => j === i ? { ...x, status: 'rejected' } : x));
+                                        flash(`✕ UTR rejected. ${u.username} will be notified at next login.`);
+                                      }}
+                                    >✕ Reject</button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}</tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* ── Free Watch Limit ── */}
@@ -1681,7 +1726,22 @@ export default function AdminPage() {
                             <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)' }}>@{entry.username}</div>
                             {entry.blocked && <span style={{ padding: '2px 8px', borderRadius: 10, background: 'rgba(239,68,68,.2)', color: '#f87171', fontSize: 11, fontWeight: 700 }}>🚫 BLOCKED</span>}
                             {entry.flagged && !entry.blocked && <span style={{ padding: '2px 8px', borderRadius: 10, background: 'rgba(245,158,11,.2)', color: '#fbbf24', fontSize: 11, fontWeight: 700 }}>⚠️ FLAGGED — sharing suspected</span>}
-                            <div style={{ marginLeft: 'auto', fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{Object.keys(entry.devices || {}).length} device{Object.keys(entry.devices || {}).length !== 1 ? 's' : ''} seen</div>
+                            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{Object.keys(entry.devices || {}).length} device{Object.keys(entry.devices || {}).length !== 1 ? 's' : ''} seen</span>
+                              {/* Remove entire user row from device security (for deleted accounts) */}
+                              <button
+                                title="Remove this user from Device Security list (for deleted accounts)"
+                                onClick={async () => {
+                                  if (!confirm(`Remove "${entry.username || uid}" completely from device security list?\nThis won't affect their account — only removes them from this view.`)) return;
+                                  const r = await fetch('/api/hwasi/devices', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: uid, removeUser: true }) });
+                                  if (r.ok) {
+                                    setDeviceData(d => { const updated = { ...d }; delete updated[uid]; return updated; });
+                                    flash(`✅ ${entry.username || uid} removed from device list`);
+                                  }
+                                }}
+                                style={{ width: 24, height: 24, borderRadius: '50%', border: '1px solid rgba(255,255,255,.15)', background: 'rgba(100,100,100,.2)', color: 'rgba(255,255,255,.5)', fontSize: 13, fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, lineHeight: 1 }}
+                              >✕</button>
+                            </div>
                           </div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
                             {Object.entries(entry.devices || {}).map(([fp, dev], i) => {

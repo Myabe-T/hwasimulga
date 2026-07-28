@@ -1,7 +1,7 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
-import { getDeviceData, setUserBlocked, clearDevice, clearAllDevices } from '@/lib/redis';
+import { getDeviceData, setUserBlocked, clearDevice, clearAllDevices, removeUserFromDevices } from '@/lib/redis';
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
 
@@ -29,13 +29,16 @@ export async function POST(req) {
   return NextResponse.json({ ok: true });
 }
 
-// DELETE — admin/advisor: remove a specific device fingerprint OR all devices for a user
+// DELETE — admin/advisor: remove a specific device fingerprint, all devices, or entire user row
 export async function DELETE(req) {
   const user = await getUser(req);
   if (!user || !['admin','advisor'].includes(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const { userId, fingerprint, clearAll } = await req.json();
+  const { userId, fingerprint, clearAll, removeUser } = await req.json();
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
-  if (clearAll) {
+  if (removeUser) {
+    // Completely remove user's row from device tracking (for deleted accounts)
+    await removeUserFromDevices(userId);
+  } else if (clearAll) {
     await clearAllDevices(userId);
   } else {
     if (!fingerprint) return NextResponse.json({ error: 'fingerprint required' }, { status: 400 });
@@ -43,4 +46,3 @@ export async function DELETE(req) {
   }
   return NextResponse.json({ ok: true });
 }
-
