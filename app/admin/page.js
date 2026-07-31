@@ -224,21 +224,30 @@ export default function AdminPage() {
   }
 
   async function pickRandom50(type) {
-    // Fetch current settings for range, then pick 50 random IDs
-    const s = await fetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start: 51, end: 730 }));
-    const start = s.start || 51;
-    const end = s.end || 730;
-    const all = Array.from({ length: end - start + 1 }, (_, i) => i + start);
-    // Fisher-Yates shuffle, take 50
-    const shuffled = [...all];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    // Fetch current settings for ALL ranges (primary + extra CDN sources like hindibf)
+    const s = await fetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start: 1, end: 775 }));
+    const start = s.start || 1; const end = s.end || 775;
+    const primaryAll = Array.from({ length: end - start + 1 }, (_, i) => i + start);
+    const extraAll = (s.extraRanges || []).flatMap(r =>
+      Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
+    );
+    const all = [...new Set([...primaryAll, ...extraAll])];
+    // Full Collection: 100 videos with 60% bias toward latest (highest IDs = newest)
+    const count = (type === 'full') ? 100 : 50;
+    const sorted = [...all].sort((a, b) => b - a);
+    const topThird = sorted.slice(0, Math.ceil(sorted.length / 3));
+    const rest = sorted.slice(Math.ceil(sorted.length / 3));
+    function shuffle(arr, n) {
+      const s = [...arr];
+      for (let i = s.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [s[i], s[j]] = [s[j], s[i]]; }
+      return s.slice(0, n);
     }
-    const picked = shuffled.slice(0, 50);
+    const latestPick = shuffle(topThird, Math.ceil(count * 0.6));
+    const restPick = shuffle(rest, count - latestPick.length);
+    const picked = [...new Set([...latestPick, ...restPick])].sort(() => Math.random() - 0.5);
     const r = await fetch('/api/hwasi/curated', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...curated, [type]: picked }) });
     const d = await r.json();
-    if (r.ok) { setCurated(d); flash(`🎲 ${type}: 50 random videos picked!`); }
+    if (r.ok) { setCurated(d); flash(`🎲 ${type}: ${picked.length} videos (60% latest + all CDNs)!`); }
     else flash('❌ ' + d.error, 'err');
   }
 
@@ -955,7 +964,14 @@ export default function AdminPage() {
                       </div>
                     )}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(100px,1fr))', gap: 6 }}>
-                      {Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start).map(id => {
+                      {[
+                        // Primary range
+                        ...Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start),
+                        // Extra ranges (2500-2560, 10001-10243, etc.)
+                        ...(settings.extraRanges || []).flatMap(r =>
+                          Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
+                        ),
+                      ].map(id => {
                         const hasThumb = allThumbIds.has(id);
                         const isSelected = selectedGridIds.has(id);
                         return (
@@ -1000,7 +1016,7 @@ export default function AdminPage() {
                               }}>✓</div>
                             )}
                             {hasThumb ? (
-                              <img src={`/api/hwasi/thumbnail/${id}`}
+                              <img src={id >= 10000 ? `/api/hwasi/thumb-extra/${id}` : `/api/hwasi/thumbnail/${id}`}
                                 style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }}
                                 loading="lazy" alt={`#${id}`}
                                 onError={e => { e.target.style.display = 'none'; }} />

@@ -150,17 +150,22 @@ export default function GalleryPage() {
       const st = s.error ? { start:1, end:730, deletedIds:[], extraRanges:[] } : s;
       const delSet = new Set(st.deletedIds || []);
       setSettings(st);
-      // Build video ID list: primary range + any extra ranges (e.g. 10001-10243 for hindibf)
-      const primaryIds = Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start);
+      // Build video ID list: newest first (descending) within each range
+      const primaryIds = Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => st.end - i);
       const extraIds = (st.extraRanges || []).flatMap(r =>
-        Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
+        Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => r.end - i)
       );
-      // Combine regular thumbIds + all hindibf IDs (IDs >= 10000 always have extra_thumbs)
+      // Regular thumb IDs + only actual extra-CDN IDs that have titles stored (= have thumbnails)
       const regularThumbIds = new Set((t.ids || []).map(Number));
       const allVideoIds = [...new Set([...primaryIds, ...extraIds])].filter(id => !delSet.has(id));
-      const hindibfIds = new Set(allVideoIds.filter(id => id >= 10000));
-      setThumbIds(new Set([...regularThumbIds, ...hindibfIds]));
-      setVideoTitles(tr.titles || {});
+      // For extra CDN (hindibf), only mark as having thumb if it actually has a title
+      // (IDs that have titles are the same IDs that have thumbnails — imported together)
+      const titlesObj = tr.titles || {};
+      const extraCdnThumbIds = new Set(
+        allVideoIds.filter(id => id >= 10000 && titlesObj[String(id)])
+      );
+      setThumbIds(new Set([...regularThumbIds, ...extraCdnThumbIds]));
+      setVideoTitles(titlesObj);
       setAllIds(allVideoIds);
 
       // Guest mode stops here — no auth-gated data
