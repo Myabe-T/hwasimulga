@@ -51,8 +51,8 @@ export async function POST(req) {
 
   // Admin + Advisor always allowed
   if (['admin','advisor'].includes(session.role)) {
-    const cdnId = await getVideoCdn(videoId);
-    const token = await signVideoId(videoId, cdnId);
+    const cdnInfo = await getVideoCdn(videoId);
+    const token = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
     return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, token }));
   }
 
@@ -69,8 +69,8 @@ export async function POST(req) {
   }
 
   if (sub) {
-    const cdnId = await getVideoCdn(videoId);
-    const token = await signVideoId(videoId, cdnId);
+    const cdnInfo = await getVideoCdn(videoId);
+    const token = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
     return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt, token }));
   }
 
@@ -91,8 +91,8 @@ export async function POST(req) {
 
   await incrementViewCount(userKey);
   const newCount = count + 1;
-  const cdnId = await getVideoCdn(videoId);
-  const token = await signVideoId(videoId, cdnId);
+  const cdnInfo = await getVideoCdn(videoId);
+  const token = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
   
   return NextResponse.json(await encryptPayload({
     allowed: true,

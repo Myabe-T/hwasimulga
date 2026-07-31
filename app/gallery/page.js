@@ -1164,7 +1164,7 @@ export default function GalleryPage() {
             {thumbIds.has(modal.id) && (
               <div style={{ padding: '12px 16px 0', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
                 <img
-                  src={`/api/hwasi/thumbnail/${modal.id}`}
+                  src={thumbSrc(modal.id)}
                   alt="thumbnail"
                   style={{ width: 120, height: 72, objectFit: 'cover', borderRadius: 10, flexShrink: 0, border: '1px solid rgba(255,255,255,.1)' }}
                 />
@@ -1848,7 +1848,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
         <div className={styles.vthumbInner}>
           {hasThumb && !err ? (
             <>
-              <img src={`/api/hwasi/thumbnail/${id}`} alt="" className={styles.vthumbImg}
+              <img src={thumbSrc(id)} alt="" className={styles.vthumbImg}
                 style={{ opacity: loaded ? 1 : 0, transition: 'opacity .3s' }}
                 onLoad={() => setLoaded(true)} onError={() => setErr(true)} />
               {!loaded && <div className={styles.shimmer} />}
