@@ -154,7 +154,15 @@ export default function AdminPage() {
     setRegApproval(ra.required || false);
     setSubRequests(sr.requests || []);
     // Load custom video titles, plans, device data
-    fetch(`/api/hwasi/titles?v=${Date.now()}`).then(x => x.json()).then(d => setVideoTitles(d.titles || {})).catch(() => { });
+    fetch(`/api/hwasi/titles?v=${Date.now()}`).then(x => x.json()).then(d => {
+      setVideoTitles(d.titles || {});
+      // Extra CDN videos (hindibf, id >= 10000) that have titles also have thumbnails in extra_thumbs
+      const extraCdnIds = Object.keys(d.titles || {}).map(Number).filter(id => id >= 10000);
+      if (extraCdnIds.length > 0) {
+        setAllThumbIds(prev => new Set([...prev, ...extraCdnIds]));
+        setThumbCount(prev => prev + extraCdnIds.length);
+      }
+    }).catch(() => { });
     secureFetch('/api/hwasi/plans').then(x => x.json()).then(d => setPlansConfig(d.plans || null)).catch(() => { });
     secureFetch('/api/hwasi/devices').then(x => x.json()).then(d => setDeviceData(d.devices || {})).catch(() => { });
     secureFetch('/api/hwasi/payment-settings').then(x => x.json()).then(d => { if (d.settings) setPaySettings(d.settings); }).catch(() => { });

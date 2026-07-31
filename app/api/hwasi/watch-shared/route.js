@@ -2,7 +2,7 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 import { encryptPayload } from '@/lib/crypto';
-import { getPremium, getViewCount, incrementViewCount, redis } from '@/lib/redis';
+import { getPremium, getViewCount, incrementViewCount, redis, getVideoCdn } from '@/lib/redis';
 import { signVideoId } from '@/lib/sign';
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
@@ -58,9 +58,12 @@ export async function POST(req) {
 
   if (!videoId) return NextResponse.json(await encryptPayload({ error: 'Invalid share data' }), { status: 400 });
 
+  // Look up CDN info once (supports hindibf IDs 10001-10243 and any future extra CDNs)
+  const cdnInfo = await getVideoCdn(videoId);
+
   // Admin/advisor always allowed
   if (['admin', 'advisor'].includes(session.role)) {
-    const streamToken = await signVideoId(videoId);
+    const streamToken = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
     return NextResponse.json(await encryptPayload({ allowed: true, token: streamToken, isPremium: true }));
   }
 
@@ -78,7 +81,7 @@ export async function POST(req) {
   }
 
   if (sub) {
-    const streamToken = await signVideoId(videoId);
+    const streamToken = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
     return NextResponse.json(await encryptPayload({ allowed: true, token: streamToken, isPremium: true, plan: sub.plan }));
   }
 
@@ -98,7 +101,7 @@ export async function POST(req) {
   }
 
   await incrementViewCount(userKey);
-  const streamToken = await signVideoId(videoId);
+  const streamToken = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
   return NextResponse.json(await encryptPayload({
     allowed: true, token: streamToken, isPremium: false,
     remaining: FREE_LIMIT - count - 1,
