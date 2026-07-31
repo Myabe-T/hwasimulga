@@ -38,9 +38,11 @@ export async function GET(req, { params }) {
     });
   }
 
-  const { id, cdn } = result;
+  const { id, cdn, cid } = result;
   const cdnBase = (cdn && CDN_BASES[cdn]) ? CDN_BASES[cdn] : DEFAULT_CDN;
-  const cdnUrl = `${cdnBase}/${id}.mp4`;
+  // cid = actual video ID on that CDN (may differ from system gallery ID)
+  const cdnVideoId = cid || id;
+  const cdnUrl = `${cdnBase}/${cdnVideoId}.mp4`;
   const isDownload = new URL(req.url).searchParams.get('dl') === '1';
 
   if (isDownload) {
