@@ -95,6 +95,12 @@ export default function AdminPage() {
   const [watchLimit, setWatchLimit] = useState({ limit: 5, msg: '' });
   const [watchLimitSaving, setWatchLimitSaving] = useState(false);
   const [watchLimitMsg, setWatchLimitMsg] = useState('');
+  // Extra CDN Sources
+  const [extraCdnSources, setExtraCdnSources] = useState([]);
+  const [extraCdnForm, setExtraCdnForm] = useState({ name: 'HindiBF', cdnId: 'hindibf', cdnBase: 'https://cdn.hindibf.com.co' });
+  const [extraCdnJson, setExtraCdnJson] = useState('');
+  const [extraCdnMsg, setExtraCdnMsg] = useState('');
+  const [extraCdnSaving, setExtraCdnSaving] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -154,6 +160,7 @@ export default function AdminPage() {
     secureFetch('/api/hwasi/payment-settings').then(x => x.json()).then(d => { if (d.settings) setPaySettings(d.settings); }).catch(() => { });
     secureFetch('/api/hwasi/utr').then(x => x.json()).then(d => setUtrList(d.submissions || [])).catch(() => { });
     secureFetch('/api/hwasi/watch-limit').then(x => x.json()).then(d => { if (d.ok) setWatchLimit({ limit: d.limit, msg: d.msg || '' }); }).catch(() => { });
+    fetch('/api/hwasi/extra-cdn').then(x => x.json()).then(d => setExtraCdnSources(d.sources || [])).catch(() => { });
   }
 
   async function saveVideoTitle() {
@@ -1144,9 +1151,14 @@ export default function AdminPage() {
                     <div style={{ minWidth: 130 }}>
                       <label className={styles.fieldLabel}>Plan</label>
                       <select className="input" value={grantForm.plan} onChange={e => setGrantForm(p => ({ ...p, plan: e.target.value }))}>
-                        <option value="basic">₹100 — Basic (14 days)</option>
-                        <option value="plus">₹300 — Plus (60 days)</option>
-                        <option value="pro">₹599 — Pro (3 years)</option>
+                        {plansConfig
+                          ? Object.entries(plansConfig).map(([key, plan]) => (
+                              <option key={key} value={key}>
+                                ₹{plan.price} — {plan.label || key} ({plan.days} days)
+                              </option>
+                            ))
+                          : ['basic','plus','pro'].map(k => <option key={k} value={k}>{k}</option>)
+                        }
                       </select>
                     </div>
                     <div style={{ minWidth: 100 }}>
@@ -2090,6 +2102,94 @@ export default function AdminPage() {
                   {(settings.extraRanges || []).map((r, i) => (
                     <InfoRow key={i} label={`Extra Range #${i+1}`} value={`#${r.start} – #${r.end} (${r.end - r.start + 1} videos)`} />
                   ))}
+                </div>
+              </div>
+
+              {/* ── Extra CDN Sources ── */}
+              <div className={styles.card} style={{ marginTop: 20 }}>
+                <div className={styles.cardHeader}>
+                  <span style={{ fontSize: 22 }}>🌐</span>
+                  <div>
+                    <h3 className={styles.cardTitle}>Extra CDN Sources</h3>
+                    <p className={styles.cardSub}>Add alternate video CDN sources (e.g. hindibf.com.co) and import their metadata</p>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }}
+                    onClick={() => fetch('/api/hwasi/extra-cdn').then(x => x.json()).then(d => setExtraCdnSources(d.sources || []))}>↻ Refresh</button>
+                </div>
+
+                {extraCdnMsg && <div style={{ padding: '8px 14px', borderRadius: 8, marginBottom: 12, fontSize: 13, background: extraCdnMsg.includes('✅') ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.1)', color: extraCdnMsg.includes('✅') ? '#4ade80' : '#f87171' }}>{extraCdnMsg}</div>}
+
+                {extraCdnSources.length > 0 && (
+                  <div style={{ marginBottom: 20 }}>
+                    <label className={styles.fieldLabel} style={{ marginBottom: 8, display: 'block' }}>Active Extra CDN Sources</label>
+                    {extraCdnSources.map(src => (
+                      <div key={src.cdnId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', marginBottom: 8 }}>
+                        <span style={{ fontSize: 20 }}>🌐</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{src.name}</div>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{src.cdnBase} · {src.count} videos · {new Date(src.importedAt).toLocaleDateString('en-IN')}</div>
+                        </div>
+                        <span style={{ padding: '3px 10px', borderRadius: 100, background: 'rgba(124,58,237,.15)', border: '1px solid rgba(124,58,237,.3)', fontSize: 11, fontWeight: 700, color: '#a78bfa' }}>{src.cdnId}</span>
+                        <button style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,.15)', color: '#f87171', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                          onClick={async () => {
+                            if (!confirm(`Remove CDN "${src.name}"?`)) return;
+                            const r = await fetch('/api/hwasi/extra-cdn', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cdnId: src.cdnId }) });
+                            if (r.ok) { setExtraCdnSources(prev => prev.filter(s => s.cdnId !== src.cdnId)); setExtraCdnMsg('✅ CDN removed'); setTimeout(() => setExtraCdnMsg(''), 3000); }
+                          }}>✕ Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <label className={styles.fieldLabel} style={{ marginBottom: 10, display: 'block' }}>Add / Import CDN Source</label>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                  <div style={{ flex: '0 0 110px' }}>
+                    <label className={styles.fieldLabel}>CDN ID</label>
+                    <input className="input" placeholder="hindibf" value={extraCdnForm.cdnId} onChange={e => setExtraCdnForm(p => ({ ...p, cdnId: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: '0 0 110px' }}>
+                    <label className={styles.fieldLabel}>Display Name</label>
+                    <input className="input" placeholder="HindiBF" value={extraCdnForm.name} onChange={e => setExtraCdnForm(p => ({ ...p, name: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <label className={styles.fieldLabel}>CDN Base URL</label>
+                    <input className="input" placeholder="https://cdn.hindibf.com.co" value={extraCdnForm.cdnBase} onChange={e => setExtraCdnForm(p => ({ ...p, cdnBase: e.target.value }))} />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label className={styles.fieldLabel} style={{ marginBottom: 6, display: 'block' }}>
+                    Import Metadata JSON&nbsp;
+                    <span style={{ color: 'rgba(255,255,255,.4)', fontWeight: 400 }}>{'[{ "id": 58, "title": "...", "thumb": "data:image/jpeg;base64,..." }]'}</span>
+                  </label>
+                  <textarea className="input" rows={5} placeholder={'[\n  { "id": 58, "title": "Title", "thumb": "data:image/jpeg;base64,/9j/..." }\n]'}
+                    value={extraCdnJson} onChange={e => setExtraCdnJson(e.target.value)}
+                    style={{ fontFamily: 'monospace', fontSize: 12, resize: 'vertical', width: '100%' }} />
+                </div>
+                <button className="btn btn-primary" disabled={extraCdnSaving || !extraCdnForm.cdnId || !extraCdnForm.cdnBase}
+                  onClick={async () => {
+                    setExtraCdnSaving(true); setExtraCdnMsg('');
+                    let videos = [];
+                    if (extraCdnJson.trim()) {
+                      try { videos = JSON.parse(extraCdnJson.trim()); }
+                      catch { setExtraCdnMsg('❌ Invalid JSON — check format'); setExtraCdnSaving(false); return; }
+                    }
+                    const r = await fetch('/api/hwasi/extra-cdn', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ ...extraCdnForm, videos }),
+                    });
+                    const d = await r.json(); setExtraCdnSaving(false);
+                    if (d.ok) {
+                      setExtraCdnMsg(`✅ "${extraCdnForm.name}" saved! ${d.imported} videos, ${d.withThumbs} thumbs, ${d.withTitles} titles.`);
+                      fetch('/api/hwasi/extra-cdn').then(x => x.json()).then(dd => setExtraCdnSources(dd.sources || []));
+                      setExtraCdnJson('');
+                      setTimeout(() => setExtraCdnMsg(''), 5000);
+                    } else { setExtraCdnMsg(`❌ ${d.error || 'Failed'}`); }
+                  }}>
+                  {extraCdnSaving ? 'Importing…' : '🌐 Save & Import CDN'}
+                </button>
+                <div className={styles.infoGrid} style={{ marginTop: 14 }}>
+                  <InfoRow label="How it works" value="Videos signed with CDN ID in JWT → proxy redirects to correct CDN" />
+                  <InfoRow label="Thumbnail route" value="/api/hwasi/thumb-extra/[id]" />
                 </div>
               </div>
             </div>

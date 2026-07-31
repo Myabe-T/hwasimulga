@@ -1,7 +1,7 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
-import { getPremium, getViewCount, incrementViewCount, redis } from '@/lib/redis';
+import { getPremium, getViewCount, incrementViewCount, redis, getVideoCdn } from '@/lib/redis';
 import { signVideoId } from '@/lib/sign';
 import { encryptPayload } from '@/lib/crypto';
 
@@ -51,7 +51,8 @@ export async function POST(req) {
 
   // Admin + Advisor always allowed
   if (['admin','advisor'].includes(session.role)) {
-    const token = await signVideoId(videoId);
+    const cdnId = await getVideoCdn(videoId);
+    const token = await signVideoId(videoId, cdnId);
     return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, token }));
   }
 
@@ -68,7 +69,8 @@ export async function POST(req) {
   }
 
   if (sub) {
-    const token = await signVideoId(videoId);
+    const cdnId = await getVideoCdn(videoId);
+    const token = await signVideoId(videoId, cdnId);
     return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt, token }));
   }
 
@@ -89,7 +91,8 @@ export async function POST(req) {
 
   await incrementViewCount(userKey);
   const newCount = count + 1;
-  const token = await signVideoId(videoId);
+  const cdnId = await getVideoCdn(videoId);
+  const token = await signVideoId(videoId, cdnId);
   
   return NextResponse.json(await encryptPayload({
     allowed: true,

@@ -48,7 +48,7 @@ export async function GET(req) {
   return NextResponse.json({ ok: true, submissions });
 }
 
-// DELETE — admin: reject/delete a UTR submission and notify user
+// DELETE — admin: reject a UTR submission (marks as rejected, keeps in history)
 export async function DELETE(req) {
   const user = await getUser(req);
   if (!user || !['admin','advisor'].includes(user.role)) return NextResponse.json(await encryptPayload({ error: 'Forbidden' }), { status: 403 });
@@ -60,18 +60,27 @@ export async function DELETE(req) {
 
   const redis = await getRedis();
   const items = await redis.lrange(KEY, 0, 999);
-  // Filter out the matching entry and rewrite the entire list
-  const filtered = (items || []).filter(item => {
-    try { return JSON.parse(item).utrId !== utrId; } catch { return true; }
+
+  // Update the matching entry's status to 'rejected' — keep it in the list
+  let updated = false;
+  const newItems = (items || []).map(item => {
+    try {
+      const parsed = JSON.parse(item);
+      if (parsed.utrId === utrId) {
+        updated = true;
+        return JSON.stringify({ ...parsed, status: 'rejected', rejectedAt: new Date().toISOString(), rejectedBy: user.username });
+      }
+    } catch {}
+    return item;
   });
-  const removed = filtered.length < (items || []).length;
-  // Atomically replace list
-  await redis.del(KEY);
-  if (filtered.length > 0) {
-    await redis.rpush(KEY, ...filtered);
+
+  if (updated) {
+    // Atomically replace list with updated entries
+    await redis.del(KEY);
+    if (newItems.length > 0) await redis.rpush(KEY, ...newItems);
   }
 
-  // Send a one-time notification to the user via notifications HASH
+  // Notify user of rejection via notifications HASH
   if (userId) {
     const { KEYS } = await import('@/lib/redis');
     const notification = JSON.stringify({
@@ -83,6 +92,6 @@ export async function DELETE(req) {
     await redis.hset(KEYS.NOTIFICATIONS, { [String(userId)]: notification });
   }
 
-  return NextResponse.json(await encryptPayload({ ok: true, removed }));
+  return NextResponse.json(await encryptPayload({ ok: true, updated }));
 }
 

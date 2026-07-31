@@ -3,7 +3,12 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { verifyVideoToken } from '@/lib/sign';
 
-const CDN_BASE = 'https://cdn.desimms.com.co';
+// CDN base URL lookup by cdnId
+const CDN_BASES = {
+  desimms:  'https://cdn.desimms.com.co',
+  hindibf:  'https://cdn.hindibf.com.co',
+};
+const DEFAULT_CDN = CDN_BASES.desimms;
 
 /**
  * GET /api/v/[token]
@@ -25,15 +30,17 @@ const CDN_BASE = 'https://cdn.desimms.com.co';
  */
 export async function GET(req, { params }) {
   const { token } = await params;
-  const id = await verifyVideoToken(token);
-  if (!id) {
+  const result = await verifyVideoToken(token);
+  if (!result) {
     return new NextResponse('Link expired. Please go back and click play again.', {
       status: 403,
       headers: { 'Content-Type': 'text/plain' },
     });
   }
 
-  const cdnUrl = `${CDN_BASE}/${id}.mp4`;
+  const { id, cdn } = result;
+  const cdnBase = (cdn && CDN_BASES[cdn]) ? CDN_BASES[cdn] : DEFAULT_CDN;
+  const cdnUrl = `${cdnBase}/${id}.mp4`;
   const isDownload = new URL(req.url).searchParams.get('dl') === '1';
 
   if (isDownload) {
