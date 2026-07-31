@@ -5,7 +5,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import styles from './gallery.module.css';
 
 const PER_PAGE = 24;
-const thumbSrc = (id) => `/api/hwasi/thumbnail/${id}`;
+const thumbSrc = (id) => Number(id) >= 10000
+  ? `/api/hwasi/thumb-extra/${id}`    // hindibf extra-CDN thumbnails
+  : `/api/hwasi/thumbnail/${id}`;      // main desimms CDN thumbnails
 
 // Fallback title — shows something honest instead of fake wordplay
 function videoTitle(id) { return `Video #${id}`; }
@@ -148,15 +150,18 @@ export default function GalleryPage() {
       const st = s.error ? { start:1, end:730, deletedIds:[], extraRanges:[] } : s;
       const delSet = new Set(st.deletedIds || []);
       setSettings(st);
-      setThumbIds(new Set((t.ids || []).map(Number)));
-      setVideoTitles(tr.titles || {});
-
-      // Build video ID list: primary range + any extra ranges (e.g. 2500-2560)
+      // Build video ID list: primary range + any extra ranges (e.g. 10001-10243 for hindibf)
       const primaryIds = Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => i + st.start);
       const extraIds = (st.extraRanges || []).flatMap(r =>
         Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
       );
-      setAllIds([...new Set([...primaryIds, ...extraIds])].filter(id => !delSet.has(id)));
+      // Combine regular thumbIds + all hindibf IDs (IDs >= 10000 always have extra_thumbs)
+      const regularThumbIds = new Set((t.ids || []).map(Number));
+      const allVideoIds = [...new Set([...primaryIds, ...extraIds])].filter(id => !delSet.has(id));
+      const hindibfIds = new Set(allVideoIds.filter(id => id >= 10000));
+      setThumbIds(new Set([...regularThumbIds, ...hindibfIds]));
+      setVideoTitles(tr.titles || {});
+      setAllIds(allVideoIds);
 
       // Guest mode stops here — no auth-gated data
       if (!d.auth) return;
