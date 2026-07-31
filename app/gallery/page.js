@@ -94,6 +94,7 @@ export default function GalleryPage() {
   const [ageVerified, setAgeVerified] = useState(true); // 18+ gate
   const [cookieConsent, setCookieConsent] = useState(true); // cookie banner
   const [mobileGridCols, setMobileGridCols] = useState(1); // 1 or 2 columns on mobile
+  const [quickCurateFlash, setQuickCurateFlash] = useState(''); // flash toast for quick curate
 
   // Global epoch-based countdown (same for everyone)
   const EPOCH_START = 1704067200;
@@ -523,6 +524,27 @@ export default function GalleryPage() {
     if (modal?.id === id) closeModal();
   }
 
+  // ── Quick Curate (admin/advisor only): add a video to curated section from gallery ──
+  async function handleQuickCurate(videoId, section) {
+    const existing = curated[section] || [];
+    const alreadyIn = existing.includes(Number(videoId));
+    const merged = alreadyIn ? existing : [...new Set([...existing, Number(videoId)])];
+    const updated = { ...curated, [section]: merged };
+    const r = await fetch('/api/hwasi/curated', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      setCurated(d);
+      const sectionLabels = { trending: '🔥 Trending', popular: '📈 Popular', instaviral: '📸 Insta Viral' };
+      setQuickCurateFlash(alreadyIn ? `ℹ️ #${videoId} already in ${sectionLabels[section]}` : `✅ #${videoId} added to ${sectionLabels[section]}`);
+      setTimeout(() => setQuickCurateFlash(''), 2500);
+    } else {
+      setQuickCurateFlash('❌ Failed to curate'); setTimeout(() => setQuickCurateFlash(''), 2000);
+    }
+  }
+
   const isAdminOrAdvisor = user?.role === 'admin' || user?.role === 'advisor';
 
   // Show spinner only while loading (allIds empty AND no user yet determined)
@@ -712,6 +734,7 @@ export default function GalleryPage() {
                         onBookmark={e => toggleBookmark(e, id)}
                         onReport={e => { e.stopPropagation(); setReportModal(id); }}
                         onDelete={null}
+                        onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
                       />
                     ))}
                   </div>
@@ -1005,6 +1028,7 @@ export default function GalleryPage() {
                       onBookmark={e => toggleBookmark(e, id)}
                       onReport={e => { e.stopPropagation(); setReportModal(id); }}
                       onDelete={isAdminOrAdvisor ? e => { e.stopPropagation(); setDeleteModal({ id }); setDeleteReason('duplicate'); } : null}
+                      onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
                     />
                   </div>
                 ))}
@@ -1052,6 +1076,7 @@ export default function GalleryPage() {
                     onBookmark={e => toggleBookmark(e, id)}
                     onReport={e => { e.stopPropagation(); setReportModal(id); }}
                     onDelete={isAdminOrAdvisor ? e => { e.stopPropagation(); setDeleteModal({ id }); } : null}
+                    onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
                   />
                 ))}
               </div>
@@ -1237,6 +1262,19 @@ export default function GalleryPage() {
               >Cancel</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Quick Curate Flash Toast (admin/advisor) ── */}
+      {quickCurateFlash && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: 'linear-gradient(135deg,#1a0533,#2d0050)', border: '1px solid rgba(124,58,237,.5)',
+          borderRadius: 12, padding: '12px 22px', zIndex: 9998, fontSize: 14, fontWeight: 700,
+          color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,.6)', whiteSpace: 'nowrap',
+          animation: 'fadeIn .2s ease',
+        }}>
+          {quickCurateFlash}
         </div>
       )}
 
@@ -1789,9 +1827,10 @@ function Logo({ size }) {
 }
 
 /* ── VideoCard — TeraViralHub style ── */
-function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete }) {
+function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete, onCurate }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
+  const [showCurateMenu, setShowCurateMenu] = useState(false);
   const quality = videoQuality(id);
   const qColor = qualityColor(quality);
   const views = viewCount(id);
@@ -1901,6 +1940,45 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
           </svg>
           <span className={styles.actionBtnLabel} style={{ color: '#f87171' }}>Report</span>
         </button>
+
+        {/* Quick Curate (admin/advisor only) */}
+        {isAdmin && onCurate && (
+          <div style={{ position: 'relative' }}>
+            <button className={styles.actionBtn}
+              style={{ background: showCurateMenu ? 'rgba(124,58,237,.3)' : 'rgba(124,58,237,.12)' }}
+              onClick={e => { e.stopPropagation(); setShowCurateMenu(p => !p); }}
+              title="Add to curated section">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              <span className={styles.actionBtnLabel} style={{ color: '#a78bfa' }}>Curate</span>
+            </button>
+            {showCurateMenu && (
+              <div style={{
+                position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+                background: 'linear-gradient(145deg,#1a0533,#0f0518)', border: '1px solid rgba(124,58,237,.4)',
+                borderRadius: 14, padding: '10px 8px', zIndex: 999, display: 'flex', gap: 6,
+                minWidth: 200, boxShadow: '0 8px 32px rgba(0,0,0,.6)', marginBottom: 6,
+              }}>
+                {[
+                  { key: 'trending',   label: '🔥 Trending',   color: '#f87171' },
+                  { key: 'popular',    label: '📈 Popular',    color: '#34d399' },
+                  { key: 'instaviral', label: '📸 Insta Viral', color: '#f59e0b' },
+                ].map(s => (
+                  <button key={s.key}
+                    onClick={e => { e.stopPropagation(); onCurate(s.key); setShowCurateMenu(false); }}
+                    style={{
+                      flex: 1, padding: '7px 4px', borderRadius: 10, border: `1px solid ${s.color}44`,
+                      background: s.color + '15', color: s.color, fontSize: 10, fontWeight: 700,
+                      cursor: 'pointer', transition: 'all .15s', lineHeight: 1.3, textAlign: 'center',
+                    }}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Delete (admin only) */}
         {isAdmin && onDelete && (
