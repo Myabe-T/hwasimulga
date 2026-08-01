@@ -1562,7 +1562,7 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
     }
     if (tab === 'transactions') {
       setLoading(true);
-      fetch('/api/hwasi/utr').then(r => r.json()).then(d => setTransactions(d.transactions || d.requests || [])).catch(() => {}).finally(() => setLoading(false));
+      fetch('/api/hwasi/utr').then(r => r.json()).then(d => setTransactions(d.submissions || [])).catch(() => {}).finally(() => setLoading(false));
     }
   }, [tab]);
 
@@ -1791,32 +1791,68 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
 
       {/* Transactions Tab */}
       {tab === 'transactions' && (
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>💳 Transactions</h2>
-          {loading ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>Loading...</div> :
-            transactions.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40 }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>💳</div>
-                <div style={{ color: 'var(--text3)', fontSize: 14 }}>No transactions yet</div>
-                <a href="/premium" style={{ display: 'inline-block', marginTop: 12, padding: '10px 22px', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', borderRadius: 10, textDecoration: 'none', fontWeight: 700, fontSize: 13 }}>Get Premium</a>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {transactions.map((t, i) => (
-                  <div key={i} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text1)', marginBottom: 2 }}>UTR: {t.utr}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text3)' }}>{t.plan} · ₹{t.amount}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{t.submittedAt ? new Date(t.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</div>
-                    </div>
-                    <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 100, textTransform: 'uppercase', letterSpacing: '.05em', background: t.status === 'approved' ? 'rgba(16,185,129,.15)' : t.status === 'rejected' ? 'rgba(239,68,68,.15)' : 'rgba(245,158,11,.15)', color: t.status === 'approved' ? '#34d399' : t.status === 'rejected' ? '#f87171' : '#fbbf24' }}>
-                      {t.status || 'Pending'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )
-          }
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>💳 My Transactions</h2>
+              <button onClick={() => { setLoading(true); fetch('/api/hwasi/utr').then(r => r.json()).then(d => setTransactions(d.submissions || [])).catch(() => {}).finally(() => setLoading(false)); }}
+                style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 14px', color: 'var(--text3)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>↻ Refresh</button>
+            </div>
+            {loading ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>Loading...</div> :
+              transactions.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>💳</div>
+                  <div style={{ color: 'var(--text3)', fontSize: 14, marginBottom: 4 }}>No transactions yet</div>
+                  <div style={{ color: 'var(--text3)', fontSize: 12, marginBottom: 16 }}>When you submit a UTR payment, it will appear here with its status.</div>
+                  <a href="/premium" style={{ display: 'inline-block', padding: '10px 22px', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', borderRadius: 10, textDecoration: 'none', fontWeight: 700, fontSize: 13 }}>Get Premium</a>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {transactions.map((txn, i) => {
+                    const st = txn.status || 'pending';
+                    const stColor = st === 'approved' ? { bg: 'rgba(16,185,129,.12)', text: '#34d399', icon: '✅' }
+                      : st === 'rejected' ? { bg: 'rgba(239,68,68,.12)', text: '#f87171', icon: '❌' }
+                      : { bg: 'rgba(245,158,11,.12)', text: '#fbbf24', icon: '⏳' };
+                    const planLabel = (txn.plan || 'Unknown').charAt(0).toUpperCase() + (txn.plan || '').slice(1);
+                    const dateStr = txn.timestamp ? new Date(txn.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+                    return (
+                      <div key={i} style={{ background: 'var(--surface2)', border: `1px solid ${st === 'rejected' ? 'rgba(239,68,68,.25)' : st === 'approved' ? 'rgba(16,185,129,.25)' : 'var(--border)'}`, borderRadius: 12, padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text1)', fontFamily: 'monospace', letterSpacing: '.03em' }}>UTR: {txn.utrId}</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 10px', borderRadius: 20, background: 'rgba(124,58,237,.15)', color: '#a78bfa' }}>{planLabel} Plan</span>
+                              <span style={{ fontSize: 11, color: 'var(--text3)' }}>{dateStr}</span>
+                            </div>
+                            {st === 'rejected' && (
+                              <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(239,68,68,.08)', borderRadius: 8, border: '1px solid rgba(239,68,68,.2)', fontSize: 12, color: '#f87171', lineHeight: 1.5 }}>
+                                ⚠️ Payment could not be verified. Please check your UTR ID and resubmit or contact support.
+                              </div>
+                            )}
+                            {st === 'approved' && (
+                              <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(16,185,129,.08)', borderRadius: 8, border: '1px solid rgba(16,185,129,.2)', fontSize: 12, color: '#34d399', lineHeight: 1.5 }}>
+                                ✅ Payment verified! Your {planLabel} plan has been activated.
+                              </div>
+                            )}
+                            {st === 'pending' && (
+                              <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(245,158,11,.08)', borderRadius: 8, border: '1px solid rgba(245,158,11,.2)', fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>
+                                ⏳ Under review — admin will verify within 24 hours.
+                              </div>
+                            )}
+                          </div>
+                          <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, padding: '5px 12px', borderRadius: 100, textTransform: 'uppercase', letterSpacing: '.06em', background: stColor.bg, color: stColor.text, whiteSpace: 'nowrap' }}>
+                            {stColor.icon} {st}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            }
+          </div>
         </div>
       )}
     </main>

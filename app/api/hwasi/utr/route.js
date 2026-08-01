@@ -38,14 +38,23 @@ export async function POST(req) {
   return NextResponse.json(await encryptPayload({ ok: true }));
 }
 
-// GET — admin: get all UTR submissions
+// GET — admin/advisor sees ALL; regular user sees ONLY their own
 export async function GET(req) {
   const user = await getUser(req);
-  if (!user || !['admin','advisor'].includes(user.role)) return NextResponse.json(await encryptPayload({ error: 'Forbidden' }), { status: 403 });
+  if (!user) return NextResponse.json(await encryptPayload({ error: 'Unauthorized' }), { status: 401 });
+
   const redis = await getRedis();
-  const items = await redis.lrange(KEY, 0, 199);
-  const submissions = (items || []).map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
-  return NextResponse.json({ ok: true, submissions });
+  const items = await redis.lrange(KEY, 0, 999);
+  const all = (items || []).map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
+
+  if (['admin', 'advisor'].includes(user.role)) {
+    // Admin/advisor: return all submissions
+    return NextResponse.json({ ok: true, submissions: all });
+  }
+
+  // Regular user: return only their own submissions, newest first
+  const mine = all.filter(s => s.userId === user.sub || s.username === user.username);
+  return NextResponse.json({ ok: true, submissions: mine });
 }
 
 // DELETE — admin: reject a UTR submission (marks as rejected, keeps in history)
@@ -95,3 +104,41 @@ export async function DELETE(req) {
   return NextResponse.json(await encryptPayload({ ok: true, updated }));
 }
 
+// PATCH — admin: approve a UTR (sets status to approved, grants premium)
+export async function PATCH(req) {
+  const user = await getUser(req);
+  if (!user || !['admin','advisor'].includes(user.role)) return NextResponse.json(await encryptPayload({ error: 'Forbidden' }), { status: 403 });
+
+  let body = {};
+  try { body = await req.json(); } catch {}
+  const { utrId, userId, plan, days } = body;
+  if (!utrId || !userId) return NextResponse.json(await encryptPayload({ error: 'utrId and userId required' }), { status: 400 });
+
+  const redis = await getRedis();
+  const items = await redis.lrange(KEY, 0, 999);
+
+  let updated = false;
+  const newItems = (items || []).map(item => {
+    try {
+      const parsed = JSON.parse(item);
+      if (parsed.utrId === utrId) {
+        updated = true;
+        return JSON.stringify({ ...parsed, status: 'approved', approvedAt: new Date().toISOString(), approvedBy: user.username });
+      }
+    } catch {}
+    return item;
+  });
+
+  if (updated) {
+    await redis.del(KEY);
+    if (newItems.length > 0) await redis.rpush(KEY, ...newItems);
+  }
+
+  // Grant premium if plan/days provided
+  if (plan && days) {
+    const { setPremium } = await import('@/lib/redis');
+    await setPremium(userId, plan, Number(days), user.username);
+  }
+
+  return NextResponse.json(await encryptPayload({ ok: true, updated }));
+}
