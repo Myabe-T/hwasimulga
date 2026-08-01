@@ -1,7 +1,7 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
-import { getPremium, getViewCount, incrementViewCount, redis, getVideoCdn } from '@/lib/redis';
+import { getPremium, getViewCount, incrementViewCount, redis, getVideoCdn, getCurated } from '@/lib/redis';
 import { signVideoId } from '@/lib/sign';
 import { encryptPayload } from '@/lib/crypto';
 
@@ -59,11 +59,10 @@ export async function POST(req) {
   // Check premium status
   const sub = await getPremium(session.sub);
 
-  // Check if video is Insta Viral — only premium can watch
-  const instaviralList = await redis.get('hwasi:curated:instaviral');
-  let instaviralIds = [];
-  try { instaviralIds = instaviralList ? JSON.parse(instaviralList) : []; } catch {}
-  const isInstaViral = instaviralIds.map(Number).includes(Number(videoId));
+  // Check if video is Insta Viral — only premium can watch (read from correct hwasi:curated key)
+  const curatedData = await getCurated();
+  const instaviralIds = (curatedData?.instaviral || []).map(Number);
+  const isInstaViral = instaviralIds.includes(Number(videoId));
   if (isInstaViral && !sub && !['admin','advisor'].includes(session.role)) {
     return NextResponse.json(await encryptPayload({ allowed: false, code: 'INSTAVIRAL_PREMIUM_ONLY', msg: '💎 Insta Viral videos are exclusive to Premium members. Upgrade to unlock!' }));
   }

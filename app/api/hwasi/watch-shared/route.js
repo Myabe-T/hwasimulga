@@ -2,7 +2,7 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 import { encryptPayload } from '@/lib/crypto';
-import { getPremium, getViewCount, incrementViewCount, redis, getVideoCdn } from '@/lib/redis';
+import { getPremium, getViewCount, incrementViewCount, redis, getVideoCdn, getCurated } from '@/lib/redis';
 import { signVideoId } from '@/lib/sign';
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
@@ -67,10 +67,9 @@ export async function POST(req) {
     return NextResponse.json(await encryptPayload({ allowed: true, token: streamToken, isPremium: true }));
   }
 
-  // Check if video is Insta Viral — premium only even via share link
-  const instaRaw = await redis.get('hwasi:curated:instaviral');
-  let instaIds = [];
-  try { instaIds = instaRaw ? JSON.parse(instaRaw).map(Number) : []; } catch {}
+  // Check if video is Insta Viral — premium only even via share link (read from correct hwasi:curated key)
+  const curatedData = await getCurated();
+  const instaIds = (curatedData?.instaviral || []).map(Number);
   const isInstaViral = instaIds.includes(Number(videoId));
 
   // Check premium from DB
