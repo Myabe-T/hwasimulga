@@ -77,27 +77,43 @@ export default function WatchClient({ shareToken }) {
     </div>
   );
 
-  if (status === 'upgrade') return (
-    <div style={S.page}>
-      <div style={{ ...S.card, border: '1px solid rgba(236,72,153,.35)' }}>
-        <div style={{ fontSize: 52, marginBottom: 12 }}>💎</div>
-        <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, background: 'linear-gradient(to right,#fbcfe8,#ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          Daily Limit Reached
-        </h2>
-        <p style={{ color: 'rgba(255,255,255,.6)', fontSize: 14, marginBottom: 6 }}>
-          You've used all {viewInfo?.limit ?? 5} free videos today.
-          {viewInfo?.hoursLeft ? ` Resets in ${viewInfo.hoursLeft}h.` : ''}
-        </p>
-        <p style={{ color: 'rgba(255,255,255,.4)', fontSize: 13, marginBottom: 28 }}>
-          Upgrade to Premium for unlimited access!
-        </p>
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Link href="/premium" style={S.btn1}>🚀 Get Premium</Link>
-          <Link href="/gallery" style={S.btn2}>Back to Gallery</Link>
+  if (status === 'upgrade') {
+    const isInstaViral = viewInfo?.code === 'INSTAVIRAL_PREMIUM_ONLY';
+    return (
+      <div style={S.page}>
+        <div style={{ ...S.card, border: `1px solid ${isInstaViral ? 'rgba(139,92,246,.4)' : 'rgba(236,72,153,.35)'}` }}>
+          <div style={{ fontSize: 52, marginBottom: 12 }}>{isInstaViral ? '👑' : '💎'}</div>
+          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, background: isInstaViral ? 'linear-gradient(to right,#c4b5fd,#8b5cf6)' : 'linear-gradient(to right,#fbcfe8,#ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            {isInstaViral ? 'Premium Only' : 'Daily Limit Reached'}
+          </h2>
+          {isInstaViral ? (
+            <>
+              <p style={{ color: 'rgba(255,255,255,.7)', fontSize: 15, marginBottom: 6, fontWeight: 600 }}>
+                This is an exclusive Insta Viral video 🔥
+              </p>
+              <p style={{ color: 'rgba(255,255,255,.45)', fontSize: 13, marginBottom: 28 }}>
+                Insta Viral videos are only available to Premium members.<br />Upgrade now to unlock unlimited access to all premium content!
+              </p>
+            </>
+          ) : (
+            <>
+              <p style={{ color: 'rgba(255,255,255,.6)', fontSize: 14, marginBottom: 6 }}>
+                You&apos;ve used all {viewInfo?.limit ?? 5} free videos today.
+                {viewInfo?.hoursLeft ? ` Resets in ${viewInfo.hoursLeft}h.` : ''}
+              </p>
+              <p style={{ color: 'rgba(255,255,255,.4)', fontSize: 13, marginBottom: 28 }}>
+                Upgrade to Premium for unlimited access!
+              </p>
+            </>
+          )}
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link href="/premium" style={S.btn1}>{isInstaViral ? '👑 Get Premium' : '🚀 Get Premium'}</Link>
+            <Link href="/gallery" style={S.btn2}>Back to Gallery</Link>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   if (status === 'error') return (
     <div style={S.page}>
