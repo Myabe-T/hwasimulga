@@ -9,6 +9,8 @@ export async function POST(req) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { videoId } = await req.json();
   if (!videoId) return NextResponse.json({ error: 'videoId required' }, { status: 400 });
+  // Admin watches are never stored in history
+  if (session.role === 'admin') return NextResponse.json({ ok: true, skipped: true });
   await addHistory({
     userId: session.sub, username: session.username,
     displayName: session.displayName, videoId: String(videoId),
