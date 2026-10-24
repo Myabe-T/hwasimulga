@@ -195,14 +195,30 @@ export default function GalleryPage() {
       const st = s.error ? { start:1, end:730, deletedIds:[], extraRanges:[] } : s;
       const delSet = new Set(st.deletedIds || []);
       setSettings(st);
-      // Build video ID list: newest first (descending) within each range
-      const primaryIds = Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => st.end - i);
-      const extraIds = (st.extraRanges || []).flatMap(r =>
-        Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => r.end - i)
+      // Build video ID lists: newest first (descending)
+      const primaryIds = Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => st.end - i).filter(id => !delSet.has(id));
+      const hindiRange = (st.extraRanges || []).find(r => r.start >= 10000);
+      const hindiIds = hindiRange
+        ? Array.from({ length: Math.max(0, hindiRange.end - hindiRange.start + 1) }, (_, i) => hindiRange.end - i).filter(id => !delSet.has(id))
+        : [];
+      const otherExtraIds = (st.extraRanges || []).filter(r => r !== hindiRange).flatMap(r =>
+        Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => r.end - i).filter(id => !delSet.has(id))
       );
+
+      // Interleave Desi (primary) and Hindi so newest videos from both CDNs always appear first
+      const interleavedAll = [];
+      const maxLen = Math.max(primaryIds.length, hindiIds.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (i < primaryIds.length) interleavedAll.push(primaryIds[i]);
+        if (i < hindiIds.length) interleavedAll.push(hindiIds[i]);
+      }
+      for (const id of otherExtraIds) {
+        if (!interleavedAll.includes(id)) interleavedAll.push(id);
+      }
+      const allVideoIds = interleavedAll;
+
       // Regular thumb IDs + only actual extra-CDN IDs that have titles stored (= have thumbnails)
       const regularThumbIds = new Set((t.ids || []).map(Number));
-      const allVideoIds = [...new Set([...primaryIds, ...extraIds])].filter(id => !delSet.has(id));
       // For extra CDN (hindibf), only mark as having thumb if it actually has a title
       // (IDs that have titles are the same IDs that have thumbnails — imported together)
       const titlesObj = tr.titles || {};

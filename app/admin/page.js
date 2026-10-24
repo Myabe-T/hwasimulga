@@ -1181,26 +1181,49 @@ export default function AdminPage() {
                     <h3 className={styles.cardTitle}>Full Collection Order</h3>
                     <p className={styles.cardSub}>Shuffle the order viewers see in the Full Collection tab</p>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button className={styles.randomBtn}
                       onClick={async () => {
                         const cur = await secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => settings);
                         const s = cur.error ? settings : cur;
-                        const primary = Array.from({ length: Math.max(0, s.end - s.start + 1) }, (_, i) => i + s.start);
-                        const extra = (s.extraRanges || []).flatMap(r => Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start));
-                        const all = [...new Set([...primary, ...extra])];
-                        // Fisher-Yates shuffle
-                        for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
-                        const top = all.slice(0, 100);
-                        const r2 = await fetch('/api/hwasi/curated', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...curated, fullCollection: top }) });
-                        if (r2.ok) { const d = await r2.json(); setCurated(d); flash(`✅ Full Collection shuffled — first 100 IDs randomized`); }
+                        const delSet = new Set(s.deletedIds || []);
+
+                        // 1. Last 60 uploaded from Desi CDN (primary range, e.g. 1118..1177)
+                        const desiTotal = Math.max(0, s.end - s.start + 1);
+                        const desiCount = Math.min(60, desiTotal);
+                        const last60Desi = Array.from({ length: desiCount }, (_, i) => s.end - i).filter(id => !delSet.has(id));
+
+                        // 2. Last 60 uploaded from Hindi CDN (extra range >= 10000, e.g. 10696..10755)
+                        const hindiRange = (s.extraRanges || []).find(r => r.start >= 10000) || (s.extraRanges || [])[0];
+                        const hindiTotal = hindiRange ? Math.max(0, hindiRange.end - hindiRange.start + 1) : 0;
+                        const hindiCount = Math.min(60, hindiTotal);
+                        const last60Hindi = hindiRange ? Array.from({ length: hindiCount }, (_, i) => hindiRange.end - i).filter(id => !delSet.has(id)) : [];
+
+                        // 3. Mix latest 60 Desi + 60 Hindi (120 videos total)
+                        const mixed = [...last60Desi, ...last60Hindi];
+                        for (let i = mixed.length - 1; i > 0; i--) {
+                          const j = Math.floor(Math.random() * (i + 1));
+                          [mixed[i], mixed[j]] = [mixed[j], mixed[i]];
+                        }
+
+                        const r2 = await fetch('/api/hwasi/curated', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ ...curated, fullCollection: mixed }),
+                        });
+                        if (r2.ok) {
+                          const d = await r2.json();
+                          setCurated(d);
+                          flash(`✅ Mixed ${last60Desi.length} Desi (#${last60Desi[last60Desi.length-1]}–#${last60Desi[0]}) + ${last60Hindi.length} Hindi (#${last60Hindi[last60Hindi.length-1]}–#${last60Hindi[0]}) in Full Collection!`);
+                        }
                       }}
-                    >🎲 Shuffle First 100</button>
+                      title="Take the latest 60 from Desi CDN and latest 60 from Hindi CDN and mix them at the top of Full Collection"
+                    >🔀 Mix Latest 60+60 (Desi + Hindi)</button>
                     {(curated.fullCollection || []).length > 0 && (
                       <button className={styles.clearBtn}
                         onClick={async () => {
                           const r2 = await fetch('/api/hwasi/curated', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...curated, fullCollection: [] }) });
-                          if (r2.ok) { const d = await r2.json(); setCurated(d); flash('✅ Full Collection order reset to default (sequential)'); }
+                          if (r2.ok) { const d = await r2.json(); setCurated(d); flash('✅ Full Collection order reset to sequential (newest first)'); }
                         }}
                       >🗑 Reset to Sequential</button>
                     )}
@@ -1208,8 +1231,8 @@ export default function AdminPage() {
                 </div>
                 <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', marginTop: 4 }}>
                   {(curated.fullCollection || []).length > 0
-                    ? `🔀 Custom order active — first ${(curated.fullCollection).length} videos shown in shuffled order, rest follow sequentially`
-                    : 'ℹ️ No shuffle active — videos shown in sequential order (ID #start → #end)'}
+                    ? `🔀 Custom order active — ${(curated.fullCollection).length} videos (latest 60 Desi + 60 Hindi) mixed at the top, rest follow sequentially from newest to oldest`
+                    : 'ℹ️ Sequential order active — all videos from Desi & Hindi CDNs shown from newest to oldest (last to first)'}
                 </p>
               </div>
 
