@@ -4,6 +4,48 @@ import { secureFetch } from '@/lib/crypto';
 import styles from './admin.module.css';
 
 const BOTH = ['admin', 'advisor'];
+const pathToTab = {
+  'dashboard': 'dashboard',
+  'curated': 'curated',
+  'thumbnails': 'thumbnails',
+  'scraper': 'scraper',
+  'auto-scraper': 'scraper',
+  'autoscraper': 'scraper',
+  'users': 'users',
+  'subscriptions': 'subscriptions',
+  'subs': 'subscriptions',
+  'pricing': 'pricing',
+  'pricing-mgmt': 'pricing',
+  'pricingmgmt': 'pricing',
+  'tickets': 'tickets',
+  'support': 'tickets',
+  'support-tickets': 'tickets',
+  'supporttickets': 'tickets',
+  'devices': 'devices',
+  'device-security': 'devices',
+  'devicesecurity': 'devices',
+  'reports': 'reports',
+  'deleted': 'deleted',
+  'analytics': 'analytics',
+  'settings': 'settings',
+};
+
+const tabToPath = {
+  'dashboard': 'dashboard',
+  'curated': 'curated',
+  'thumbnails': 'thumbnails',
+  'scraper': 'auto-scraper',
+  'users': 'users',
+  'subscriptions': 'subscriptions',
+  'pricing': 'pricing-mgmt',
+  'tickets': 'support-tickets',
+  'devices': 'device-security',
+  'reports': 'reports',
+  'deleted': 'deleted',
+  'analytics': 'analytics',
+  'settings': 'settings',
+};
+
 const NAV = [
   { id: 'dashboard', icon: IconDash, label: 'Dashboard', roles: BOTH },
   { id: 'curated', icon: IconCurated, label: 'Curated', roles: BOTH },
@@ -23,6 +65,64 @@ const NAV = [
 export default function AdminPage() {
   const [user, setUser] = useState(null);
   const [tab, setTab] = useState('dashboard');
+
+  function switchTab(newTab, push = true) {
+    setTab(newTab);
+    const urlPath = tabToPath[newTab] || newTab;
+    const url = `/admin/${urlPath}`;
+    if (push) {
+      window.history.pushState({ tab: newTab }, '', url);
+    } else {
+      window.history.replaceState({ tab: newTab }, '', url);
+    }
+  }
+
+  // URL sync on load & browser back/forward buttons
+  useEffect(() => {
+    const pathname = window.location.pathname.replace(/^\/(admin|advisor)\/?/, '').toLowerCase();
+    const searchParams = new URLSearchParams(window.location.search);
+    const tabParam = searchParams.get('tab')?.toLowerCase();
+
+    const targetTab = pathToTab[pathname] || pathToTab[tabParam];
+    if (targetTab) {
+      setTab(targetTab);
+      const urlPath = tabToPath[targetTab] || targetTab;
+      window.history.replaceState({ tab: targetTab }, '', `/admin/${urlPath}`);
+    }
+
+    const handlePopState = (e) => {
+      const p = window.location.pathname.replace(/^\/(admin|advisor)\/?/, '').toLowerCase();
+      const sp = new URLSearchParams(window.location.search);
+      const tp = sp.get('tab')?.toLowerCase();
+      const t = pathToTab[p] || pathToTab[tp] || e.state?.tab || 'dashboard';
+      setTab(t);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Real-time Support Tickets polling (every 4s on tickets tab, every 12s in background)
+  useEffect(() => {
+    const intervalTime = tab === 'tickets' ? 4000 : 12000;
+    const pollTickets = async () => {
+      try {
+        const res = await fetch('/api/hwasi/tickets');
+        const d = await res.json();
+        if (d.ok && Array.isArray(d.tickets)) {
+          setAdminTickets(d.tickets);
+          setSelectedTicket(curr => {
+            if (!curr) return null;
+            const fresh = d.tickets.find(t => t.id === curr.id);
+            return fresh || curr;
+          });
+        }
+      } catch {}
+    };
+
+    const timer = setInterval(pollTickets, intervalTime);
+    return () => clearInterval(timer);
+  }, [tab]);
   const [collapsed, setCollapsed] = useState(false);
 
   // Data
@@ -831,15 +931,30 @@ export default function AdminPage() {
         {!collapsed && <div className={styles.navSection}>NAVIGATION</div>}
 
         {/* Nav items — filtered by role */}
-        {NAV.filter(n => n.roles.includes(user.role)).map(({ id, icon: Icon, label }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`${styles.navItem} ${tab === id ? styles.navItemActive : ''}`}
-            title={collapsed ? label : undefined}>
-            <span className={styles.navIcon}><Icon /></span>
-            {!collapsed && <span className={styles.navLabel}>{label}</span>}
-            {!collapsed && tab === id && <div className={styles.navIndicator} />}
-          </button>
-        ))}
+        {NAV.filter(n => n.roles.includes(user.role)).map(({ id, icon: Icon, label }) => {
+          const openCount = id === 'tickets' ? adminTickets.filter(t => t.status === 'open' || !t.status).length : 0;
+          return (
+            <button key={id} onClick={() => switchTab(id)}
+              className={`${styles.navItem} ${tab === id ? styles.navItemActive : ''}`}
+              title={collapsed ? label : undefined}>
+              <span className={styles.navIcon}><Icon /></span>
+              {!collapsed && (
+                <span className={styles.navLabel} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <span>{label}</span>
+                  {openCount > 0 && (
+                    <span style={{
+                      background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800,
+                      padding: '2px 7px', borderRadius: 100, marginLeft: 6, lineHeight: 1
+                    }}>
+                      {openCount}
+                    </span>
+                  )}
+                </span>
+              )}
+              {!collapsed && tab === id && <div className={styles.navIndicator} />}
+            </button>
+          );
+        })}
 
         {!collapsed && <div className={styles.navSection} style={{ marginTop: 16 }}>QUICK ACTIONS</div>}
         <a href="/gallery" className={`${styles.navItem} ${styles.navGallery}`} title={collapsed ? 'Gallery' : undefined}>
@@ -958,7 +1073,7 @@ export default function AdminPage() {
                 <div className={styles.dashCard} style={{ flex: 2 }}>
                   <div className={styles.dashCardHeader}>
                     <span className={styles.dashCardTitle}>Recent Activity</span>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setTab('analytics')}>View all</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => switchTab('analytics')}>View all</button>
                   </div>
                   {history.length === 0 ? (
                     <div className={styles.emptyState}>No watch activity yet</div>

@@ -21,6 +21,14 @@ const nextConfig = {
         destination: '/admin',
       },
       {
+        source: '/admin/:section',
+        destination: '/admin?tab=:section',
+      },
+      {
+        source: '/advisor/:section',
+        destination: '/admin?tab=:section',
+      },
+      {
         source: '/profile',
         destination: '/gallery?tab=account',
       },

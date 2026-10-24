@@ -249,6 +249,21 @@ export default function GalleryPage() {
     init();
   }, []);
 
+  // ── Poll for admin ticket replies every 12s in background ──────────────────
+  useEffect(() => {
+    if (!user) return;
+    const pollTicketNotifs = () => {
+      fetch('/api/hwasi/tickets')
+        .then(r => r.json())
+        .then(tk => {
+          if (tk.unreadReplies > 0) setHasTicketNotification(true);
+        })
+        .catch(() => {});
+    };
+    const timer = setInterval(pollTicketNotifs, 12000);
+    return () => clearInterval(timer);
+  }, [user]);
+
   // ── Heartbeat + 15-min idle auto-logout ──────────────────────────────────────
   useEffect(() => {
     if (!user) return; // guests don't need heartbeat
@@ -1687,6 +1702,23 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, initialT
       setAccessKeyLoading(false);
     }
   }
+
+  // Real-time Support Tickets polling when viewing Support tab
+  useEffect(() => {
+    if (tab !== 'support') return;
+    const fetchSupportTickets = () => {
+      fetch('/api/hwasi/tickets')
+        .then(r => r.json())
+        .then(d => {
+          if (d.ok && Array.isArray(d.tickets)) {
+            setTickets(d.tickets);
+          }
+        })
+        .catch(() => {});
+    };
+    const timer = setInterval(fetchSupportTickets, 4000);
+    return () => clearInterval(timer);
+  }, [tab]);
 
   useEffect(() => {
     if (tab === 'sessions') {
