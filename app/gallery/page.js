@@ -1553,7 +1553,44 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
   const [pwdMsg, setPwdMsg] = useState('');
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [accessKeyCode, setAccessKeyCode] = useState('');
+  const [accessKeyMsg, setAccessKeyMsg] = useState(null);
+  const [accessKeyLoading, setAccessKeyLoading] = useState(false);
   const tabs = ['account', 'stats', 'sessions', 'subscriptions', 'transactions'];
+
+  async function redeemAccessKey() {
+    let raw = (accessKeyCode || '').trim().toUpperCase();
+    if (!raw) return;
+    if (!raw.startsWith('FC-') && raw.length === 9 && raw.includes('-')) {
+      raw = 'FC-' + raw;
+      setAccessKeyCode(raw);
+    }
+    setAccessKeyLoading(true);
+    setAccessKeyMsg(null);
+    try {
+      const res = await fetch('/api/hwasi/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: raw }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.ok) {
+        setAccessKeyMsg({ ok: true, text: '✓ Activated! ' + d.days + ' days ' + d.planName + ' plan.' });
+        setTimeout(() => window.location.reload(), 1200);
+      } else {
+        if (d.usedAt) {
+          const usedStr = new Date(d.usedAt).toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+          setAccessKeyMsg({ ok: false, text: 'Already used on ' + usedStr });
+        } else {
+          setAccessKeyMsg({ ok: false, text: d.error || 'Invalid access key' });
+        }
+      }
+    } catch {
+      setAccessKeyMsg({ ok: false, text: 'Network error' });
+    } finally {
+      setAccessKeyLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (tab === 'sessions') {
@@ -1785,6 +1822,31 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
               style={{ display: 'block', padding: '12px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none', textAlign: 'center' }}>
               {viewStatus?.isPremium ? 'Extend Plan →' : '👑 Upgrade to Premium →'}
             </a>
+            {/* Quick Access Key redemption */}
+            <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text1)', marginBottom: 4 }}>🔑 Have an Access Key?</div>
+              <p style={{ fontSize: 12, color: 'var(--text3)', margin: '0 0 10px' }}>Enter your FC-XXXX-XXXX key from ForCloud:</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  style={{ ...inp, flex: 1, fontFamily: 'monospace', letterSpacing: '.06em', textAlign: 'center' }}
+                  placeholder="FC-XXXX-XXXX"
+                  value={accessKeyCode}
+                  onChange={e => { setAccessKeyCode(e.target.value.toUpperCase()); setAccessKeyMsg(null); }}
+                  onKeyDown={e => e.key === 'Enter' && redeemAccessKey()}
+                />
+                <button
+                  onClick={redeemAccessKey}
+                  disabled={accessKeyLoading || !accessKeyCode.trim()}
+                  style={{ padding: '10px 18px', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: accessKeyLoading || !accessKeyCode.trim() ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                  {accessKeyLoading ? '...' : 'Activate'}
+                </button>
+              </div>
+              {accessKeyMsg && (
+                <div style={{ marginTop: 8, fontSize: 12, color: accessKeyMsg.ok ? '#4ade80' : '#f87171', padding: '6px 10px', background: accessKeyMsg.ok ? 'rgba(74,222,128,.1)' : 'rgba(239,68,68,.1)', borderRadius: 8, border: '1px solid ' + (accessKeyMsg.ok ? 'rgba(74,222,128,.2)' : 'rgba(239,68,68,.2)') }}>
+                  {accessKeyMsg.text}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

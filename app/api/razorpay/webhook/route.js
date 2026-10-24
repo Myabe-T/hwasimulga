@@ -1,10 +1,10 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { setPremium, PLANS } from '@/lib/redis';
+import { getRequestContext } from '@cloudflare/next-on-pages';
 
 function getRazorpayEnv() {
   try {
-    const { getRequestContext } = require('@cloudflare/next-on-pages');
     const ctx = getRequestContext();
     if (ctx?.env?.RAZORPAY_WEBHOOK_SECRET) return ctx.env;
   } catch {}

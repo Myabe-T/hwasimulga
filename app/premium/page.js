@@ -15,6 +15,26 @@ function useTimer() {
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
+// Format usedAt timestamp nicely
+function formatUsedAt(val) {
+  if (!val) return '';
+  let d = new Date(val);
+  if (typeof val === 'number' && val < 10000000000) {
+    d = new Date(val * 1000);
+  } else if (typeof val === 'string' && !isNaN(Number(val)) && Number(val) < 10000000000) {
+    d = new Date(Number(val) * 1000);
+  }
+  if (isNaN(d.getTime())) return String(val);
+  return d.toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
 const PLAN_META = {
   basic: { icon:'⚡', color:'#7c3aed', glow:'rgba(124,58,237,0.5)', features:['Unlimited videos all day','HD streaming up to 1080p','Download videos to device','Full watch history'] },
   plus:  { icon:'🚀', color:'#0ea5e9', glow:'rgba(14,165,233,0.5)',  features:['Everything in Basic','Access to newest uploads first','Priority playback speed','Extended HD 1440p quality'], popular:true },
@@ -36,12 +56,17 @@ export default function PremiumPage() {
   const [status,       setStatus]       = useState(null);
   const [loading,      setLoading]      = useState(true);
   const [paySettings,  setPaySettings]  = useState({ maintenanceMode: false, upiId: 'admin@upi', qrUrl: '' });
-  const [utrInput,     setUtrInput]     = useState('');
-  const [utrSubmitted, setUtrSubmitted] = useState(false);
-  const [utrError,     setUtrError]     = useState('');
-  const [utrSending,   setUtrSending]   = useState(false);
+  
+  // Access key redemption states
+  const [keyCode,      setKeyCode]      = useState('');
+  const [keyLoading,   setKeyLoading]   = useState(false);
+  const [keyError,     setKeyError]     = useState('');
+  const [keyUsedAt,    setKeyUsedAt]    = useState(null);
+  const [keySuccess,   setKeySuccess]   = useState(null);
+
   const [teaserIdx,    setTeaserIdx]    = useState(0);
-  // Razorpay
+
+  // Razorpay states
   const [rzpLoaded,    setRzpLoaded]    = useState(false);
   const [rzpLoading,   setRzpLoading]   = useState(false);
   const [rzpError,     setRzpError]     = useState('');
@@ -80,20 +105,53 @@ export default function PremiumPage() {
     document.head.appendChild(script);
   }, []);
 
-  // ── UTR manual submit ──
-  async function submitUtr() {
-    if (utrInput.trim().length < 6) { setUtrError('Enter a valid UTR / Transaction ID (min 6 chars)'); return; }
-    setUtrSending(true); setUtrError('');
+  // ── Access Key verify & redeem ──
+  async function redeemKey(codeToUse) {
+    let raw = (codeToUse || keyCode || '').trim().toUpperCase();
+    if (!raw) {
+      setKeyError('Please enter an access key.');
+      setKeyUsedAt(null);
+      return;
+    }
+    // Auto prefix if user pasted only code body e.g. 7KM9-2XP4
+    if (!raw.startsWith('FC-') && raw.length === 9 && raw.includes('-')) {
+      raw = 'FC-' + raw;
+      setKeyCode(raw);
+    }
+
+    const keyRegex = /^FC-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+    if (!keyRegex.test(raw)) {
+      setKeyError('Invalid format. Access key must look like FC-XXXX-XXXX.');
+      setKeyUsedAt(null);
+      return;
+    }
+
+    setKeyLoading(true);
+    setKeyError('');
+    setKeyUsedAt(null);
     try {
-      const r = await secureFetch('/api/hwasi/utr', {
+      const res = await fetch('/api/hwasi/redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ utrId: utrInput.trim(), plan: selected?.label || selected?.id || 'unknown' }),
+        body: JSON.stringify({ code: raw }),
       });
-      if (r.ok) { setUtrSubmitted(true); }
-      else { const d = await r.json(); setUtrError(d.error || 'Failed to submit. Please try again.'); }
-    } catch { setUtrError('Network error. Please check connection and retry.'); }
-    setUtrSending(false);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        setKeySuccess(data);
+        setStatus({ isPremium: true, expiresAt: data.expiresAt, plan: data.plan });
+      } else {
+        if (data.usedAt) {
+          setKeyUsedAt(data.usedAt);
+          setKeyError(`This access key has already been used on ${formatUsedAt(data.usedAt)}`);
+        } else {
+          setKeyError(data.error || 'Failed to activate access key. Please check the code.');
+        }
+      }
+    } catch {
+      setKeyError('Network error. Please check your connection and retry.');
+    } finally {
+      setKeyLoading(false);
+    }
   }
 
   // ── Razorpay checkout ──
@@ -134,7 +192,6 @@ export default function PremiumPage() {
         theme: { color: selected.color || '#7c3aed' },
         modal: { backdropclose: false, escape: false },
         handler: async function(response) {
-          // Payment captured — verify signature & activate premium
           try {
             const vRes = await fetch('/api/razorpay/verify', {
               method: 'POST',
@@ -163,8 +220,8 @@ export default function PremiumPage() {
         setRzpError(`Payment failed: ${resp.error?.description || 'Unknown error'}. Please try again.`);
       });
       rzp.open();
-    } catch (e) {
-      setRzpError('Failed to open payment. Try the UPI manual option below.');
+    } catch {
+      setRzpError('Failed to open payment. Try the ForCloud checkout link below.');
       setRzpLoading(false);
     }
   }
@@ -181,7 +238,6 @@ export default function PremiumPage() {
   );
 
   const planList = plans ? Object.values(plans) : [];
-  const upiId = paySettings.upiId || 'admin@upi';
 
   /* ── Maintenance Mode Screen ── */
   if (paySettings.maintenanceMode) return (
@@ -201,7 +257,7 @@ export default function PremiumPage() {
   );
 
   /* ── Already Premium Screen ── */
-  if (status?.isPremium) return (
+  if (status?.isPremium && !keySuccess) return (
     <div style={{minHeight:'100vh',background:'linear-gradient(145deg,#050010,#0a001a)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24}}>
       <div style={{fontSize:80,marginBottom:16,filter:'drop-shadow(0 0 30px rgba(245,158,11,.6))'}}>👑</div>
       <h2 style={{fontSize:30,fontWeight:900,marginBottom:8,background:'linear-gradient(to right,#fbbf24,#f59e0b)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
@@ -215,6 +271,25 @@ export default function PremiumPage() {
       )}
       <Link href="/gallery" style={{padding:'14px 32px',borderRadius:16,background:'linear-gradient(135deg,#7c3aed,#ec4899)',color:'#fff',fontWeight:800,textDecoration:'none',fontSize:15,boxShadow:'0 12px 32px rgba(236,72,153,.35)'}}>
         🎬 Watch Videos Now
+      </Link>
+    </div>
+  );
+
+  /* ── Access Key Activated Screen ── */
+  if (keySuccess) return (
+    <div style={{minHeight:'100vh',background:'linear-gradient(145deg,#050010,#0a001a)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24}}>
+      <div style={{fontSize:80,marginBottom:16,filter:'drop-shadow(0 0 30px rgba(74,222,128,.5))'}}>🎉</div>
+      <h2 style={{fontSize:30,fontWeight:900,marginBottom:8,background:'linear-gradient(to right,#4ade80,#22c55e)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
+        Access Key Activated!
+      </h2>
+      <p style={{fontSize:15,color:'rgba(255,255,255,.7)',maxWidth:440,marginBottom:16,lineHeight:1.7}}>
+        {keySuccess.message || `Your ${keySuccess.planName} plan is now active for ${keySuccess.days} days!`}
+      </p>
+      <div style={{padding:'12px 20px',background:'rgba(74,222,128,.08)',border:'1px solid rgba(74,222,128,.2)',borderRadius:14,fontSize:13,color:'#4ade80',marginBottom:24,fontFamily:'monospace'}}>
+        Key: {keySuccess.code} • Plan: {keySuccess.planName} ({keySuccess.days} Days)
+      </div>
+      <Link href="/gallery" style={{padding:'14px 32px',borderRadius:16,background:'linear-gradient(135deg,#7c3aed,#ec4899)',color:'#fff',fontWeight:800,textDecoration:'none',fontSize:15,boxShadow:'0 12px 32px rgba(124,58,237,.4)'}}>
+        🎬 Start Watching Now →
       </Link>
     </div>
   );
@@ -324,7 +399,7 @@ export default function PremiumPage() {
               const save = (plan.originalPrice||0) - (plan.price||0);
               return (
                 <div key={plan.id}
-                  onClick={() => { setSelected({...plan,...meta}); setStep('pay'); setUtrSubmitted(false); setUtrInput(''); setUtrError(''); setRzpError(''); }}
+                  onClick={() => { setSelected({...plan,...meta}); setStep('pay'); setKeyError(''); setKeyUsedAt(null); setRzpError(''); }}
                   style={{
                     position:'relative',cursor:'pointer',borderRadius:20,
                     border:`1px solid ${meta.popular?meta.color:'rgba(255,255,255,.1)'}`,
@@ -377,6 +452,56 @@ export default function PremiumPage() {
             })}
           </div>
 
+          {/* ── Quick Access Key Redemption ── */}
+          <div style={{
+            maxWidth: 520, margin: '20px auto 40px',
+            background: 'rgba(255,255,255,.03)',
+            border: '1px solid rgba(255,255,255,.1)',
+            borderRadius: 18, padding: '22px 24px', textAlign: 'center'
+          }}>
+            <div style={{fontSize:15, fontWeight:800, color:'rgba(255,255,255,.9)', marginBottom:4}}>
+              🔑 Already Have an Access Key?
+            </div>
+            <p style={{fontSize:12, color:'rgba(255,255,255,.5)', margin:'0 0 14px', lineHeight:1.6}}>
+              Purchased via ForCloud? Enter your <strong style={{color:'#a78bfa'}}>FC-XXXX-XXXX</strong> key to activate your plan instantly:
+            </p>
+            <div style={{display:'flex', gap:8}}>
+              <input
+                placeholder="FC-XXXX-XXXX"
+                value={keyCode}
+                onChange={e => { setKeyCode(e.target.value.toUpperCase()); setKeyError(''); setKeyUsedAt(null); }}
+                onKeyDown={e => e.key === 'Enter' && redeemKey()}
+                style={{
+                  flex:1, padding:'12px 14px', borderRadius:12,
+                  background:'rgba(255,255,255,.06)',
+                  border:`1px solid ${keyError ? 'rgba(239,68,68,.5)' : 'rgba(255,255,255,.15)'}`,
+                  color:'#fff', fontFamily:'monospace', fontSize:15, textAlign:'center',
+                  letterSpacing:'.08em', outline:'none'
+                }}
+              />
+              <button
+                onClick={() => redeemKey()}
+                disabled={keyLoading || !keyCode.trim()}
+                style={{
+                  padding:'12px 22px', borderRadius:12,
+                  background: keyCode.trim() && !keyLoading ? 'linear-gradient(135deg,#7c3aed,#ec4899)' : 'rgba(255,255,255,.08)',
+                  color: keyCode.trim() && !keyLoading ? '#fff' : 'rgba(255,255,255,.3)',
+                  fontWeight:800, fontSize:13, border:'none',
+                  cursor: keyCode.trim() && !keyLoading ? 'pointer' : 'not-allowed',
+                  whiteSpace:'nowrap', transition:'all .2s'
+                }}
+              >
+                {keyLoading ? '...' : 'Activate'}
+              </button>
+            </div>
+            {keyError && (
+              <div style={{marginTop:12, fontSize:12, color:'#f87171', textAlign:'left', padding:'10px 14px', background:'rgba(239,68,68,.1)', borderRadius:10, border:'1px solid rgba(239,68,68,.25)'}}>
+                <div style={{fontWeight:600}}>⚠️ {keyError}</div>
+                {keyUsedAt && <div style={{marginTop:4, fontSize:11, color:'rgba(248,113,113,.9)'}}>Redeemed on: <strong style={{color:'#fff'}}>{formatUsedAt(keyUsedAt)}</strong></div>}
+              </div>
+            )}
+          </div>
+
           {/* ── Trust badges ── */}
           <div style={{textAlign:'center',padding:'24px 16px',borderTop:'1px solid rgba(255,255,255,.06)'}}>
             <div style={{display:'flex',flexWrap:'wrap',gap:16,justifyContent:'center',marginBottom:16}}>
@@ -385,7 +510,7 @@ export default function PremiumPage() {
               ))}
             </div>
             <p style={{fontSize:12,color:'rgba(255,255,255,.25)',maxWidth:500,margin:'0 auto',lineHeight:1.7}}>
-              Razorpay payments activate instantly. UPI/UTR payments activate within 15–30 minutes. Prices reset after the timer.
+              ForCloud and Razorpay payments activate instantly. Prices reset after the timer.
             </p>
           </div>
         </div>
@@ -414,135 +539,144 @@ export default function PremiumPage() {
             </div>
           </div>
 
-          {/* ── OPTION 1: Razorpay instant payment ── */}
-          <div style={{borderRadius:20,border:'1px solid rgba(34,197,94,.25)',background:'rgba(34,197,94,.05)',padding:'22px',marginBottom:16}}>
+          {/* ── OPTION 1: ForCloud Online Checkout ── */}
+          <div style={{borderRadius:20,border:'1px solid rgba(14,165,233,.3)',background:'rgba(14,165,233,.05)',padding:'22px',marginBottom:16}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
-              <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(34,197,94,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>⚡</div>
+              <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(14,165,233,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>💳</div>
               <div>
-                <div style={{fontWeight:800,fontSize:15,color:'#4ade80'}}>Pay Instantly with Razorpay</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,.4)'}}>Card, UPI, Net Banking, Wallet • Instant activation</div>
+                <div style={{fontWeight:800,fontSize:15,color:'#38bdf8'}}>Pay Online on ForCloud</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,.4)'}}>UPI, Cards, Net Banking & Crypto • Instant Access Key</div>
               </div>
             </div>
 
-            {rzpError && (
-              <div style={{padding:'10px 14px',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',borderRadius:10,color:'#f87171',fontSize:13,marginBottom:12}}>
-                ⚠️ {rzpError}
-              </div>
-            )}
+            <p style={{fontSize:13,color:'rgba(255,255,255,.65)',lineHeight:1.6,marginBottom:14}}>
+              Purchase your access key directly on our official platform. After payment, your unique <strong style={{color:'#38bdf8'}}>FC-XXXX-XXXX</strong> key will be displayed to enter below.
+            </p>
 
-            <button
-              onClick={payWithRazorpay}
-              disabled={rzpLoading || !rzpLoaded}
+            <a
+              href={`https://forcloud.pages.dev/checkout?plan=${selected.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
               style={{
-                width:'100%',padding:'15px',borderRadius:14,border:'none',
-                background: rzpLoading ? 'rgba(255,255,255,.1)' : `linear-gradient(135deg,${selected.color},#4ade80)`,
-                color:'#fff',fontWeight:800,fontSize:16,cursor:rzpLoading?'not-allowed':'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center',gap:10,
-                boxShadow:rzpLoading?'none':`0 8px 24px ${selected.glow}`,
-                transition:'all .2s',opacity:rzpLoading?0.6:1,
+                width:'100%',padding:'15px',borderRadius:14,
+                background:`linear-gradient(135deg,#0ea5e9,${selected.color || '#7c3aed'})`,
+                color:'#fff',fontWeight:800,fontSize:16,textDecoration:'none',
+                boxShadow:'0 8px 24px rgba(14,165,233,.3)',transition:'all .2s',
               }}
             >
-              {rzpLoading ? (
-                <>
-                  <span style={{width:18,height:18,border:'2px solid rgba(255,255,255,.3)',borderTop:'2px solid #fff',borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}} />
-                  Opening Checkout...
-                </>
-              ) : !rzpLoaded ? '⏳ Loading Razorpay...' : `⚡ Pay ₹${selected.price} via Razorpay`}
-            </button>
-            <div style={{fontSize:11,color:'rgba(255,255,255,.3)',textAlign:'center',marginTop:8}}>
-              🔒 Secured by Razorpay · Your data is safe
+              <span>💳 Open ForCloud Checkout (₹{selected.price}) ↗</span>
+            </a>
+            <div style={{fontSize:11,color:'rgba(255,255,255,.35)',textAlign:'center',marginTop:8}}>
+              Opens in a new tab · Complete payment and paste your key below
             </div>
           </div>
+
+          {/* ── OPTION 2: Razorpay Instant (if script loaded) ── */}
+          {rzpLoaded && (
+            <div style={{borderRadius:20,border:'1px solid rgba(34,197,94,.25)',background:'rgba(34,197,94,.04)',padding:'20px',marginBottom:16}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+                <div style={{width:30,height:30,borderRadius:'50%',background:'rgba(34,197,94,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:15}}>⚡</div>
+                <div>
+                  <div style={{fontWeight:800,fontSize:14,color:'#4ade80'}}>Pay Directly with Razorpay</div>
+                  <div style={{fontSize:11,color:'rgba(255,255,255,.4)'}}>Instant activation inside this page</div>
+                </div>
+              </div>
+
+              {rzpError && (
+                <div style={{padding:'10px 14px',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',borderRadius:10,color:'#f87171',fontSize:13,marginBottom:12}}>
+                  ⚠️ {rzpError}
+                </div>
+              )}
+
+              <button
+                onClick={payWithRazorpay}
+                disabled={rzpLoading}
+                style={{
+                  width:'100%',padding:'13px',borderRadius:12,border:'none',
+                  background: rzpLoading ? 'rgba(255,255,255,.1)' : 'linear-gradient(135deg,#10b981,#059669)',
+                  color:'#fff',fontWeight:800,fontSize:14,cursor:rzpLoading?'not-allowed':'pointer',
+                  display:'flex',alignItems:'center',justifyContent:'center',gap:10,
+                  transition:'all .2s',opacity:rzpLoading?0.6:1,
+                }}
+              >
+                {rzpLoading ? 'Opening Checkout...' : `⚡ Pay ₹${selected.price} via Razorpay`}
+              </button>
+            </div>
+          )}
 
           {/* ── Divider ── */}
           <div style={{display:'flex',alignItems:'center',gap:12,margin:'20px 0',color:'rgba(255,255,255,.2)',fontSize:12}}>
             <div style={{flex:1,height:1,background:'rgba(255,255,255,.1)'}}/>
-            OR PAY MANUALLY VIA UPI
+            ENTER ACCESS KEY TO ACTIVATE
             <div style={{flex:1,height:1,background:'rgba(255,255,255,.1)'}}/>
           </div>
 
-          {/* ── OPTION 2: UPI Manual + UTR ── */}
+          {/* ── ACCESS KEY ENTRY (Replaces old manual UTR section) ── */}
           <div style={{borderRadius:20,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.03)',padding:'22px'}}>
-            <h3 style={{fontWeight:800,fontSize:15,marginBottom:14,display:'flex',alignItems:'center',gap:8}}>
-              <span style={{width:28,height:28,borderRadius:'50%',background:'rgba(124,58,237,.2)',border:'1px solid rgba(124,58,237,.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13}}>📋</span>
-              Pay via UPI (Manual)
+            <h3 style={{fontWeight:800,fontSize:15,marginBottom:8,display:'flex',alignItems:'center',gap:8}}>
+              <span style={{width:28,height:28,borderRadius:'50%',background:'rgba(124,58,237,.2)',border:'1px solid rgba(124,58,237,.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13}}>🔑</span>
+              Activate Access Key
             </h3>
-            <ol style={{padding:0,margin:'0 0 16px',listStyle:'none',display:'flex',flexDirection:'column',gap:10}}>
-              {[
-                {n:'1',text:<>Open GPay, PhonePe, or Paytm → send <strong style={{color:'#fff'}}>₹{selected.price}</strong> to:</>},
-                {n:'2',text:'Copy the UTR / Transaction ID from your payment confirmation'},
-                {n:'3',text:'Paste the UTR ID below and click Submit'},
-                {n:'4',text:<>Plan activated within <strong style={{color:'#4ade80'}}>15–30 minutes</strong> ✅</>},
-              ].map(s=>(
-                <li key={s.n} style={{display:'flex',gap:12,alignItems:'flex-start',fontSize:13,color:'rgba(255,255,255,.7)',lineHeight:1.6}}>
-                  <span style={{width:24,height:24,borderRadius:'50%',background:'rgba(124,58,237,.25)',border:'1px solid rgba(124,58,237,.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,flexShrink:0,color:'#a78bfa'}}>{s.n}</span>
-                  <span>{s.text}</span>
-                </li>
-              ))}
-            </ol>
+            <p style={{fontSize:13,color:'rgba(255,255,255,.6)',marginBottom:16,lineHeight:1.6}}>
+              Enter the access key (FC-XXXX-XXXX) from your purchase to instantly activate your <strong style={{color:'#fff'}}>{selected.label}</strong> plan:
+            </p>
 
-            {/* UPI ID box */}
-            <div style={{borderRadius:14,border:'1px solid rgba(124,58,237,.3)',background:'rgba(124,58,237,.08)',padding:'14px 16px',marginBottom:16}}>
-              <div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,.4)',letterSpacing:'.06em',marginBottom:6}}>💳 UPI ID</div>
-              <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-                <div style={{fontFamily:'monospace',fontSize:18,fontWeight:800,color:'#a78bfa',flex:1}}>{upiId}</div>
-                <button
-                  onClick={()=>{ navigator.clipboard.writeText(upiId); }}
-                  style={{padding:'8px 16px',borderRadius:10,border:'1px solid rgba(124,58,237,.4)',background:'rgba(124,58,237,.15)',color:'#a78bfa',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}
-                >📋 Copy</button>
-              </div>
-            </div>
+            <input
+              style={{
+                width:'100%',padding:'14px 16px',borderRadius:12,
+                border:`1px solid ${keyError ? 'rgba(239,68,68,.5)' : 'rgba(255,255,255,.15)'}`,
+                background:'rgba(255,255,255,.06)',color:'#fff',fontSize:16,
+                fontFamily:'monospace',letterSpacing:'.08em',textAlign:'center',
+                marginBottom:10,outline:'none',transition:'border-color .2s'
+              }}
+              placeholder="FC-XXXX-XXXX"
+              value={keyCode}
+              onFocus={e=>e.target.style.borderColor='rgba(124,58,237,.7)'}
+              onBlur={e=>e.target.style.borderColor=keyError?'rgba(239,68,68,.5)':'rgba(255,255,255,.15)'}
+              onChange={e=>{ setKeyCode(e.target.value.toUpperCase()); setKeyError(''); setKeyUsedAt(null); }}
+              onKeyDown={e=>e.key==='Enter' && redeemKey()}
+            />
 
-            {/* QR Code */}
-            {paySettings.qrUrl && (
-              <div style={{textAlign:'center',marginBottom:16,padding:'16px',borderRadius:14,border:'1px solid rgba(255,255,255,.08)',background:'rgba(255,255,255,.03)'}}>
-                <div style={{fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:10,fontWeight:600}}>Or scan QR code to pay:</div>
-                <img src={paySettings.qrUrl} alt="Payment QR" style={{width:180,height:180,objectFit:'contain',borderRadius:10,border:'2px solid rgba(255,255,255,.15)',background:'#fff',padding:8}} />
-              </div>
-            )}
-
-            {/* UTR Submission */}
-            {!utrSubmitted ? (
-              <>
-                <h4 style={{fontWeight:700,fontSize:14,marginBottom:6}}>📤 Submit Your UTR / Transaction ID</h4>
-                <input
-                  style={{width:'100%',padding:'13px 16px',borderRadius:12,border:`1px solid ${utrError?'rgba(239,68,68,.4)':'rgba(255,255,255,.12)'}`,background:'rgba(255,255,255,.06)',color:'#fff',fontSize:14,marginBottom:8,outline:'none',transition:'border-color .2s'}}
-                  placeholder="e.g. 426912345678 (UTR / Ref ID)"
-                  value={utrInput}
-                  onFocus={e=>e.target.style.borderColor='rgba(124,58,237,.6)'}
-                  onBlur={e=>e.target.style.borderColor=utrError?'rgba(239,68,68,.4)':'rgba(255,255,255,.12)'}
-                  onChange={e=>{ setUtrInput(e.target.value); setUtrError(''); }}
-                  onKeyDown={e=>e.key==='Enter' && submitUtr()}
-                />
-                {utrError && <div style={{color:'#f87171',fontSize:13,marginBottom:10,display:'flex',gap:6,alignItems:'center'}}>⚠️ {utrError}</div>}
-                <button
-                  onClick={submitUtr}
-                  disabled={utrSending || !utrInput.trim()}
-                  style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:utrInput.trim()&&!utrSending?`linear-gradient(135deg,${selected.color},#7c3aed)`:'rgba(255,255,255,.08)',color:utrInput.trim()&&!utrSending?'#fff':'rgba(255,255,255,.3)',fontWeight:800,fontSize:15,cursor:utrInput.trim()&&!utrSending?'pointer':'not-allowed',transition:'all .2s'}}
-                >
-                  {utrSending ? (
-                    <span style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-                      <span style={{width:16,height:16,border:'2px solid rgba(255,255,255,.3)',borderTop:'2px solid #fff',borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}} />
-                      Submitting...
-                    </span>
-                  ) : '✅ Submit UTR ID'}
-                </button>
-              </>
-            ) : (
-              <div style={{textAlign:'center',padding:'12px 0'}}>
-                <div style={{fontSize:60,marginBottom:12}}>🎉</div>
-                <h3 style={{fontWeight:900,fontSize:20,marginBottom:8,color:'#4ade80'}}>UTR Submitted!</h3>
-                <p style={{fontSize:14,color:'rgba(255,255,255,.6)',lineHeight:1.8,marginBottom:20}}>
-                  We received your payment claim for the <strong style={{color:'#fff'}}>{selected.label}</strong> plan. Your account will be upgraded within <strong style={{color:'#4ade80'}}>15–30 minutes</strong>. Sit back and relax!
-                </p>
-                <div style={{padding:'12px 16px',borderRadius:12,background:'rgba(74,222,128,.08)',border:'1px solid rgba(74,222,128,.2)',fontSize:13,color:'#4ade80',marginBottom:20}}>
-                  UTR ID: <strong style={{fontFamily:'monospace'}}>{utrInput}</strong>
+            {/* Error banner with formatted used date */}
+            {keyError && (
+              <div style={{
+                padding:'12px 14px',background:'rgba(239,68,68,.1)',
+                border:'1px solid rgba(239,68,68,.3)',borderRadius:10,
+                color:'#f87171',fontSize:13,marginBottom:12,
+                display:'flex',flexDirection:'column',gap:4
+              }}>
+                <div style={{display:'flex',alignItems:'center',gap:6,fontWeight:600}}>
+                  <span>⚠️</span>
+                  <span>{keyError}</span>
                 </div>
-                <a href="/gallery" style={{display:'inline-block',padding:'13px 28px',borderRadius:14,background:'linear-gradient(135deg,#7c3aed,#ec4899)',color:'#fff',fontWeight:800,textDecoration:'none',fontSize:15}}>
-                  ← Go to Gallery
-                </a>
+                {keyUsedAt && (
+                  <div style={{fontSize:12,color:'rgba(248,113,113,.95)',paddingLeft:22}}>
+                    Already redeemed on: <strong style={{color:'#fff'}}>{formatUsedAt(keyUsedAt)}</strong>
+                  </div>
+                )}
               </div>
             )}
+
+            <button
+              onClick={() => redeemKey()}
+              disabled={keyLoading || !keyCode.trim()}
+              style={{
+                width:'100%',padding:'14px',borderRadius:14,border:'none',
+                background:keyCode.trim()&&!keyLoading?`linear-gradient(135deg,${selected.color || '#7c3aed'},#ec4899)`:'rgba(255,255,255,.08)',
+                color:keyCode.trim()&&!keyLoading?'#fff':'rgba(255,255,255,.3)',
+                fontWeight:800,fontSize:15,cursor:keyCode.trim()&&!keyLoading?'pointer':'not-allowed',
+                transition:'all .2s',
+                boxShadow:keyCode.trim()&&!keyLoading?`0 8px 24px ${selected.glow || 'rgba(124,58,237,.4)'}`:'none'
+              }}
+            >
+              {keyLoading ? (
+                <span style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+                  <span style={{width:16,height:16,border:'2px solid rgba(255,255,255,.3)',borderTop:'2px solid #fff',borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}} />
+                  Verifying & Activating...
+                </span>
+              ) : '⚡ Verify & Activate Access Key'}
+            </button>
           </div>
         </div>
       )}

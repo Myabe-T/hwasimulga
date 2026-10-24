@@ -2,10 +2,10 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { PLANS } from '@/lib/redis';
+import { getRequestContext } from '@cloudflare/next-on-pages';
 
 function getRazorpayEnv() {
   try {
-    const { getRequestContext } = require('@cloudflare/next-on-pages');
     const ctx = getRequestContext();
     if (ctx?.env?.RAZORPAY_KEY_ID) return ctx.env;
   } catch {}
