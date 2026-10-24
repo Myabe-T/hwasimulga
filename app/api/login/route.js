@@ -34,12 +34,12 @@ export async function POST(req) {
       password = rawBody.password;
     }
 
-    const usernameClean = username?.toLowerCase()?.trim();
+    const usernameClean = (username || rawBody.identifier || rawBody.email || '')?.toLowerCase()?.trim();
 
     // ── 1. Check static users (admin, demo, viewer) — plain-text password ──
     const staticUsers = await getUsers();
     let user = staticUsers.find(
-      u => u.username.toLowerCase() === usernameClean && u.password === password
+      u => (u.username.toLowerCase() === usernameClean || u.email?.toLowerCase() === usernameClean) && u.password === password
     );
 
     // ── 2. Check registered users (hashed password) ──
@@ -47,7 +47,7 @@ export async function POST(req) {
       const regUsers = await getRegUsers();
       const pwHash = await hashPassword(password);
       user = regUsers.find(
-        u => (u.username.toLowerCase() === usernameClean ||
+        u => (u.username?.toLowerCase() === usernameClean ||
               u.email?.toLowerCase() === usernameClean) &&
              u.passwordHash === pwHash
       );
@@ -66,7 +66,7 @@ export async function POST(req) {
         return NextResponse.json(await encryptPayload({ error: '⏳ Your account is pending admin approval. Please wait — you will be notified once approved.', code: 'PENDING_APPROVAL' }), { status: 403 });
       }
       // Not found anywhere
-      return NextResponse.json(await encryptPayload({ error: 'Invalid credentials. Check your username/password.' }), { status: 401 });
+      return NextResponse.json(await encryptPayload({ error: 'Invalid credentials. Check your username/email and password.' }), { status: 401 });
     }
 
     // ── 4. Check if this user's account is blocked ──

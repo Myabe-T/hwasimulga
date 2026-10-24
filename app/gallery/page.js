@@ -100,6 +100,49 @@ export default function GalleryPage() {
   const [mobileGridCols, setMobileGridCols] = useState(1); // 1 or 2 columns on mobile
   const [quickCurateFlash, setQuickCurateFlash] = useState(''); // flash toast for quick curate
 
+  // ── Browser back/forward & Profile URL routing ──
+  useEffect(() => {
+    const pathname = window.location.pathname.replace(/^\//, '').toLowerCase();
+    const searchParams = new URLSearchParams(window.location.search);
+    const tabParam = searchParams.get('tab')?.toLowerCase();
+
+    const pathToTab = {
+      'profile': 'account',
+      'account': 'account',
+      'stats': 'stats',
+      'sessions': 'sessions',
+      'subscriptions': 'subscriptions',
+      'extend-premium': 'subscriptions',
+      'transactions': 'transactions',
+      'support': 'support',
+      'help': 'support',
+    };
+
+    const initialSection = pathToTab[pathname] || pathToTab[tabParam] || (tabParam && ['account','stats','sessions','subscriptions','transactions','support'].includes(tabParam) ? tabParam : null);
+    if (initialSection) {
+      setProfileTab(initialSection);
+      setView('profile');
+      const targetPath = initialSection === 'account' ? '/profile' : `/${initialSection}`;
+      window.history.replaceState({ view: 'profile', tab: initialSection }, '', targetPath);
+    }
+
+    const handlePopState = (e) => {
+      const p = window.location.pathname.replace(/^\//, '').toLowerCase();
+      const sp = new URLSearchParams(window.location.search);
+      const tp = sp.get('tab')?.toLowerCase();
+      const target = pathToTab[p] || pathToTab[tp] || (e.state?.view === 'profile' ? e.state.tab : null);
+      if (target) {
+        setProfileTab(target);
+        setView('profile');
+      } else {
+        setView('gallery');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // Global epoch-based countdown (same for everyone)
   const EPOCH_START = 1704067200;
   const PERIOD_SECS = 34 * 3600;
@@ -459,68 +502,22 @@ export default function GalleryPage() {
     setEditTitleSaving(false);
   }
 
-  async function submitTicket() {
-    if (ticketSubject.trim().length < 3) {
-      setTicketSubmitMsg({ ok: false, text: 'Subject must be at least 3 characters' });
-      return;
-    }
-    if (ticketMsg.trim().length < 5) {
-      setTicketSubmitMsg({ ok: false, text: 'Please provide more details in your message' });
-      return;
-    }
-    setTicketCreating(true);
-    setTicketSubmitMsg(null);
-    try {
-      const res = await fetch('/api/hwasi/tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: ticketSubject.trim(), message: ticketMsg.trim(), category: ticketCategory }),
-      });
-      const d = await res.json();
-      if (res.ok && d.ok) {
-        setTicketSubmitMsg({ ok: true, text: '✓ Ticket ' + d.ticket.id + ' submitted! Our team will reply shortly.' });
-        setTickets(prev => [d.ticket, ...prev]);
-        setTicketSubject('');
-        setTicketMsg('');
-        setTimeout(() => { setTicketFormOpen(false); setTicketSubmitMsg(null); }, 2500);
-      } else {
-        setTicketSubmitMsg({ ok: false, text: d.error || 'Failed to submit ticket' });
-      }
-    } catch {
-      setTicketSubmitMsg({ ok: false, text: 'Network error submitting ticket' });
-    } finally {
-      setTicketCreating(false);
+  function openProfile(tab = 'account', push = true) {
+    setProfileTab(tab);
+    setView('profile');
+    const path = tab === 'account' ? '/profile' : `/${tab}`;
+    if (push) {
+      window.history.pushState({ view: 'profile', tab }, '', path);
+    } else {
+      window.history.replaceState({ view: 'profile', tab }, '', path);
     }
   }
 
-  async function toggleTicketDetail(t) {
-    if (activeTicketId === t.id) {
-      setActiveTicketId(null);
-      return;
+  function closeProfile(push = true) {
+    setView('gallery');
+    if (push) {
+      window.history.pushState({ view: 'gallery' }, '', '/gallery');
     }
-    setActiveTicketId(t.id);
-    if (t.userUnread) {
-      fetch('/api/hwasi/tickets', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticketId: t.id, markRead: true }),
-      }).catch(() => {});
-      setTickets(prev => prev.map(x => x.id === t.id ? { ...x, userUnread: false } : x));
-    }
-  }
-
-  async function markTicketResolved(ticketId) {
-    try {
-      const r = await fetch('/api/hwasi/tickets', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticketId, status: 'resolved' }),
-      });
-      const d = await r.json();
-      if (d.ok) {
-        setTickets(prev => prev.map(x => x.id === ticketId ? { ...x, status: 'resolved' } : x));
-      }
-    } catch {}
   }
 
   async function changePassword() {
@@ -923,7 +920,7 @@ export default function GalleryPage() {
           )}
 
           <button className={`${styles.sidebarItem} ${view === 'profile' ? styles.sidebarActive : ''}`}
-            onClick={() => { setView('profile'); setSidebarOpen(false); }}>
+            onClick={() => { openProfile('account'); setSidebarOpen(false); }}>
             <span className={styles.sidebarIcon} style={{ background:'rgba(236,72,153,.18)' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f472b6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -1025,7 +1022,7 @@ export default function GalleryPage() {
                       {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
                     </button>
                   </div>
-                  <button className={styles.udItem} onClick={() => { setView('profile'); setUserMenuOpen(false); }}>
+                  <button className={styles.udItem} onClick={() => { openProfile('account'); setUserMenuOpen(false); }}>
                     👤 My Profile
                   </button>
                   <button className={styles.udItem} onClick={() => { setView('bookmarks'); setUserMenuOpen(false); }}>
@@ -1163,7 +1160,22 @@ export default function GalleryPage() {
 
         {/* ── PROFILE VIEW ── */}
         {view === 'profile' && (
-          <ProfileView user={user} viewStatus={viewStatus} plans={plans} myHistory={myHistory} bookmarkIds={bookmarkIds} initialTab={profileTab} onClose={() => setView('gallery')} onChangePwd={() => setChangePwdModal(true)} onLogout={logout} />
+          <ProfileView
+            user={user}
+            viewStatus={viewStatus}
+            plans={plans}
+            myHistory={myHistory}
+            bookmarkIds={bookmarkIds}
+            initialTab={profileTab}
+            onTabChange={(t) => {
+              setProfileTab(t);
+              const path = t === 'account' ? '/profile' : `/${t}`;
+              window.history.pushState({ view: 'profile', tab: t }, '', path);
+            }}
+            onClose={() => closeProfile()}
+            onChangePwd={() => setChangePwdModal(true)}
+            onLogout={logout}
+          />
         )}
 
 
@@ -1588,7 +1600,7 @@ export default function GalleryPage() {
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', marginBottom: 16 }}>From: {adminMessage.from} · {new Date(adminMessage.timestamp).toLocaleString('en-IN')}</div>
             {adminMessage.type === 'ticket_reply' && (
               <button style={{ padding: '11px 24px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#ec4899)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', marginBottom: 8, width: '100%' }}
-                onClick={() => { setAdminMessage(null); setProfileTab('support'); setView('profile'); }}>
+                onClick={() => { setAdminMessage(null); openProfile('support'); }}>
                 🎧 View in Support Desk →
               </button>
             )}
@@ -1614,7 +1626,7 @@ export default function GalleryPage() {
 /* ════════════════════════════════════
    ProfileView — iTeraPlay style tabs
    ════════════════════════════════════ */
-function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, initialTab = 'account', onClose, onChangePwd, onLogout }) {
+function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, initialTab = 'account', onTabChange, onClose, onChangePwd, onLogout }) {
   const [tab, setTab] = useState(initialTab || 'account');
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   const [displayName, setDisplayName] = useState(user.displayName || '');
@@ -1692,6 +1704,70 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, initialT
   }, [tab]);
 
 
+  async function submitTicket() {
+    if (ticketSubject.trim().length < 3) {
+      setTicketSubmitMsg({ ok: false, text: 'Subject must be at least 3 characters' });
+      return;
+    }
+    if (ticketMsg.trim().length < 5) {
+      setTicketSubmitMsg({ ok: false, text: 'Please provide more details in your message' });
+      return;
+    }
+    setTicketCreating(true);
+    setTicketSubmitMsg(null);
+    try {
+      const res = await fetch('/api/hwasi/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: ticketSubject.trim(), message: ticketMsg.trim(), category: ticketCategory }),
+      });
+      const d = await res.json();
+      if (res.ok && d.ok) {
+        setTicketSubmitMsg({ ok: true, text: '✓ Ticket #' + d.ticket.id + ' submitted! Our team will reply shortly.' });
+        setTickets(prev => [d.ticket, ...prev]);
+        setTicketSubject('');
+        setTicketMsg('');
+        setTimeout(() => { setTicketFormOpen(false); setTicketSubmitMsg(null); }, 2500);
+      } else {
+        setTicketSubmitMsg({ ok: false, text: d.error || 'Failed to submit ticket' });
+      }
+    } catch {
+      setTicketSubmitMsg({ ok: false, text: 'Network error submitting ticket' });
+    } finally {
+      setTicketCreating(false);
+    }
+  }
+
+  async function toggleTicketDetail(t) {
+    if (activeTicketId === t.id) {
+      setActiveTicketId(null);
+      return;
+    }
+    setActiveTicketId(t.id);
+    if (t.userUnread) {
+      fetch('/api/hwasi/tickets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId: t.id, markRead: true }),
+      }).catch(() => {});
+      setTickets(prev => prev.map(x => x.id === t.id ? { ...x, userUnread: false } : x));
+    }
+  }
+
+  async function markTicketResolved(ticketId) {
+    try {
+      const r = await fetch('/api/hwasi/tickets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId, status: 'resolved' }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setTickets(prev => prev.map(x => x.id === ticketId ? { ...x, status: 'resolved' } : x));
+      }
+    } catch {}
+  }
+
   async function saveAccount() {
     setSaveMsg('');
     try {
@@ -1743,9 +1819,9 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, initialT
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 24, overflowX: 'auto', scrollbarWidth: 'none' }}>
         {tabs.map(t => (
-          <button key={t} onClick={() => setTab(t)}
+          <button key={t} onClick={() => { setTab(t); onTabChange && onTabChange(t); }}
             style={{ padding: '10px 16px', background: 'none', border: 'none', borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent', color: tab === t ? 'var(--accent)' : 'var(--text3)', fontWeight: 700, fontSize: 13, cursor: 'pointer', textTransform: 'capitalize', whiteSpace: 'nowrap', fontFamily: 'inherit', transition: 'color .15s', marginBottom: -1 }}>
-            {t === 'support' ? '🎧 Support / Help' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'support' ? '🎧 Support / Help' : t === 'subscriptions' ? '👑 Subscriptions / Extend' : t.charAt(0).toUpperCase() + t.slice(1)}
             {t === 'support' && tickets.some(tk => tk.userUnread) && (
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', display: 'inline-block', marginLeft: 4 }} />
             )}
