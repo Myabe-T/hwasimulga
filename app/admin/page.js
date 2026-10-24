@@ -105,20 +105,69 @@ export default function AdminPage() {
     setScrapeScanning(true);
     setScrapeResults(null);
     setScrapeSelected(new Set());
-    setScrapeLogs([]);
+    setScrapeLogs(['🔍 Initializing scan for ' + (scrapeSite === 'desimms' ? 'DesiMMS' : 'HindiBF') + '...']);
+
+    const aggregatedVideos = [];
+    const seenIds = new Set();
+    let totalScanned = 0;
+    let totalKnown = 0;
+
     try {
-      const res = await secureFetch('/api/hwasi/scraper?site=' + scrapeSite + '&pages=' + scrapePages + '&deep=' + scrapeDeep);
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Failed to scan website');
-      setScrapeResults(data);
-      if (data.newVideos && data.newVideos.length > 0) {
-        setScrapeSelected(new Set(data.newVideos.map(v => v.systemId)));
-        flash('🎉 Found ' + data.newCount + ' new videos! (Skipped ' + data.knownCount + ' existing)');
+      for (let p = 1; p <= scrapePages; p++) {
+        setScrapeLogs(prev => [...prev, '⏳ Scanning page ' + p + ' of ' + scrapePages + '...']);
+        const res = await secureFetch('/api/hwasi/scraper?site=' + scrapeSite + '&page=' + p + '&perPage=10&deep=' + scrapeDeep);
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to scan page ' + p);
+
+        totalScanned += data.scannedPosts || 0;
+        totalKnown += data.knownCount || 0;
+
+        let pageNew = 0;
+        for (const v of data.newVideos || []) {
+          if (!seenIds.has(v.systemId)) {
+            seenIds.add(v.systemId);
+            aggregatedVideos.push(v);
+            pageNew++;
+          }
+        }
+
+        setScrapeLogs(prev => [
+          ...prev,
+          '  ✓ Page ' + p + ': Scanned ' + data.scannedPosts + ' posts (' + pageNew + ' new, ' + data.knownCount + ' existing)'
+        ]);
+
+        setScrapeResults({
+          site: data.site,
+          siteName: data.siteName,
+          scannedPosts: totalScanned,
+          newCount: aggregatedVideos.length,
+          knownCount: totalKnown,
+          newVideos: [...aggregatedVideos],
+        });
+
+        if (aggregatedVideos.length > 0) {
+          setScrapeSelected(new Set(aggregatedVideos.map(v => v.systemId)));
+        }
+
+        if (data.stopEarly) {
+          setScrapeLogs(prev => [...prev, '🛑 Reached known videos on page ' + p + '. Stopping scan early.']);
+          break;
+        }
+
+        if (!data.hasMore) {
+          setScrapeLogs(prev => [...prev, '🏁 Reached end of site posts.']);
+          break;
+        }
+      }
+
+      if (aggregatedVideos.length > 0) {
+        flash('🎉 Found ' + aggregatedVideos.length + ' new videos! (Skipped ' + totalKnown + ' existing)');
       } else {
-        flash('✅ Everything up to date! Scanned ' + data.scannedPosts + ' posts, 0 new videos.');
+        flash('✅ Everything up to date! Scanned ' + totalScanned + ' posts, 0 new videos.');
       }
     } catch (err) {
       flash('❌ Scrape error: ' + err.message, 'err');
+      setScrapeLogs(prev => [...prev, '❌ Error: ' + err.message]);
     } finally {
       setScrapeScanning(false);
     }
@@ -165,7 +214,7 @@ export default function AdminPage() {
     setScrapeProgress({ current: 0, total: toImport.length, status: 'Initializing import...' });
 
     let successCount = 0;
-    const BATCH_SIZE = 5;
+    const BATCH_SIZE = 3;
 
     try {
       for (let i = 0; i < toImport.length; i += BATCH_SIZE) {

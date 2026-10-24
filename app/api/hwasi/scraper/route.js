@@ -56,15 +56,17 @@ function base64ToUtf8(b64) {
   return decodeURIComponent(escape(atob(b64)));
 }
 
-// GET /api/hwasi/scraper?site=desimms&pages=3
-// Scans WordPress REST API for new videos, skips already-existing ones, and extracts CDN IDs
+// GET /api/hwasi/scraper?site=desimms&page=1&perPage=10&deep=false
+// Scans a single page of WordPress REST API for new videos.
+// Single-page execution stays well within Cloudflare Worker subrequest limit (50 subrequests).
 export async function GET(req) {
   const { error, status } = await requireAuth(['admin']);
   if (error) return NextResponse.json({ error }, { status });
 
   const url = new URL(req.url);
   const siteKey = (url.searchParams.get('site') || 'desimms').toLowerCase();
-  const maxPages = Math.min(Math.max(parseInt(url.searchParams.get('pages') || '3', 10), 1), 10);
+  const page = Math.max(parseInt(url.searchParams.get('page') || '1', 10), 1);
+  const perPage = Math.min(Math.max(parseInt(url.searchParams.get('perPage') || '10', 10), 3), 15);
   const deepScan = url.searchParams.get('deep') === 'true';
 
   const cfg = SITE_CONFIG[siteKey] || SITE_CONFIG.desimms;
@@ -95,130 +97,148 @@ export async function GET(req) {
     }
 
     const newVideos = [];
-    let scannedPosts = 0;
     let knownCount = 0;
-    let stopEarly = false;
 
-    // 2. Scan WordPress API pages
-    for (let pg = 1; pg <= maxPages && !stopEarly; pg++) {
-      const apiUrl = `${cfg.wpApi}?per_page=20&page=${pg}&_fields=id,link,title,yoast_head_json`;
-      const res = await fetch(apiUrl, {
-        headers: {
-          'User-Agent': UA,
-          'Accept': 'application/json',
-          'Referer': cfg.cdnBase,
-        },
+    // 2. Fetch single WordPress API page (e.g. 10 posts)
+    const apiUrl = `${cfg.wpApi}?per_page=${perPage}&page=${page}&_fields=id,link,title,yoast_head_json`;
+    const res = await fetch(apiUrl, {
+      headers: {
+        'User-Agent': UA,
+        'Accept': 'application/json',
+        'Referer': cfg.cdnBase,
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 400 || res.status === 404) {
+        return NextResponse.json({
+          ok: true,
+          page,
+          site: siteKey,
+          siteName: cfg.name,
+          scannedPosts: 0,
+          newCount: 0,
+          knownCount: 0,
+          newVideos: [],
+          hasMore: false,
+          stopEarly: true,
+        });
+      }
+      throw new Error(`WordPress API returned HTTP ${res.status}`);
+    }
+
+    const posts = await res.json();
+    if (!Array.isArray(posts) || posts.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        page,
+        site: siteKey,
+        siteName: cfg.name,
+        scannedPosts: 0,
+        newCount: 0,
+        knownCount: 0,
+        newVideos: [],
+        hasMore: false,
+        stopEarly: true,
       });
+    }
 
-      if (!res.ok) {
-        if (res.status === 400 || res.status === 404) break; // no more pages
-        throw new Error(`WordPress API returned HTTP ${res.status}`);
-      }
+    // 3. Inspect each post on this page
+    for (const p of posts) {
+      const rawTitle = (p.title?.rendered || '').replace(/<[^>]+>/g, '').trim();
+      const postLink = p.link || '';
+      let thumbUrl = p.yoast_head_json?.og_image?.[0]?.url || '';
 
-      const posts = await res.json();
-      if (!Array.isArray(posts) || posts.length === 0) break;
+      if (!postLink) continue;
 
-      scannedPosts += posts.length;
-      let pageKnownCount = 0;
+      try {
+        // Fetch post HTML to extract player iframe base64 query param
+        const pageRes = await fetch(postLink, {
+          headers: {
+            'User-Agent': UA,
+            'Accept': 'text/html,application/xhtml+xml',
+          },
+        });
 
-      // Inspect each post
-      for (const p of posts) {
-        const rawTitle = (p.title?.rendered || '').replace(/<[^>]+>/g, '').trim();
-        const postLink = p.link || '';
-        let thumbUrl = p.yoast_head_json?.og_image?.[0]?.url || '';
+        if (!pageRes.ok) continue;
 
-        if (!postLink) continue;
+        const html = await pageRes.text();
+        const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+        let cdnId = null;
+        let cdnUrl = null;
 
-        try {
-          // Fetch post HTML to extract player iframe base64 query param
-          const pageRes = await fetch(postLink, {
-            headers: {
-              'User-Agent': UA,
-              'Accept': 'text/html,application/xhtml+xml',
-            },
-          });
+        if (iframeMatch) {
+          const iframeSrc = iframeMatch[1];
+          const qMatch = iframeSrc.match(/q=([a-zA-Z0-9+/=]+)/);
+          if (qMatch) {
+            const decoded = base64ToUtf8(qMatch[1]);
+            const urlDecoded = decodeURIComponent(decoded);
 
-          if (!pageRes.ok) continue;
+            const m = urlDecoded.match(cfg.cdnPattern);
+            if (m) {
+              cdnId = parseInt(m[1], 10);
+              cdnUrl = m[0];
+            }
 
-          const html = await pageRes.text();
-          const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-          let cdnId = null;
-          let cdnUrl = null;
-
-          if (iframeMatch) {
-            const iframeSrc = iframeMatch[1];
-            const qMatch = iframeSrc.match(/q=([a-zA-Z0-9+/=]+)/);
-            if (qMatch) {
-              const decoded = base64ToUtf8(qMatch[1]);
-              const urlDecoded = decodeURIComponent(decoded);
-
-              const m = urlDecoded.match(cfg.cdnPattern);
-              if (m) {
-                cdnId = parseInt(m[1], 10);
-                cdnUrl = m[0];
-              }
-
-              // Fallback for thumbnail from decoded video poster attribute
-              if (!thumbUrl) {
-                const posterMatch = urlDecoded.match(/poster=["']([^"']+)["']/i);
-                if (posterMatch) thumbUrl = posterMatch[1];
-              }
+            // Fallback for thumbnail from decoded video poster attribute
+            if (!thumbUrl) {
+              const posterMatch = urlDecoded.match(/poster=["']([^"']+)["']/i);
+              if (posterMatch) thumbUrl = posterMatch[1];
             }
           }
-
-          // If no iframe match, fallback direct scan of HTML
-          if (!cdnId) {
-            const directMatch = html.match(cfg.cdnPattern);
-            if (directMatch) {
-              cdnId = parseInt(directMatch[1], 10);
-              cdnUrl = directMatch[0];
-            }
-          }
-
-          if (cdnId) {
-            const systemId = cfg.isExtra ? (cfg.offset + cdnId) : cdnId;
-            const strSysId = String(systemId);
-
-            if (knownSystemIds.has(strSysId)) {
-              knownCount++;
-              pageKnownCount++;
-            } else {
-              // Mark seen in current run
-              knownSystemIds.add(strSysId);
-              newVideos.push({
-                postId: p.id,
-                cdnId,
-                systemId,
-                title: rawTitle,
-                thumbnail: thumbUrl,
-                cdnUrl: cdnUrl || `${cfg.cdnBase}/${cdnId}.mp4`,
-                postUrl: postLink,
-                site: siteKey,
-              });
-            }
-          }
-        } catch (itemErr) {
-          console.warn(`Error scanning post ${p.id}:`, itemErr.message);
         }
-      }
 
-      // Stop early if not deep scan and majority of page was already known
-      if (!deepScan && pageKnownCount >= 5 && newVideos.length > 0) {
-        stopEarly = true;
+        // If no iframe match, fallback direct scan of HTML
+        if (!cdnId) {
+          const directMatch = html.match(cfg.cdnPattern);
+          if (directMatch) {
+            cdnId = parseInt(directMatch[1], 10);
+            cdnUrl = directMatch[0];
+          }
+        }
+
+        if (cdnId) {
+          const systemId = cfg.isExtra ? (cfg.offset + cdnId) : cdnId;
+          const strSysId = String(systemId);
+
+          if (knownSystemIds.has(strSysId)) {
+            knownCount++;
+          } else {
+            knownSystemIds.add(strSysId);
+            newVideos.push({
+              postId: p.id,
+              cdnId,
+              systemId,
+              title: rawTitle,
+              thumbnail: thumbUrl,
+              cdnUrl: cdnUrl || `${cfg.cdnBase}/${cdnId}.mp4`,
+              postUrl: postLink,
+              site: siteKey,
+            });
+          }
+        }
+      } catch (itemErr) {
+        console.warn(`Error scanning post ${p.id}:`, itemErr.message);
       }
     }
 
     // Sort newest / highest ID first
     newVideos.sort((a, b) => b.systemId - a.systemId);
 
+    const hasMore = posts.length === perPage;
+    const stopEarly = !deepScan && knownCount >= 4 && newVideos.length === 0;
+
     return NextResponse.json({
       ok: true,
+      page,
       site: siteKey,
       siteName: cfg.name,
-      scannedPosts,
+      scannedPosts: posts.length,
       newCount: newVideos.length,
       knownCount,
       newVideos,
+      hasMore,
+      stopEarly,
     });
   } catch (err) {
     console.error('Scraper GET error:', err);
