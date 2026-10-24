@@ -87,7 +87,9 @@ export default function GalleryPage() {
   const [downloadUpgradeModal, setDownloadUpgradeModal] = useState(false);
   const [bookmarkLimitModal, setBookmarkLimitModal] = useState(false);
   const [premiumWelcomePopup, setPremiumWelcomePopup] = useState(false);
-  const [adminMessage, setAdminMessage] = useState(null); // { message, from, timestamp }
+  const [adminMessage, setAdminMessage] = useState(null);
+  const [profileTab, setProfileTab] = useState('account');
+  const [hasTicketNotification, setHasTicketNotification] = useState(false); // { message, from, timestamp }
   const FREE_BOOKMARK_LIMIT = 8;
   const [theme, setTheme] = useState('dark');
   const [searchQuery, setSearchQuery] = useState('');
@@ -198,6 +200,7 @@ export default function GalleryPage() {
         }
         // Admin warning message
         fetch('/api/hwasi/device-message').then(r=>r.json()).then(m=>{ if(m.message) setAdminMessage(m.message); }).catch(()=>{});
+        fetch('/api/hwasi/tickets').then(r=>r.json()).then(tk=>{ if(tk.unreadReplies > 0) setHasTicketNotification(true); }).catch(()=>{});
       });
     }
     init();
@@ -454,6 +457,70 @@ export default function GalleryPage() {
       setEditTitleInput('');
     } catch (e) { /* silent */ }
     setEditTitleSaving(false);
+  }
+
+  async function submitTicket() {
+    if (ticketSubject.trim().length < 3) {
+      setTicketSubmitMsg({ ok: false, text: 'Subject must be at least 3 characters' });
+      return;
+    }
+    if (ticketMsg.trim().length < 5) {
+      setTicketSubmitMsg({ ok: false, text: 'Please provide more details in your message' });
+      return;
+    }
+    setTicketCreating(true);
+    setTicketSubmitMsg(null);
+    try {
+      const res = await fetch('/api/hwasi/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: ticketSubject.trim(), message: ticketMsg.trim(), category: ticketCategory }),
+      });
+      const d = await res.json();
+      if (res.ok && d.ok) {
+        setTicketSubmitMsg({ ok: true, text: '✓ Ticket ' + d.ticket.id + ' submitted! Our team will reply shortly.' });
+        setTickets(prev => [d.ticket, ...prev]);
+        setTicketSubject('');
+        setTicketMsg('');
+        setTimeout(() => { setTicketFormOpen(false); setTicketSubmitMsg(null); }, 2500);
+      } else {
+        setTicketSubmitMsg({ ok: false, text: d.error || 'Failed to submit ticket' });
+      }
+    } catch {
+      setTicketSubmitMsg({ ok: false, text: 'Network error submitting ticket' });
+    } finally {
+      setTicketCreating(false);
+    }
+  }
+
+  async function toggleTicketDetail(t) {
+    if (activeTicketId === t.id) {
+      setActiveTicketId(null);
+      return;
+    }
+    setActiveTicketId(t.id);
+    if (t.userUnread) {
+      fetch('/api/hwasi/tickets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId: t.id, markRead: true }),
+      }).catch(() => {});
+      setTickets(prev => prev.map(x => x.id === t.id ? { ...x, userUnread: false } : x));
+    }
+  }
+
+  async function markTicketResolved(ticketId) {
+    try {
+      const r = await fetch('/api/hwasi/tickets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId, status: 'resolved' }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setTickets(prev => prev.map(x => x.id === ticketId ? { ...x, status: 'resolved' } : x));
+      }
+    } catch {}
   }
 
   async function changePassword() {
@@ -1096,7 +1163,7 @@ export default function GalleryPage() {
 
         {/* ── PROFILE VIEW ── */}
         {view === 'profile' && (
-          <ProfileView user={user} viewStatus={viewStatus} plans={plans} myHistory={myHistory} bookmarkIds={bookmarkIds} onClose={() => setView('gallery')} onChangePwd={() => setChangePwdModal(true)} onLogout={logout} />
+          <ProfileView user={user} viewStatus={viewStatus} plans={plans} myHistory={myHistory} bookmarkIds={bookmarkIds} initialTab={profileTab} onClose={() => setView('gallery')} onChangePwd={() => setChangePwdModal(true)} onLogout={logout} />
         )}
 
 
@@ -1513,12 +1580,18 @@ export default function GalleryPage() {
       {adminMessage && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(8px)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: adminMessage.type === 'utr_rejected' ? 'linear-gradient(135deg,#1a0505,#2d0a0a)' : 'linear-gradient(135deg,#130a20,#1a0d2e)', border: `1px solid ${adminMessage.type === 'utr_rejected' ? 'rgba(248,113,113,.4)' : 'rgba(251,191,36,.4)'}`, borderRadius: 20, padding: 28, width: '100%', maxWidth: 420, textAlign: 'center', boxShadow: '0 30px 80px rgba(0,0,0,.7)' }}>
-            <div style={{ fontSize: 48, marginBottom: 10 }}>{adminMessage.type === 'utr_rejected' ? '❌' : '⚠️'}</div>
+            <div style={{ fontSize: 48, marginBottom: 10 }}>{adminMessage.type === 'utr_rejected' ? '❌' : adminMessage.type === 'ticket_reply' ? '💬' : '⚠️'}</div>
             <h3 style={{ fontWeight: 900, fontSize: 18, color: adminMessage.type === 'utr_rejected' ? '#f87171' : '#fbbf24', marginBottom: 8 }}>
-              {adminMessage.type === 'utr_rejected' ? 'Payment Verification Failed' : 'Admin Notice'}
+              {adminMessage.type === 'utr_rejected' ? 'Payment Verification Failed' : adminMessage.type === 'ticket_reply' ? 'Support Desk Reply' : 'Admin Notice'}
             </h3>
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,.75)', lineHeight: 1.7, marginBottom: 20, whiteSpace: 'pre-wrap' }}>{adminMessage.message}</p>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', marginBottom: 16 }}>From: {adminMessage.from} · {new Date(adminMessage.timestamp).toLocaleString('en-IN')}</div>
+            {adminMessage.type === 'ticket_reply' && (
+              <button style={{ padding: '11px 24px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#ec4899)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', marginBottom: 8, width: '100%' }}
+                onClick={() => { setAdminMessage(null); setProfileTab('support'); setView('profile'); }}>
+                🎧 View in Support Desk →
+              </button>
+            )}
             {adminMessage.type === 'utr_rejected' && (
               <button style={{ padding: '11px 24px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#ec4899)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', marginBottom: 8, width: '100%' }}
                 onClick={() => { setAdminMessage(null); window.location.href = '/premium'; }}>
@@ -1541,8 +1614,9 @@ export default function GalleryPage() {
 /* ════════════════════════════════════
    ProfileView — iTeraPlay style tabs
    ════════════════════════════════════ */
-function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose, onChangePwd, onLogout }) {
-  const [tab, setTab] = useState('account');
+function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, initialTab = 'account', onClose, onChangePwd, onLogout }) {
+  const [tab, setTab] = useState(initialTab || 'account');
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   const [displayName, setDisplayName] = useState(user.displayName || '');
   const [email, setEmail] = useState(user.email || '');
   const [saveMsg, setSaveMsg] = useState('');
@@ -1556,7 +1630,17 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
   const [accessKeyCode, setAccessKeyCode] = useState('');
   const [accessKeyMsg, setAccessKeyMsg] = useState(null);
   const [accessKeyLoading, setAccessKeyLoading] = useState(false);
-  const tabs = ['account', 'stats', 'sessions', 'subscriptions', 'transactions'];
+  const [tickets, setTickets] = useState([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [ticketSubject, setTicketSubject] = useState('');
+  const [ticketMsg, setTicketMsg] = useState('');
+  const [ticketCategory, setTicketCategory] = useState('Access Key / Payment');
+  const [ticketCreating, setTicketCreating] = useState(false);
+  const [ticketFormOpen, setTicketFormOpen] = useState(false);
+  const [ticketSubmitMsg, setTicketSubmitMsg] = useState(null);
+  const [activeTicketId, setActiveTicketId] = useState(null);
+  const [ticketFilter, setTicketFilter] = useState('all');
+  const tabs = ['account', 'stats', 'sessions', 'subscriptions', 'transactions', 'support'];
 
   async function redeemAccessKey() {
     let raw = (accessKeyCode || '').trim().toUpperCase();
@@ -1600,6 +1684,10 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
     if (tab === 'transactions') {
       setLoading(true);
       fetch('/api/hwasi/utr').then(r => r.json()).then(d => setTransactions(d.submissions || [])).catch(() => {}).finally(() => setLoading(false));
+    }
+    if (tab === 'support') {
+      setTicketsLoading(true);
+      fetch('/api/hwasi/tickets').then(r => r.json()).then(d => setTickets(d.tickets || [])).catch(() => {}).finally(() => setTicketsLoading(false));
     }
   }, [tab]);
 
@@ -1657,7 +1745,10 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
         {tabs.map(t => (
           <button key={t} onClick={() => setTab(t)}
             style={{ padding: '10px 16px', background: 'none', border: 'none', borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent', color: tab === t ? 'var(--accent)' : 'var(--text3)', fontWeight: 700, fontSize: 13, cursor: 'pointer', textTransform: 'capitalize', whiteSpace: 'nowrap', fontFamily: 'inherit', transition: 'color .15s', marginBottom: -1 }}>
-            {t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'support' ? '🎧 Support / Help' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'support' && tickets.some(tk => tk.userUnread) && (
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', display: 'inline-block', marginLeft: 4 }} />
+            )}
           </button>
         ))}
       </div>
@@ -1865,7 +1956,7 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
                 <div style={{ textAlign: 'center', padding: 40 }}>
                   <div style={{ fontSize: 40, marginBottom: 12 }}>💳</div>
                   <div style={{ color: 'var(--text3)', fontSize: 14, marginBottom: 4 }}>No transactions yet</div>
-                  <div style={{ color: 'var(--text3)', fontSize: 12, marginBottom: 16 }}>When you submit a UTR payment, it will appear here with its status.</div>
+                  <div style={{ color: 'var(--text3)', fontSize: 12, marginBottom: 16 }}>When you activate an Access Key or submit a payment, it will appear here with its status.</div>
                   <a href="/premium" style={{ display: 'inline-block', padding: '10px 22px', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: '#fff', borderRadius: 10, textDecoration: 'none', fontWeight: 700, fontSize: 13 }}>Get Premium</a>
                 </div>
               ) : (
@@ -1882,7 +1973,13 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text1)', fontFamily: 'monospace', letterSpacing: '.03em' }}>UTR: {txn.utrId}</span>
+                              {txn.type === 'access_key' || txn.code || (txn.utrId && txn.utrId.startsWith('FC-')) ? (
+                                <span style={{ fontSize: 13, fontWeight: 800, color: '#a78bfa', fontFamily: 'monospace', letterSpacing: '.03em', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                  🔑 Key: {txn.code || txn.utrId}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text1)', fontFamily: 'monospace', letterSpacing: '.03em' }}>UTR: {txn.utrId}</span>
+                              )}
                             </div>
                             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                               <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 10px', borderRadius: 20, background: 'rgba(124,58,237,.15)', color: '#a78bfa' }}>{planLabel} Plan</span>
@@ -1895,7 +1992,7 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
                             )}
                             {st === 'approved' && (
                               <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(16,185,129,.08)', borderRadius: 8, border: '1px solid rgba(16,185,129,.2)', fontSize: 12, color: '#34d399', lineHeight: 1.5 }}>
-                                ✅ Payment verified! Your {planLabel} plan has been activated.
+                                {txn.type === 'access_key' || (txn.utrId && txn.utrId.startsWith('FC-')) ? `✅ Access Key activated! Your ${planLabel} plan (${txn.days || 20} days) is active.` : `✅ Payment verified! Your ${planLabel} plan has been activated.`}
                               </div>
                             )}
                             {st === 'pending' && (
@@ -1914,6 +2011,244 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, onClose,
                 </div>
               )
             }
+          </div>
+        </div>
+      )}
+
+      {/* ── Support / Help Tab ── */}
+      {tab === 'support' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text1)', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>🎧 Support &amp; Help Desk</h2>
+                <p style={{ fontSize: 13, color: 'var(--text3)', margin: 0 }}>Need help with access keys, video streaming, or your account?</p>
+              </div>
+              <button
+                onClick={() => { setTicketFormOpen(v => !v); setTicketSubmitMsg(null); }}
+                style={{
+                  padding: '9px 18px', borderRadius: 10, border: 'none',
+                  background: ticketFormOpen ? 'rgba(255,255,255,.1)' : 'linear-gradient(135deg,#7c3aed,#ec4899)',
+                  color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                  display: 'flex', alignItems: 'center', gap: 6, transition: 'all .2s'
+                }}
+              >
+                {ticketFormOpen ? '✕ Cancel' : '➕ Create Ticket'}
+              </button>
+            </div>
+
+            {/* Create Ticket Form */}
+            {ticketFormOpen && (
+              <div style={{ background: 'var(--surface2)', border: '1px solid rgba(124,58,237,.3)', borderRadius: 14, padding: 20, marginBottom: 20 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#a78bfa', margin: '0 0 14px' }}>📝 Submit New Support Ticket</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Category / Issue Type</label>
+                    <select
+                      value={ticketCategory}
+                      onChange={e => setTicketCategory(e.target.value)}
+                      style={{ ...inp, cursor: 'pointer' }}
+                    >
+                      <option value="Access Key / Payment">🔑 Access Key / Payment Issue</option>
+                      <option value="Video Playback">🎬 Video Playback / Streaming Problem</option>
+                      <option value="Account / Login">👤 Account / Login Problem</option>
+                      <option value="Bug Report">🐛 Bug Report / Broken Feature</option>
+                      <option value="General">💬 General Inquiry</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Subject</label>
+                    <input
+                      style={inp}
+                      placeholder="e.g. Access key not activating"
+                      value={ticketSubject}
+                      onChange={e => setTicketSubject(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Detailed Description</label>
+                    <textarea
+                      rows={4}
+                      style={{ ...inp, resize: 'vertical' }}
+                      placeholder="Explain your problem in detail so our team can assist you quickly..."
+                      value={ticketMsg}
+                      onChange={e => setTicketMsg(e.target.value)}
+                    />
+                  </div>
+
+                  {ticketSubmitMsg && (
+                    <div style={{
+                      padding: '10px 14px', borderRadius: 8, fontSize: 13,
+                      background: ticketSubmitMsg.ok ? 'rgba(74,222,128,.12)' : 'rgba(239,68,68,.12)',
+                      border: "1px solid " + (ticketSubmitMsg.ok ? 'rgba(74,222,128,.3)' : 'rgba(239,68,68,.3)'),
+                      color: ticketSubmitMsg.ok ? '#4ade80' : '#f87171'
+                    }}>
+                      {ticketSubmitMsg.text}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+                    <button
+                      onClick={submitTicket}
+                      disabled={ticketCreating}
+                      style={{
+                        padding: '10px 24px', borderRadius: 10, border: 'none',
+                        background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
+                        color: '#fff', fontWeight: 700, fontSize: 13,
+                        cursor: ticketCreating ? 'not-allowed' : 'pointer', fontFamily: 'inherit'
+                      }}
+                    >
+                      {ticketCreating ? 'Submitting...' : '🚀 Submit Ticket'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Filter pills */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+              {[
+                { key: 'all', label: 'All', count: tickets.length },
+                { key: 'open', label: '⏳ Open', count: tickets.filter(t => t.status === 'open' || !t.status).length },
+                { key: 'replied', label: '💬 Replied', count: tickets.filter(t => t.status === 'replied').length },
+                { key: 'resolved', label: '✅ Resolved', count: tickets.filter(t => t.status === 'resolved').length },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setTicketFilter(f.key)}
+                  style={{
+                    padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (ticketFilter === f.key ? 'var(--accent)' : 'var(--border)'),
+                    background: ticketFilter === f.key ? 'var(--accent-s)' : 'var(--surface2)',
+                    color: ticketFilter === f.key ? 'var(--accent)' : 'var(--text3)',
+                    fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit'
+                  }}
+                >
+                  {f.label} ({f.count})
+                </button>
+              ))}
+            </div>
+
+            {/* Tickets List */}
+            {ticketsLoading ? (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>Loading tickets...</div>
+            ) : (() => {
+              const filtered = ticketFilter === 'all' ? tickets
+                : ticketFilter === 'open' ? tickets.filter(t => t.status === 'open' || !t.status)
+                : ticketFilter === 'replied' ? tickets.filter(t => t.status === 'replied')
+                : tickets.filter(t => t.status === 'resolved');
+
+              if (filtered.length === 0) return (
+                <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--surface2)', borderRadius: 12, border: '1px dashed var(--border)' }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>🎧</div>
+                  <div style={{ fontWeight: 700, color: 'var(--text1)', marginBottom: 4 }}>No {ticketFilter !== 'all' ? ticketFilter : ''} tickets found</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>Have an issue or question? Create a ticket and admin will reply.</div>
+                  <button onClick={() => setTicketFormOpen(true)} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#ec4899)', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                    ➕ Create Support Ticket
+                  </button>
+                </div>
+              );
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {filtered.map(t => {
+                    const isOpen = activeTicketId === t.id;
+                    const st = t.status || 'open';
+                    const stColor = st === 'resolved' ? { bg: 'rgba(16,185,129,.15)', text: '#34d399', icon: '✅', label: 'Resolved' }
+                      : st === 'replied' ? { bg: 'rgba(14,165,233,.15)', text: '#38bdf8', icon: '💬', label: 'Admin Replied' }
+                      : { bg: 'rgba(245,158,11,.15)', text: '#fbbf24', icon: '⏳', label: 'Open / Pending' };
+
+                    return (
+                      <div
+                        key={t.id}
+                        style={{
+                          background: 'var(--surface2)',
+                          border: '1px solid ' + (t.userUnread ? 'rgba(239,68,68,.5)' : isOpen ? 'rgba(124,58,237,.4)' : 'var(--border)'),
+                          borderRadius: 12, padding: 16, transition: 'border-color .15s'
+                        }}
+                      >
+                        <div
+                          onClick={() => toggleTicketDetail(t)}
+                          style={{ cursor: 'pointer', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 800, color: '#a78bfa', background: 'rgba(124,58,237,.15)', padding: '2px 8px', borderRadius: 6 }}>
+                                #{t.id}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: 'var(--surface)', color: 'var(--text2)' }}>
+                                {t.category || 'General'}
+                              </span>
+                              {t.userUnread && (
+                                <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 100, background: '#ef4444', color: '#fff', letterSpacing: '.04em' }}>
+                                  NEW REPLY
+                                </span>
+                              )}
+                              <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+                                {new Date(t.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text1)', marginBottom: 2 }}>
+                              {t.subject}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 100, background: stColor.bg, color: stColor.text }}>
+                              {stColor.icon} {stColor.label}
+                            </span>
+                            <span style={{ color: 'var(--text3)', fontSize: 14 }}>{isOpen ? '▲' : '▼'}</span>
+                          </div>
+                        </div>
+
+                        {/* Expanded details */}
+                        {isOpen && (
+                          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+                              Your Message:
+                            </div>
+                            <div style={{ background: 'var(--surface)', padding: 12, borderRadius: 10, fontSize: 13, color: 'var(--text1)', lineHeight: 1.6, whiteSpace: 'pre-wrap', marginBottom: 14 }}>
+                              {t.message}
+                            </div>
+
+                            {/* Admin Reply */}
+                            {t.adminReply ? (
+                              <div style={{ background: 'linear-gradient(135deg,rgba(124,58,237,.1),rgba(14,165,233,.1))', border: '1px solid rgba(124,58,237,.3)', borderRadius: 12, padding: 16 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: 13, color: '#38bdf8' }}>
+                                    <span>🛡️ Support Team Reply</span>
+                                    <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 500 }}>by {t.repliedBy || 'Admin'}</span>
+                                  </div>
+                                  {t.repliedAt && (
+                                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+                                      {new Date(t.repliedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: 13, color: '#fff', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                                  {t.adminReply}
+                                </div>
+                                {st !== 'resolved' && (
+                                  <button
+                                    onClick={() => markTicketResolved(t.id)}
+                                    style={{ marginTop: 12, padding: '7px 14px', borderRadius: 8, border: 'none', background: 'rgba(16,185,129,.2)', color: '#34d399', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                                  >
+                                    ✅ Issue Resolved / Close Ticket
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div style={{ padding: '12px 14px', borderRadius: 10, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.2)', fontSize: 12, color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span>⏳</span>
+                                <span>Our support team is reviewing your ticket and will reply shortly. Check back soon!</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

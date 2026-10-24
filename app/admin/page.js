@@ -12,6 +12,7 @@ const NAV = [
   { id: 'users', icon: IconUsers, label: 'Users', roles: BOTH },
   { id: 'subscriptions', icon: IconPremium, label: 'Subscriptions', roles: BOTH },
   { id: 'pricing', icon: IconSettings, label: 'Pricing Mgmt', roles: ['admin'] },
+  { id: 'tickets', icon: IconTicket, label: 'Support Tickets', roles: BOTH },
   { id: 'devices', icon: IconFlag, label: 'Device Security', roles: BOTH },
   { id: 'reports', icon: IconFlag, label: 'Reports', roles: BOTH },
   { id: 'deleted', icon: IconTrash, label: 'Deleted', roles: BOTH },
@@ -345,6 +346,16 @@ export default function AdminPage() {
   const [paySettings, setPaySettings] = useState({ maintenanceMode: false, upiId: '', qrUrl: '' });
   const [paySettingsSaving, setPaySettingsSaving] = useState(false);
   const [paySettingsMsg, setPaySettingsMsg] = useState('');
+  // Support Tickets
+  const [adminTickets, setAdminTickets] = useState([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [ticketSearch, setTicketSearch] = useState('');
+  const [adminTicketFilter, setAdminTicketFilter] = useState('all');
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [adminReplyText, setAdminReplyText] = useState('');
+  const [adminReplyStatus, setAdminReplyStatus] = useState('replied');
+  const [adminReplying, setAdminReplying] = useState(false);
+  const [adminReplyMsg, setAdminReplyMsg] = useState(null);
   // UTR submissions
   const [utrList, setUtrList] = useState([]);
   const [utrFilter, setUtrFilter] = useState('pending'); // pending | approved | rejected
@@ -428,6 +439,7 @@ export default function AdminPage() {
     secureFetch('/api/hwasi/devices').then(x => x.json()).then(d => setDeviceData(d.devices || {})).catch(() => { });
     secureFetch('/api/hwasi/payment-settings').then(x => x.json()).then(d => { if (d.settings) setPaySettings(d.settings); }).catch(() => { });
     secureFetch('/api/hwasi/utr').then(x => x.json()).then(d => setUtrList(d.submissions || [])).catch(() => { });
+    fetch('/api/hwasi/tickets').then(x => x.json()).then(d => { if (d.ok) setAdminTickets(d.tickets || []); }).catch(() => { });
     secureFetch('/api/hwasi/watch-limit').then(x => x.json()).then(d => { if (d.ok) setWatchLimit({ limit: d.limit, msg: d.msg || '' }); }).catch(() => { });
     fetch('/api/hwasi/extra-cdn').then(x => x.json()).then(d => setExtraCdnSources(d.sources || [])).catch(() => { });
   }
@@ -447,6 +459,53 @@ export default function AdminPage() {
       setEditTitleInput('');
     } catch (e) { /* silent */ }
     setEditTitleSaving(false);
+  }
+
+  async function fetchAdminTickets() {
+    setTicketsLoading(true);
+    try {
+      const res = await fetch('/api/hwasi/tickets');
+      const d = await res.json();
+      if (d.ok) {
+        setAdminTickets(d.tickets || []);
+        if (selectedTicket) {
+          const fresh = (d.tickets || []).find(t => t.id === selectedTicket.id);
+          if (fresh) setSelectedTicket(fresh);
+        }
+      }
+    } catch {}
+    setTicketsLoading(false);
+  }
+
+  async function sendAdminTicketReply() {
+    if (!selectedTicket || !adminReplyText.trim()) return;
+    setAdminReplying(true);
+    setAdminReplyMsg(null);
+    try {
+      const res = await fetch('/api/hwasi/tickets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticketId: selectedTicket.id,
+          reply: adminReplyText.trim(),
+          status: adminReplyStatus,
+        }),
+      });
+      const d = await res.json();
+      if (res.ok && d.ok) {
+        setAdminReplyMsg({ ok: true, text: '✓ Reply sent to user! User will be notified on login.' });
+        setSelectedTicket(d.ticket);
+        setAdminTickets(prev => prev.map(t => t.id === d.ticket.id ? d.ticket : t));
+        setAdminReplyText('');
+        setTimeout(() => setAdminReplyMsg(null), 3000);
+      } else {
+        setAdminReplyMsg({ ok: false, text: d.error || 'Failed to send reply' });
+      }
+    } catch {
+      setAdminReplyMsg({ ok: false, text: 'Network error sending reply' });
+    } finally {
+      setAdminReplying(false);
+    }
   }
 
   function flash(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg({ text: '', type: '' }), 3500); }
@@ -2121,26 +2180,35 @@ export default function AdminPage() {
                 >{paySettingsSaving ? 'Saving...' : '💾 Save Payment Settings'}</button>
               </div>
 
+                            {/* ── Key Submissions & Activations (Replaced UTR Submissions) ── */}
               <div className={styles.card} style={{ marginTop: 20 }}>
                 <div className={styles.cardHeader}>
-                  <span style={{ fontSize: 22 }}>💳</span>
-                  <div><h3 className={styles.cardTitle}>UTR Submissions</h3><p className={styles.cardSub}>{utrList.filter(u => u.status !== 'approved' && u.status !== 'rejected').length} pending · {utrList.filter(u => u.status === 'approved').length} accepted · {utrList.filter(u => u.status === 'rejected').length} rejected · {utrList.length} total</p></div>
-                  <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => fetch('/api/hwasi/utr').then(x => x.json()).then(d => setUtrList(d.submissions || []))}>↻ Refresh</button>
+                  <span style={{ fontSize: 22 }}>🔑</span>
+                  <div>
+                    <h3 className={styles.cardTitle}>Key Submissions &amp; Redemptions</h3>
+                    <p className={styles.cardSub}>
+                      {utrList.filter(u => u.type === 'access_key' || (u.utrId && u.utrId.startsWith('FC-')) || u.code).length} access keys activated · {utrList.length} total payments
+                    </p>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => fetch('/api/hwasi/utr').then(x => x.json()).then(d => setUtrList(d.submissions || []))}>
+                    ↻ Refresh
+                  </button>
                 </div>
 
                 {/* Filter tabs */}
-                <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
                   {[
-                    { key: 'pending',  label: '⏳ Pending',  color: '#fbbf24', count: utrList.filter(u => u.status !== 'approved' && u.status !== 'rejected').length },
-                    { key: 'approved', label: '✅ Accepted', color: '#34d399', count: utrList.filter(u => u.status === 'approved').length },
-                    { key: 'rejected', label: '✕ Rejected',  color: '#f87171', count: utrList.filter(u => u.status === 'rejected').length },
-                    { key: 'all',      label: '📋 All',       color: '#a78bfa', count: utrList.length },
+                    { key: 'all',      label: '📋 All Payments', color: '#a78bfa', count: utrList.length },
+                    { key: 'keys',     label: '🔑 Access Keys',  color: '#38bdf8', count: utrList.filter(u => u.type === 'access_key' || (u.utrId && u.utrId.startsWith('FC-')) || u.code).length },
+                    { key: 'basic',    label: '⚡ Basic',        color: '#7c3aed', count: utrList.filter(u => (u.plan || '').toLowerCase().includes('basic')).length },
+                    { key: 'plus',     label: '🚀 Plus',         color: '#0ea5e9', count: utrList.filter(u => (u.plan || '').toLowerCase().includes('plus')).length },
+                    { key: 'pro',      label: '👑 Pro',          color: '#f59e0b', count: utrList.filter(u => (u.plan || '').toLowerCase().includes('pro')).length },
                   ].map(f => (
                     <button
                       key={f.key}
                       onClick={() => setUtrFilter(f.key)}
                       style={{
-                        padding: '6px 14px', borderRadius: 10, border: `1px solid ${utrFilter === f.key ? f.color + '88' : 'rgba(255,255,255,.1)'}`,
+                        padding: '6px 14px', borderRadius: 10, border: '1px solid ' + (utrFilter === f.key ? f.color + '88' : 'rgba(255,255,255,.1)'),
                         background: utrFilter === f.key ? f.color + '18' : 'rgba(255,255,255,.03)',
                         color: utrFilter === f.key ? f.color : 'rgba(255,255,255,.5)',
                         fontWeight: utrFilter === f.key ? 700 : 500, fontSize: 12, cursor: 'pointer', transition: 'all .15s',
@@ -2155,92 +2223,84 @@ export default function AdminPage() {
 
                 {(() => {
                   const filtered = utrFilter === 'all' ? utrList
-                    : utrFilter === 'pending'  ? utrList.filter(u => u.status !== 'approved' && u.status !== 'rejected')
-                    : utrFilter === 'approved' ? utrList.filter(u => u.status === 'approved')
-                    : utrList.filter(u => u.status === 'rejected');
+                    : utrFilter === 'keys' ? utrList.filter(u => u.type === 'access_key' || (u.utrId && u.utrId.startsWith('FC-')) || u.code)
+                    : utrFilter === 'basic' ? utrList.filter(u => (u.plan || '').toLowerCase().includes('basic'))
+                    : utrFilter === 'plus' ? utrList.filter(u => (u.plan || '').toLowerCase().includes('plus'))
+                    : utrList.filter(u => (u.plan || '').toLowerCase().includes('pro'));
 
                   if (filtered.length === 0) return (
-                    <p style={{ color: 'var(--text3)', textAlign: 'center', padding: '20px 0' }}>
-                      {utrList.length === 0 ? 'No UTR submissions yet' : `No ${utrFilter} submissions`}
+                    <p style={{ color: 'var(--text3)', textAlign: 'center', padding: '24px 0' }}>
+                      {utrList.length === 0 ? 'No key redemptions or payments yet' : 'No records found for this filter'}
                     </p>
                   );
+
                   return (
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                        <thead><tr style={{ color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
-                          <th style={{ padding: '10px 10px', textAlign: 'left' }}>User</th>
-                          <th style={{ padding: '10px 10px', textAlign: 'left' }}>UTR / Transaction ID</th>
-                          <th style={{ padding: '10px 10px', textAlign: 'left' }}>Plan &amp; Amount</th>
-                          <th style={{ padding: '10px 10px', textAlign: 'left' }}>When</th>
-                          <th style={{ padding: '10px 10px', textAlign: 'left' }}>Status / Actions</th>
-                        </tr></thead>
-                        <tbody>{filtered.map((u, fi) => {
-                          const i = utrList.indexOf(u);
-                          // Map plan name to price
-                          const priceMap = { basic: '₹100', plus: '₹300', pro: '₹599', '99': '₹99', '299': '₹299', '599': '₹599', '100': '₹100', '300': '₹300' };
-                          const planKey = (u.plan || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                          const planPrice = priceMap[planKey] || priceMap[u.plan] || '';
-                          const planColors = { basic: '#7c3aed', plus: '#0ea5e9', pro: '#f59e0b' };
-                          const planColor = planColors[planKey] || '#a78bfa';
-                          const isApproved = u.status === 'approved';
-                          const isRejected = u.status === 'rejected';
-                          return (
-                            <tr key={fi} style={{ borderTop: '1px solid rgba(255,255,255,.05)' }}>
-                              <td style={{ padding: '12px 10px' }}>
-                                <div style={{ fontWeight: 700 }}>{u.displayName}</div>
-                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>@{u.username}</div>
-                              </td>
-                              <td style={{ padding: '12px 10px' }}>
-                                <code style={{ fontFamily: 'monospace', color: '#a78bfa', fontWeight: 700, fontSize: 13, background: 'rgba(124,58,237,.1)', padding: '3px 8px', borderRadius: 6 }}>{u.utrId}</code>
-                              </td>
-                              <td style={{ padding: '12px 10px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ padding: '3px 10px', borderRadius: 100, background: planColor + '22', border: `1px solid ${planColor}55`, fontSize: 11, fontWeight: 700, color: planColor, textTransform: 'capitalize' }}>{u.plan}</span>
-                                  {planPrice && <span style={{ fontSize: 13, fontWeight: 900, color: '#34d399' }}>{planPrice}</span>}
-                                </div>
-                              </td>
-                              <td style={{ padding: '12px 10px', fontSize: 11, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>
-                                {new Date(u.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                              </td>
-                              <td style={{ padding: '12px 10px' }}>
-                                {isApproved ? (
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#34d399' }}>✅ Approved</span>
-                                ) : isRejected ? (
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#f87171' }}>✕ Rejected</span>
-                                ) : (
-                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <thead>
+                          <tr style={{ color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+                            <th style={{ padding: '10px 10px', textAlign: 'left' }}>User</th>
+                            <th style={{ padding: '10px 10px', textAlign: 'left' }}>Access Key / Code</th>
+                            <th style={{ padding: '10px 10px', textAlign: 'left' }}>Plan &amp; Duration</th>
+                            <th style={{ padding: '10px 10px', textAlign: 'left' }}>Amount</th>
+                            <th style={{ padding: '10px 10px', textAlign: 'left' }}>Redeemed At</th>
+                            <th style={{ padding: '10px 10px', textAlign: 'left' }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.map((u, fi) => {
+                            const isKey = u.type === 'access_key' || (u.utrId && u.utrId.startsWith('FC-')) || u.code;
+                            const keyVal = u.code || u.utrId || '—';
+                            const planKey = (u.plan || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                            const planColors = { basic: '#7c3aed', plus: '#0ea5e9', pro: '#f59e0b' };
+                            const planColor = planColors[planKey] || '#a78bfa';
+                            const planName = u.planName || (planKey.charAt(0).toUpperCase() + planKey.slice(1));
+                            const days = u.days ? u.days + ' Days' : (planKey === 'pro' ? '730 Days' : planKey === 'plus' ? '90 Days' : '20 Days');
+                            const price = u.priceINR ? '₹' + u.priceINR : (planKey === 'pro' ? '₹599' : planKey === 'plus' ? '₹300' : '₹100');
+
+                            return (
+                              <tr key={fi} style={{ borderTop: '1px solid rgba(255,255,255,.05)' }}>
+                                <td style={{ padding: '12px 10px' }}>
+                                  <div style={{ fontWeight: 700, color: 'var(--text1)' }}>{u.displayName || u.username}</div>
+                                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>@{u.username} · ID: {u.userId || '—'}</div>
+                                </td>
+                                <td style={{ padding: '12px 10px' }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <code style={{ fontFamily: 'monospace', color: isKey ? '#38bdf8' : '#a78bfa', fontWeight: 800, fontSize: 13, background: isKey ? 'rgba(14,165,233,.12)' : 'rgba(124,58,237,.1)', padding: '4px 8px', borderRadius: 6, border: '1px solid ' + (isKey ? 'rgba(14,165,233,.3)' : 'rgba(124,58,237,.3)') }}>
+                                      {keyVal}
+                                    </code>
                                     <button
-                                      style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'rgba(16,185,129,.2)', color: '#34d399', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
-                                      onClick={async () => {
-                                        if (!confirm(`Approve UTR "${u.utrId}" for ${u.username}?\nThis will grant ${u.plan} (${planPrice}) premium.`)) return;
-                                        const gr = await fetch('/api/hwasi/premium', {
-                                          method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({ userId: u.userId, plan: planKey === '99' || planKey === '100' ? 'basic' : planKey === '299' || planKey === '300' ? 'plus' : planKey === '599' ? 'pro' : u.plan })
-                                        });
-                                        if (!gr.ok) { flash('❌ Failed to grant premium', 'err'); return; }
-                                        setUtrList(prev => prev.map((x, j) => j === i ? { ...x, status: 'approved' } : x));
-                                        flash(`✅ Premium granted to ${u.username}!`);
-                                      }}
-                                    >✅ Approve</button>
-                                    <button
-                                      style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,.15)', color: '#f87171', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
-                                      onClick={async () => {
-                                        if (!confirm(`Reject UTR "${u.utrId}" from ${u.username}?\nUser will be notified.`)) return;
-                                        const dr = await fetch('/api/hwasi/utr', {
-                                          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({ utrId: u.utrId, userId: u.userId })
-                                        });
-                                        if (!dr.ok) { flash('❌ Failed to reject', 'err'); return; }
-                                        setUtrList(prev => prev.map((x, j) => j === i ? { ...x, status: 'rejected' } : x));
-                                        flash(`✕ UTR rejected. ${u.username} will be notified at next login.`);
-                                      }}
-                                    >✕ Reject</button>
+                                      title="Copy Key"
+                                      onClick={() => navigator.clipboard.writeText(keyVal)}
+                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12 }}
+                                    >
+                                      📋
+                                    </button>
                                   </div>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}</tbody>
+                                </td>
+                                <td style={{ padding: '12px 10px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ padding: '3px 10px', borderRadius: 100, background: planColor + '22', border: '1px solid ' + planColor + '55', fontSize: 11, fontWeight: 700, color: planColor }}>
+                                      {planName}
+                                    </span>
+                                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,.5)' }}>({days})</span>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '12px 10px' }}>
+                                  <span style={{ fontSize: 13, fontWeight: 800, color: '#34d399' }}>{price}</span>
+                                </td>
+                                <td style={{ padding: '12px 10px', fontSize: 11, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>
+                                  {u.timestamp ? new Date(u.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                </td>
+                                <td style={{ padding: '12px 10px' }}>
+                                  <span style={{ padding: '4px 10px', borderRadius: 100, background: 'rgba(16,185,129,.15)', color: '#34d399', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    <span>✅</span> {isKey ? 'Activated (ForCloud)' : 'Approved'}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
                       </table>
                     </div>
                   );
@@ -2639,6 +2699,282 @@ export default function AdminPage() {
           )}
 
           {/* ══ SETTINGS ══ */}
+          
+          {/* ══ SUPPORT TICKETS MANAGEMENT (Side-by-side layout) ══ */}
+          {tab === 'tickets' && (
+            <div className={styles.fadeIn}>
+              <div className={styles.cardHeader} style={{ marginBottom: 16 }}>
+                <span style={{ fontSize: 24 }}>🎧</span>
+                <div>
+                  <h3 className={styles.cardTitle}>Support Tickets Help Desk</h3>
+                  <p className={styles.cardSub}>
+                    {adminTickets.filter(t => t.status === 'open' || !t.status).length} open tickets needing response · {adminTickets.length} total
+                  </p>
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ marginLeft: 'auto' }}
+                  onClick={fetchAdminTickets}
+                >
+                  ↻ Refresh Tickets
+                </button>
+              </div>
+
+              {/* Side-by-side Layout */}
+              <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 16, alignItems: 'start' }}>
+                {/* Left Panel: Ticket List */}
+                <div className={styles.card} style={{ padding: 16 }}>
+                  {/* Search box */}
+                  <div style={{ marginBottom: 10 }}>
+                    <input
+                      className="input input-sm"
+                      placeholder="Search tickets by ID, username, subject..."
+                      value={ticketSearch}
+                      onChange={e => setTicketSearch(e.target.value)}
+                      style={{ width: '100%', fontSize: 12 }}
+                    />
+                  </div>
+
+                  {/* Filter pills */}
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
+                    {[
+                      { key: 'all', label: 'All', count: adminTickets.length },
+                      { key: 'open', label: '⏳ Open', count: adminTickets.filter(t => t.status === 'open' || !t.status).length },
+                      { key: 'replied', label: '💬 Replied', count: adminTickets.filter(t => t.status === 'replied').length },
+                      { key: 'resolved', label: '✅ Resolved', count: adminTickets.filter(t => t.status === 'resolved').length },
+                    ].map(f => (
+                      <button
+                        key={f.key}
+                        onClick={() => setAdminTicketFilter(f.key)}
+                        style={{
+                          padding: '4px 10px', borderRadius: 8,
+                          border: '1px solid ' + (adminTicketFilter === f.key ? 'var(--accent)' : 'rgba(255,255,255,.08)'),
+                          background: adminTicketFilter === f.key ? 'var(--accent-s)' : 'rgba(255,255,255,.03)',
+                          color: adminTicketFilter === f.key ? 'var(--accent)' : 'rgba(255,255,255,.5)',
+                          fontSize: 11, fontWeight: 700, cursor: 'pointer'
+                        }}
+                      >
+                        {f.label} ({f.count})
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* List of tickets */}
+                  {ticketsLoading ? (
+                    <div style={{ textAlign: 'center', padding: 30, color: 'var(--text3)' }}>Loading tickets...</div>
+                  ) : (() => {
+                    const q = ticketSearch.trim().toLowerCase();
+                    const filtered = adminTickets.filter(t => {
+                      const matchFilter = adminTicketFilter === 'all' ? true
+                        : adminTicketFilter === 'open' ? (t.status === 'open' || !t.status)
+                        : t.status === adminTicketFilter;
+
+                      if (!matchFilter) return false;
+                      if (!q) return true;
+                      return (
+                        (t.id || '').toLowerCase().includes(q) ||
+                        (t.username || '').toLowerCase().includes(q) ||
+                        (t.displayName || '').toLowerCase().includes(q) ||
+                        (t.subject || '').toLowerCase().includes(q) ||
+                        (t.category || '').toLowerCase().includes(q)
+                      );
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text3)', fontSize: 13 }}>
+                          No tickets matching filter
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '650px', overflowY: 'auto' }}>
+                        {filtered.map(t => {
+                          const isSel = selectedTicket?.id === t.id;
+                          const st = t.status || 'open';
+                          const stBadge = st === 'resolved' ? { bg: 'rgba(16,185,129,.15)', text: '#34d399', icon: '✅' }
+                            : st === 'replied' ? { bg: 'rgba(14,165,233,.15)', text: '#38bdf8', icon: '💬' }
+                            : { bg: 'rgba(245,158,11,.15)', text: '#fbbf24', icon: '⏳' };
+
+                          return (
+                            <div
+                              key={t.id}
+                              onClick={() => { setSelectedTicket(t); setAdminReplyMsg(null); }}
+                              style={{
+                                padding: 12, borderRadius: 10, cursor: 'pointer',
+                                background: isSel ? 'rgba(124,58,237,.15)' : 'rgba(255,255,255,.03)',
+                                border: '1px solid ' + (isSel ? 'var(--accent)' : 'rgba(255,255,255,.06)'),
+                                transition: 'all .15s'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 800, color: '#a78bfa' }}>
+                                  #{t.id}
+                                </span>
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 100, background: stBadge.bg, color: stBadge.text }}>
+                                  {stBadge.icon} {st}
+                                </span>
+                              </div>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text1)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {t.subject}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,.4)' }}>
+                                <span>@{t.username}</span>
+                                <span>{new Date(t.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Right Panel: Selected Ticket Details & Reply Editor */}
+                <div className={styles.card} style={{ minHeight: 450, padding: 20 }}>
+                  {!selectedTicket ? (
+                    <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text3)' }}>
+                      <div style={{ fontSize: 44, marginBottom: 12 }}>📬</div>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text2)', marginBottom: 6 }}>No Ticket Selected</div>
+                      <div style={{ fontSize: 13 }}>Click on any ticket from the left panel to inspect details and send a reply.</div>
+                    </div>
+                  ) : (
+                    <div>
+                      {/* Ticket Header */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid rgba(255,255,255,.08)', paddingBottom: 16, marginBottom: 16 }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 900, color: '#a78bfa', background: 'rgba(124,58,237,.15)', padding: '3px 10px', borderRadius: 8 }}>
+                              #{selectedTicket.id}
+                            </span>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 8, background: 'rgba(255,255,255,.08)', color: 'var(--text2)' }}>
+                              {selectedTicket.category || 'General'}
+                            </span>
+                            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>
+                              Submitted {new Date(selectedTicket.createdAt).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                          <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text1)', margin: 0 }}>
+                            {selectedTicket.subject}
+                          </h2>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{
+                            padding: '6px 14px', borderRadius: 100, fontSize: 12, fontWeight: 800,
+                            background: selectedTicket.status === 'resolved' ? 'rgba(16,185,129,.15)' : selectedTicket.status === 'replied' ? 'rgba(14,165,233,.15)' : 'rgba(245,158,11,.15)',
+                            color: selectedTicket.status === 'resolved' ? '#34d399' : selectedTicket.status === 'replied' ? '#38bdf8' : '#fbbf24',
+                            textTransform: 'uppercase', letterSpacing: '.04em'
+                          }}>
+                            {selectedTicket.status || 'open'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* User Info Bar */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)', marginBottom: 16 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 8, background: 'linear-gradient(135deg,#7c3aed,#ec4899)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#fff', fontSize: 14 }}>
+                          {(selectedTicket.displayName || selectedTicket.username || 'U').slice(0, 2).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text1)' }}>
+                            {selectedTicket.displayName} <span style={{ color: 'rgba(255,255,255,.4)', fontWeight: 500 }}>@{selectedTicket.username}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>
+                            User ID: <code style={{ fontFamily: 'monospace' }}>{selectedTicket.userId}</code> · Role: {selectedTicket.role || 'viewer'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* User Problem Message */}
+                      <div style={{ marginBottom: 20 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+                          User Problem Description:
+                        </div>
+                        <div style={{ background: 'rgba(0,0,0,.3)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 12, padding: 16, fontSize: 14, color: 'var(--text1)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                          {selectedTicket.message}
+                        </div>
+                      </div>
+
+                      {/* Previous Admin Reply if exists */}
+                      {selectedTicket.adminReply && (
+                        <div style={{ marginBottom: 20, background: 'rgba(124,58,237,.08)', border: '1px solid rgba(124,58,237,.25)', borderRadius: 12, padding: 16 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: '#a78bfa' }}>
+                              💬 Previous Admin Reply (by {selectedTicket.repliedBy || 'Admin'})
+                            </span>
+                            {selectedTicket.repliedAt && (
+                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>
+                                {new Date(selectedTicket.repliedAt).toLocaleString('en-IN')}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 13, color: '#fff', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                            {selectedTicket.adminReply}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Admin Reply Form */}
+                      <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 12, padding: 16 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text1)', marginBottom: 8 }}>
+                          ✍️ {selectedTicket.adminReply ? 'Update / Send Another Reply:' : 'Reply to User:'}
+                        </div>
+                        <textarea
+                          rows={4}
+                          className="input"
+                          style={{ width: '100%', marginBottom: 12, fontSize: 13, lineHeight: 1.6, resize: 'vertical' }}
+                          placeholder="Type your response to the user. They will see this notification immediately upon logging in..."
+                          value={adminReplyText}
+                          onChange={e => setAdminReplyText(e.target.value)}
+                        />
+
+                        {adminReplyMsg && (
+                          <div style={{
+                            padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 12,
+                            background: adminReplyMsg.ok ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)',
+                            color: adminReplyMsg.ok ? '#4ade80' : '#f87171',
+                            border: '1px solid ' + (adminReplyMsg.ok ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)')
+                          }}>
+                            {adminReplyMsg.text}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 12, color: 'var(--text3)' }}>Set status:</span>
+                            <select
+                              value={adminReplyStatus}
+                              onChange={e => setAdminReplyStatus(e.target.value)}
+                              className="input input-sm"
+                              style={{ fontSize: 12 }}
+                            >
+                              <option value="replied">💬 Replied (Open)</option>
+                              <option value="resolved">✅ Resolved (Close Ticket)</option>
+                            </select>
+                          </div>
+
+                          <button
+                            onClick={sendAdminTicketReply}
+                            disabled={adminReplying || !adminReplyText.trim()}
+                            className="btn btn-primary btn-sm"
+                            style={{
+                              padding: '8px 20px', fontWeight: 800, fontSize: 13,
+                              opacity: adminReplying || !adminReplyText.trim() ? 0.6 : 1,
+                              cursor: adminReplying || !adminReplyText.trim() ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            {adminReplying ? 'Sending...' : '📤 Send Reply to User'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {tab === 'settings' && (
             <div className={styles.fadeIn}>
               <div className={styles.card}>
@@ -3046,6 +3382,13 @@ function InfoRow({ label, value }) {
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
+function IconTicket() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  );
+}
 function IconDash() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>; }
 function IconCurated() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>; }
 function IconUsers() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>; }

@@ -2,7 +2,7 @@ export const runtime = 'edge';
 
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { setPremium, getPremium } from '@/lib/redis';
+import { setPremium, getPremium, redis } from '@/lib/redis';
 import { decryptPayload } from '@/lib/crypto';
 
 // POST /api/hwasi/redeem
@@ -80,6 +80,31 @@ export async function POST(req) {
 
       // Provision membership in Redis
       await setPremium(session.sub, tier, days, `forcloud:${fcData.code}`);
+
+      // Record transaction entry so user and admin see it in Transactions & Key Submissions
+      try {
+        const txEntry = JSON.stringify({
+          userId: session.sub,
+          username: session.username || '',
+          displayName: session.displayName || session.username || '',
+          utrId: fcData.code,
+          code: fcData.code,
+          type: 'access_key',
+          plan: tier,
+          planName,
+          days,
+          priceINR: fcData.priceINR || (tier === 'pro' ? 599 : tier === 'plus' ? 300 : 100),
+          timestamp: fcData.redeemedAt || new Date().toISOString(),
+          status: 'approved',
+          approvedAt: fcData.redeemedAt || new Date().toISOString(),
+          approvedBy: 'ForCloud License Server',
+          notes: `Redeemed ${planName} Plan (${days} Days)`,
+        });
+        await redis.lpush('hwasi:utr_submissions', txEntry);
+        await redis.ltrim('hwasi:utr_submissions', 0, 999);
+      } catch (txErr) {
+        console.error('Failed to record key redemption transaction:', txErr);
+      }
 
       // Fetch fresh subscription object
       const updatedSub = await getPremium(session.sub);
