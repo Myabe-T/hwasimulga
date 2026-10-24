@@ -8,6 +8,7 @@ const NAV = [
   { id: 'dashboard', icon: IconDash, label: 'Dashboard', roles: BOTH },
   { id: 'curated', icon: IconCurated, label: 'Curated', roles: BOTH },
   { id: 'thumbnails', icon: IconThumb, label: 'Thumbnails', roles: ['admin'] },
+  { id: 'scraper', icon: IconScraper, label: 'Auto Scraper', roles: ['admin'] },
   { id: 'users', icon: IconUsers, label: 'Users', roles: BOTH },
   { id: 'subscriptions', icon: IconPremium, label: 'Subscriptions', roles: BOTH },
   { id: 'pricing', icon: IconSettings, label: 'Pricing Mgmt', roles: ['admin'] },
@@ -48,6 +49,25 @@ export default function AdminPage() {
   const [regenIds, setRegenIds] = useState('');
   const [showThumbGrid, setShowThumbGrid] = useState(false);
   const [selectedGridIds, setSelectedGridIds] = useState(new Set()); // multi-select in grid
+
+  // Auto Scraper & Manual Add State
+  const [scrapeSite, setScrapeSite] = useState('desimms');
+  const [scrapePages, setScrapePages] = useState(3);
+  const [scrapeDeep, setScrapeDeep] = useState(false);
+  const [scrapeScanning, setScrapeScanning] = useState(false);
+  const [scrapeResults, setScrapeResults] = useState(null);
+  const [scrapeSelected, setScrapeSelected] = useState(new Set());
+  const [scrapeImporting, setScrapeImporting] = useState(false);
+  const [scrapeProgress, setScrapeProgress] = useState({ current: 0, total: 0, status: '' });
+  const [scrapeLogs, setScrapeLogs] = useState([]);
+
+  // Manual Add state
+  const [manualSite, setManualSite] = useState('desimms');
+  const [manualCdnId, setManualCdnId] = useState('');
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualThumbUrl, setManualThumbUrl] = useState('');
+  const [manualDataUrl, setManualDataUrl] = useState('');
+  const [manualSaving, setManualSaving] = useState(false);
   const genStopRef = { current: false };
   const [showPass, setShowPass] = useState(false);
 
@@ -80,6 +100,198 @@ export default function AdminPage() {
   const [deviceFilter, setDeviceFilter] = useState('all'); // 'all' | '1' | '2' | '3plus' | '5plus'
   const [blockModal, setBlockModal] = useState(null);
   const [blockReason, setBlockReason] = useState('');
+  // ── Auto Scraper & Manual Video Handlers ──────────────────────────────
+  async function runScraperScan() {
+    setScrapeScanning(true);
+    setScrapeResults(null);
+    setScrapeSelected(new Set());
+    setScrapeLogs([]);
+    try {
+      const res = await secureFetch('/api/hwasi/scraper?site=' + scrapeSite + '&pages=' + scrapePages + '&deep=' + scrapeDeep);
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed to scan website');
+      setScrapeResults(data);
+      if (data.newVideos && data.newVideos.length > 0) {
+        setScrapeSelected(new Set(data.newVideos.map(v => v.systemId)));
+        flash('🎉 Found ' + data.newCount + ' new videos! (Skipped ' + data.knownCount + ' existing)');
+      } else {
+        flash('✅ Everything up to date! Scanned ' + data.scannedPosts + ' posts, 0 new videos.');
+      }
+    } catch (err) {
+      flash('❌ Scrape error: ' + err.message, 'err');
+    } finally {
+      setScrapeScanning(false);
+    }
+  }
+
+  function toggleScrapeSelect(systemId) {
+    setScrapeSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(systemId)) next.delete(systemId);
+      else next.add(systemId);
+      return next;
+    });
+  }
+
+  function toggleScrapeSelectAll() {
+    if (!scrapeResults?.newVideos) return;
+    if (scrapeSelected.size === scrapeResults.newVideos.length) {
+      setScrapeSelected(new Set());
+    } else {
+      setScrapeSelected(new Set(scrapeResults.newVideos.map(v => v.systemId)));
+    }
+  }
+
+  function updateScrapeTitle(systemId, newTitle) {
+    setScrapeResults(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        newVideos: prev.newVideos.map(v => v.systemId === systemId ? { ...v, title: newTitle } : v),
+      };
+    });
+  }
+
+  async function importScrapedVideos() {
+    if (!scrapeResults?.newVideos) return;
+    const toImport = scrapeResults.newVideos.filter(v => scrapeSelected.has(v.systemId));
+    if (toImport.length === 0) {
+      alert('Please select at least one video to import.');
+      return;
+    }
+
+    setScrapeImporting(true);
+    setScrapeLogs(['Starting import of ' + toImport.length + ' videos...']);
+    setScrapeProgress({ current: 0, total: toImport.length, status: 'Initializing import...' });
+
+    let successCount = 0;
+    const BATCH_SIZE = 5;
+
+    try {
+      for (let i = 0; i < toImport.length; i += BATCH_SIZE) {
+        const batch = toImport.slice(i, i + BATCH_SIZE);
+        setScrapeProgress({
+          current: i,
+          total: toImport.length,
+          status: 'Saving batch ' + (Math.floor(i / BATCH_SIZE) + 1) + ' of ' + Math.ceil(toImport.length / BATCH_SIZE) + '...',
+        });
+
+        const res = await secureFetch('/api/hwasi/scraper', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'import', videos: batch }),
+        });
+        const resData = await res.json();
+        if (!res.ok || resData.error) throw new Error(resData.error || 'Import batch failed');
+
+        successCount += batch.length;
+        setScrapeLogs(prev => [
+          ...prev,
+          ...batch.map(b => '✓ Saved #' + b.systemId + ' (' + b.site + '): "' + b.title.slice(0, 40) + '" [Thumb + Title + Range]')
+        ]);
+
+        if (resData.updatedSettings) {
+          setSettings(resData.updatedSettings);
+        }
+      }
+
+      setScrapeProgress({ current: toImport.length, total: toImport.length, status: 'Done! ' + successCount + ' videos imported.' });
+      flash('🚀 Successfully imported ' + successCount + ' videos! Range and thumbnails updated.');
+
+      const importedIds = new Set(toImport.map(v => v.systemId));
+      setScrapeResults(prev => ({
+        ...prev,
+        newVideos: prev.newVideos.filter(v => !importedIds.has(v.systemId)),
+        newCount: prev.newVideos.filter(v => !importedIds.has(v.systemId)).length,
+      }));
+      setScrapeSelected(new Set());
+
+      loadAll();
+    } catch (err) {
+      flash('❌ Import failed: ' + err.message, 'err');
+      setScrapeLogs(prev => [...prev, 'ERROR: ' + err.message]);
+    } finally {
+      setScrapeImporting(false);
+    }
+  }
+
+  function handleManualFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (.jpg, .jpeg, .png, .webp)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxW = 400;
+        const scale = img.width > maxW ? (maxW / img.width) : 1;
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        setManualDataUrl(dataUrl);
+        setManualThumbUrl('');
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleManualSave() {
+    const cid = parseInt(manualCdnId, 10);
+    if (isNaN(cid) || cid <= 0) {
+      alert('Please enter a valid numeric Video ID / CDN ID');
+      return;
+    }
+    if (!manualTitle.trim()) {
+      alert('Please enter a video title');
+      return;
+    }
+
+    const isExtra = manualSite === 'hindibf';
+    const systemId = isExtra ? (10000 + cid) : cid;
+
+    setManualSaving(true);
+    try {
+      const res = await secureFetch('/api/hwasi/scraper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'manual',
+          video: {
+            site: manualSite,
+            cdnId: cid,
+            systemId,
+            title: manualTitle.trim(),
+            thumbnail: manualThumbUrl.trim(),
+            dataUrl: manualDataUrl,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed to save video');
+
+      if (data.updatedSettings) setSettings(data.updatedSettings);
+      flash('✅ Video #' + systemId + ' added! Thumbnail, title, and range updated.');
+
+      setManualCdnId('');
+      setManualTitle('');
+      setManualThumbUrl('');
+      setManualDataUrl('');
+
+      loadAll();
+    } catch (err) {
+      flash('❌ Error: ' + err.message, 'err');
+    } finally {
+      setManualSaving(false);
+    }
+  }
+
   // Payment settings state
   const [paySettings, setPaySettings] = useState({ maintenanceMode: false, upiId: '', qrUrl: '' });
   const [paySettingsSaving, setPaySettingsSaving] = useState(false);
@@ -558,7 +770,8 @@ export default function AdminPage() {
             <p className={styles.pageSub}>{
               tab === 'dashboard' ? 'Overview of your DesiHawas platform' :
                 tab === 'curated' ? 'Manage Trending and Latest video sections' :
-                  tab === 'users' ? 'Create and manage viewer accounts' :
+                  tab === 'scraper' ? 'Scan websites for new videos, auto-import thumbnails & titles, or add manually' :
+                    tab === 'users' ? 'Create and manage viewer accounts' :
                     tab === 'analytics' ? 'See who watched which videos' :
                       'Configure video range and CDN source'
             }</p>
@@ -1256,6 +1469,330 @@ export default function AdminPage() {
                 </div>
               </>)} {/* end admin-only section */}
 
+            </div>
+          )}
+
+          {/* ══ AUTO SCRAPER & MANUAL ADD ══ */}
+          {tab === 'scraper' && (
+            <div className={styles.fadeIn}>
+              {/* Card 1: Site Selector & Scanner Controls */}
+              <div className={styles.card} style={{ marginBottom: 20 }}>
+                <div className={styles.cardHeader}>
+                  <span style={{ fontSize: 24 }}>🤖</span>
+                  <div style={{ flex: 1 }}>
+                    <h3 className={styles.cardTitle}>Auto Video Scraper</h3>
+                    <p className={styles.cardSub}>
+                      Automatically scan CDN sites for new videos, skip existing ones, download thumbnails & convert to base64, and update Redis database in 1 click!
+                    </p>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={loadAll}>↻ Refresh Database</button>
+                </div>
+
+                {/* Site Selection Pills */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, margin: '16px 0' }}>
+                  <div
+                    onClick={() => setScrapeSite('desimms')}
+                    style={{
+                      padding: 16,
+                      borderRadius: 12,
+                      cursor: 'pointer',
+                      border: scrapeSite === 'desimms' ? '2px solid #7c3aed' : '1px solid rgba(255,255,255,.08)',
+                      background: scrapeSite === 'desimms' ? 'rgba(124, 58, 237, 0.12)' : 'rgba(255,255,255,.02)',
+                      transition: 'all .2s',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontWeight: 700, fontSize: 16, color: '#fff' }}>🌐 DesiMMS (Primary CDN)</span>
+                      {scrapeSite === 'desimms' && <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 10, background: '#7c3aed', color: '#fff' }}>Selected</span>}
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text3)' }}>CDN: <code>cdn.desimms.com.co</code></div>
+                    <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 4 }}>
+                      Current Range: <strong>#{settings.start || 1} – #{settings.end || 0}</strong> ({Math.max(0, (settings.end || 0) - (settings.start || 1) + 1)} videos)
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setScrapeSite('hindibf')}
+                    style={{
+                      padding: 16,
+                      borderRadius: 12,
+                      cursor: 'pointer',
+                      border: scrapeSite === 'hindibf' ? '2px solid #ec4899' : '1px solid rgba(255,255,255,.08)',
+                      background: scrapeSite === 'hindibf' ? 'rgba(236, 72, 153, 0.12)' : 'rgba(255,255,255,.02)',
+                      transition: 'all .2s',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontWeight: 700, fontSize: 16, color: '#fff' }}>🌐 HindiBF (Extra Range #2)</span>
+                      {scrapeSite === 'hindibf' && <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 10, background: '#ec4899', color: '#fff' }}>Selected</span>}
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text3)' }}>CDN: <code>cdn.hindibf.com.co</code> (Offset: +10000)</div>
+                    <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 4 }}>
+                      Current Range: <strong>#{settings.extraRanges?.find(r => r.cdnId === 'hindibf' || r.start >= 10000)?.start || 10001} – #{settings.extraRanges?.find(r => r.cdnId === 'hindibf' || r.start >= 10000)?.end || 10655}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Scan Options Row */}
+                <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', padding: '12px 16px', background: 'rgba(255,255,255,.03)', borderRadius: 10, margin: '14px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label style={{ fontSize: 13, color: 'var(--text2)' }}>Pages to scan:</label>
+                    <select
+                      value={scrapePages}
+                      onChange={e => setScrapePages(Number(e.target.value))}
+                      style={{ padding: '6px 12px', background: 'rgba(0,0,0,.4)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 6, color: '#fff' }}
+                    >
+                      <option value={1}>1 page (20 posts)</option>
+                      <option value={2}>2 pages (40 posts)</option>
+                      <option value={3}>3 pages (60 posts) - Recommended</option>
+                      <option value={5}>5 pages (100 posts)</option>
+                      <option value={10}>10 pages (200 posts)</option>
+                    </select>
+                  </div>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text2)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={scrapeDeep}
+                      onChange={e => setScrapeDeep(e.target.checked)}
+                      style={{ accentColor: '#7c3aed' }}
+                    />
+                    Deep Scan (Do not stop early when hitting known videos)
+                  </label>
+
+                  <button
+                    className="btn btn-primary"
+                    disabled={scrapeScanning || scrapeImporting}
+                    onClick={runScraperScan}
+                    style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}
+                  >
+                    {scrapeScanning ? '⏳ Scanning ' + (scrapeSite === 'desimms' ? 'DesiMMS' : 'HindiBF') + '...' : '⚡ Scan for New Videos'}
+                  </button>
+                </div>
+
+                <div className={styles.infoBox}>
+                  <strong>How this works:</strong> Clicking "Scan for New Videos" queries the WordPress REST API directly, compares each post against the Redis database, and automatically skips any video you already have. When new videos are found, clicking "Import to Redis" downloads the thumbnails, converts them to base64 JPEG, saves the titles, maps CDN routing, and automatically bumps your gallery range!
+                </div>
+              </div>
+
+              {/* Card 2: Discovered Videos & Batch Import */}
+              {scrapeResults && (
+                <div className={styles.card} style={{ marginBottom: 20 }}>
+                  <div className={styles.cardHeader}>
+                    <span style={{ fontSize: 24 }}>✨</span>
+                    <div style={{ flex: 1 }}>
+                      <h3 className={styles.cardTitle}>
+                        Scan Results: {scrapeResults.newCount > 0 ? scrapeResults.newCount + ' New Videos Found!' : 'Up to Date!'}
+                      </h3>
+                      <p className={styles.cardSub}>
+                        Scanned {scrapeResults.scannedPosts} posts · {scrapeResults.knownCount} already known videos skipped · Target: {scrapeResults.siteName}
+                      </p>
+                    </div>
+
+                    {scrapeResults.newCount > 0 && (
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={toggleScrapeSelectAll}>
+                          {scrapeSelected.size === scrapeResults.newVideos.length ? 'Deselect All' : 'Select All (' + scrapeResults.newVideos.length + ')'}
+                        </button>
+                        <button
+                          className="btn btn-primary"
+                          disabled={scrapeSelected.size === 0 || scrapeImporting}
+                          onClick={importScrapedVideos}
+                        >
+                          {scrapeImporting ? '⏳ Importing...' : '🚀 Import Selected (' + scrapeSelected.size + ') to Redis'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Progress Bar during Import */}
+                  {scrapeImporting && (
+                    <div style={{ margin: '16px 0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
+                        <span>{scrapeProgress.status}</span>
+                        <span>{scrapeProgress.current} / {scrapeProgress.total}</span>
+                      </div>
+                      <div style={{ height: 8, background: 'rgba(255,255,255,.06)', borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: ((scrapeProgress.total > 0 ? (scrapeProgress.current / scrapeProgress.total) * 100 : 0)) + '%', background: 'linear-gradient(90deg,#7c3aed,#ec4899)', borderRadius: 4, transition: 'width .3s' }} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* New Videos List */}
+                  {scrapeResults.newVideos && scrapeResults.newVideos.length > 0 ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14, marginTop: 16 }}>
+                      {scrapeResults.newVideos.map(v => (
+                        <div
+                          key={v.systemId}
+                          style={{
+                            padding: 12,
+                            borderRadius: 10,
+                            background: scrapeSelected.has(v.systemId) ? 'rgba(124, 58, 237, 0.08)' : 'rgba(255,255,255,.02)',
+                            border: scrapeSelected.has(v.systemId) ? '1px solid rgba(124, 58, 237, 0.4)' : '1px solid rgba(255,255,255,.06)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 10,
+                          }}
+                        >
+                          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                            <input
+                              type="checkbox"
+                              checked={scrapeSelected.has(v.systemId)}
+                              onChange={() => toggleScrapeSelect(v.systemId)}
+                              style={{ width: 18, height: 18, accentColor: '#7c3aed', cursor: 'pointer' }}
+                            />
+                            <div style={{ width: 90, height: 60, borderRadius: 6, overflow: 'hidden', background: '#000', flexShrink: 0, position: 'relative' }}>
+                              {v.thumbnail ? (
+                                <img src={v.thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text3)', fontSize: 11 }}>No Thumb</div>
+                              )}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                                <span style={{ fontWeight: 700, fontSize: 14, color: '#fff' }}>#{v.systemId}</span>
+                                {v.cdnId !== v.systemId && (
+                                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>(CDN #{v.cdnId})</span>
+                                )}
+                                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: v.site === 'desimms' ? 'rgba(124,58,237,.3)' : 'rgba(236,72,153,.3)', color: '#fff' }}>
+                                  {v.site}
+                                </span>
+                              </div>
+                              <input
+                                type="text"
+                                value={v.title}
+                                onChange={e => updateScrapeTitle(v.systemId, e.target.value)}
+                                style={{ width: '100%', padding: '4px 8px', fontSize: 12, background: 'rgba(0,0,0,.3)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 4, color: '#fff' }}
+                                title="Click to edit title"
+                              />
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
+                            <a href={v.cdnUrl} target="_blank" rel="noreferrer" style={{ color: '#a78bfa', textDecoration: 'none' }}>▶ Play CDN Video</a>
+                            <span style={{ color: 'var(--text3)' }}>·</span>
+                            <a href={v.postUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--text3)', textDecoration: 'none' }}>🔗 View Post</a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text3)' }}>
+                      🎉 No new videos found! Your gallery is already synchronized with the site.
+                    </div>
+                  )}
+
+                  {/* Log console */}
+                  {scrapeLogs.length > 0 && (
+                    <div style={{ marginTop: 16, background: '#090a0f', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: 12, maxHeight: 180, overflowY: 'auto', fontFamily: 'monospace', fontSize: 12, color: '#4ade80' }}>
+                      {scrapeLogs.map((log, idx) => (
+                        <div key={idx} style={{ marginBottom: 3 }}>{log}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Card 3: Manual Video Add (Thumbnail + Title) */}
+              <div className={styles.card} style={{ marginBottom: 20 }}>
+                <div className={styles.cardHeader}>
+                  <span style={{ fontSize: 24 }}>✍️</span>
+                  <div style={{ flex: 1 }}>
+                    <h3 className={styles.cardTitle}>Manual Video Add (Thumbnail & Title)</h3>
+                    <p className={styles.cardSub}>
+                      Manually add or replace a video in Redis. Automatically uploads thumbnail, saves custom title, maps CDN, and extends the gallery range!
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14, margin: '14px 0' }}>
+                  <div>
+                    <label className={styles.fieldLabel}>Target Site / CDN Source</label>
+                    <select
+                      value={manualSite}
+                      onChange={e => setManualSite(e.target.value)}
+                      className={styles.input}
+                    >
+                      <option value="desimms">DesiMMS (Primary CDN: cdn.desimms.com.co)</option>
+                      <option value="hindibf">HindiBF (Extra CDN #2: cdn.hindibf.com.co [+10000])</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={styles.fieldLabel}>
+                      Video ID / CDN ID {manualSite === 'hindibf' && manualCdnId && (
+                        <span style={{ color: '#ec4899', fontSize: 11 }}>→ System ID: #{10000 + (parseInt(manualCdnId, 10) || 0)}</span>
+                      )}
+                    </label>
+                    <input
+                      type="number"
+                      placeholder={manualSite === 'hindibf' ? "e.g. 752 (System #10752)" : "e.g. 1178"}
+                      value={manualCdnId}
+                      onChange={e => setManualCdnId(e.target.value)}
+                      className={styles.input}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <label className={styles.fieldLabel}>Video Title</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Hot Desi Bhabhi Romance with Boyfriend"
+                    value={manualTitle}
+                    onChange={e => setManualTitle(e.target.value)}
+                    className={styles.input}
+                  />
+                </div>
+
+                {/* Thumbnail Input: File Upload OR Remote URL */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginBottom: 16 }}>
+                  <div>
+                    <label className={styles.fieldLabel}>Option A: Upload Image File (auto-resizes to crisp JPEG)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleManualFileUpload}
+                      style={{ padding: '8px 12px', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, width: '100%', color: '#fff' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={styles.fieldLabel}>Option B: Remote Image URL (server will fetch & convert)</label>
+                    <input
+                      type="text"
+                      placeholder="https://example.com/thumb.jpg"
+                      value={manualThumbUrl}
+                      onChange={e => { setManualThumbUrl(e.target.value); setManualDataUrl(''); }}
+                      className={styles.input}
+                    />
+                  </div>
+                </div>
+
+                {/* Thumbnail Live Preview */}
+                {(manualDataUrl || manualThumbUrl) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 12, background: 'rgba(255,255,255,.03)', borderRadius: 10, marginBottom: 16 }}>
+                    <div style={{ width: 120, height: 80, borderRadius: 8, overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,.1)' }}>
+                      <img src={manualDataUrl || manualThumbUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: 13 }}>Thumbnail Preview Loaded</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                        {manualDataUrl ? 'Compressed base64 data ready' : 'Will be downloaded & converted by server'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  className="btn btn-primary"
+                  disabled={manualSaving || !manualCdnId || !manualTitle}
+                  onClick={handleManualSave}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  {manualSaving ? '⏳ Saving Video to Redis...' : '💾 Save Video to Database'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -2472,3 +3009,14 @@ function IconTrash() { return <svg width="11" height="11" viewBox="0 0 24 24" fi
 function IconThumb() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>; }
 function IconPremium() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>; }
 function IconFlag() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" /></svg>; }
+
+function IconScraper() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+      <path d="M16 21h5v-5" />
+    </svg>
+  );
+}
