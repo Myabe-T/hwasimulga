@@ -189,8 +189,8 @@ export default function GalleryPage() {
       // ── PHASE 1: load settings + thumbnails + titles immediately ──
       const [s, t, tr] = await Promise.all([
         secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:1, end:730 })),
-        fetch(`/api/hwasi/thumbnails?v=${Date.now()}`).then(x => x.json()).catch(() => ({})),
-        fetch(`/api/hwasi/titles?v=${Date.now()}&_=${Math.random()}`).then(x => x.json()).catch(() => ({ titles: {} })),
+        fetch('/api/hwasi/thumbnails').then(x => x.json()).catch(() => ({})),
+        fetch('/api/hwasi/titles').then(x => x.json()).catch(() => ({ titles: {} })),
       ]);
       const st = s.error ? { start:1, end:730, deletedIds:[], extraRanges:[] } : s;
       const delSet = new Set(st.deletedIds || []);
@@ -265,10 +265,11 @@ export default function GalleryPage() {
     init();
   }, []);
 
-  // ── Poll for admin ticket replies every 12s in background ──────────────────
+  // ── Poll for admin ticket replies every 45s in background (only when tab is visible) ──
   useEffect(() => {
     if (!user) return;
     const pollTicketNotifs = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetch('/api/hwasi/tickets')
         .then(r => r.json())
         .then(tk => {
@@ -276,7 +277,7 @@ export default function GalleryPage() {
         })
         .catch(() => {});
     };
-    const timer = setInterval(pollTicketNotifs, 12000);
+    const timer = setInterval(pollTicketNotifs, 45000);
     return () => clearInterval(timer);
   }, [user]);
 
@@ -1719,10 +1720,11 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, initialT
     }
   }
 
-  // Real-time Support Tickets polling when viewing Support tab
+  // Real-time Support Tickets polling when viewing Support tab (only when visible)
   useEffect(() => {
     if (tab !== 'support') return;
     const fetchSupportTickets = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetch('/api/hwasi/tickets')
         .then(r => r.json())
         .then(d => {
@@ -1732,7 +1734,7 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, initialT
         })
         .catch(() => {});
     };
-    const timer = setInterval(fetchSupportTickets, 4000);
+    const timer = setInterval(fetchSupportTickets, 5000);
     return () => clearInterval(timer);
   }, [tab]);
 

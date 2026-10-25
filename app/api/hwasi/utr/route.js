@@ -4,7 +4,7 @@ import { decryptPayload, encryptPayload } from '@/lib/crypto';
 import { jwtVerify } from 'jose';
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
-const KEY = 'hwasi:utr_submissions';
+const KEY = 'hwasi:key_submissions';
 
 import { redis } from '@/lib/redis';
 async function getRedis() { return redis; }
@@ -44,7 +44,8 @@ export async function GET(req) {
   if (!user) return NextResponse.json(await encryptPayload({ error: 'Unauthorized' }), { status: 401 });
 
   const redis = await getRedis();
-  const items = await redis.lrange(KEY, 0, 999);
+  let items = await redis.lrange(KEY, 0, 999);
+  if (!items || items.length === 0) items = await redis.lrange('hwasi:utr_submissions', 0, 999).catch(() => []);
   const all = (items || []).map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
 
   if (['admin', 'advisor'].includes(user.role)) {

@@ -16,15 +16,29 @@ async function getUser(req) {
   } catch { return null; }
 }
 
-// GET /api/hwasi/titles — returns all titles (public, for gallery)
-export async function GET() {
+// GET /api/hwasi/titles — supports ?id=[id] for single video title (~50 bytes) or full titles list
+export async function GET(req) {
+  const url = new URL(req.url);
+  const singleId = url.searchParams.get('id');
+
   const titles = await getVideoTitles();
+
+  // If a single video title is requested (e.g. from watch page), return just that title (~50 bytes)
+  if (singleId) {
+    const title = titles[String(singleId)] || `Video #${singleId}`;
+    return NextResponse.json({ ok: true, id: singleId, title }, {
+      headers: {
+        'Cache-Control': 'public, max-age=120, s-maxage=300, stale-while-revalidate=600',
+        'CDN-Cache-Control': 'public, max-age=300',
+      }
+    });
+  }
+
+  // Full titles list: cached at Cloudflare edge for 2 minutes
   return NextResponse.json({ titles }, {
     headers: {
-      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-      'Pragma': 'no-cache',
-      'CDN-Cache-Control': 'no-store',
-      'Cloudflare-CDN-Cache-Control': 'no-store',
+      'Cache-Control': 'public, max-age=60, s-maxage=120, stale-while-revalidate=300',
+      'CDN-Cache-Control': 'public, max-age=120',
     }
   });
 }

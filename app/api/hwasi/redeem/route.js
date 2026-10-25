@@ -100,8 +100,8 @@ export async function POST(req) {
           approvedBy: 'ForCloud License Server',
           notes: `Redeemed ${planName} Plan (${days} Days)`,
         });
-        await redis.lpush('hwasi:utr_submissions', txEntry);
-        await redis.ltrim('hwasi:utr_submissions', 0, 999);
+        await redis.lpush('hwasi:key_submissions', txEntry);
+        await redis.ltrim('hwasi:key_submissions', 0, 999);
       } catch (txErr) {
         console.error('Failed to record key redemption transaction:', txErr);
       }

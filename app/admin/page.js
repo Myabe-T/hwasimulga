@@ -102,10 +102,11 @@ export default function AdminPage() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Real-time Support Tickets polling (every 4s on tickets tab, every 12s in background)
+  // Real-time Support Tickets polling (only when visible)
   useEffect(() => {
-    const intervalTime = tab === 'tickets' ? 4000 : 12000;
+    const intervalTime = tab === 'tickets' ? 5000 : 30000;
     const pollTickets = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const res = await fetch('/api/hwasi/tickets');
         const d = await res.json();

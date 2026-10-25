@@ -32,9 +32,9 @@ export default function WatchPage() {
         if (data.token) {
           setSrc('/api/v/' + data.token);
           setState('playing');
-          // Load title
-          fetch('/api/hwasi/titles').then(x => x.json()).then(td => {
-            setTitle((td.titles || {})[String(id)] || `Video #${id}`);
+          // Load title (optimized single-title lookup ~50 bytes)
+          fetch(`/api/hwasi/titles?id=${id}`).then(x => x.json()).then(td => {
+            setTitle(td.title || `Video #${id}`);
           }).catch(() => {});
         } else {
           setState('auth');

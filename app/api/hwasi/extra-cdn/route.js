@@ -39,12 +39,13 @@ export async function POST(req) {
     await saveExtraThumbBatch(withThumbs.map(v => ({ id: v.id, thumb: v.thumb })));
   }
 
-  // 3. Store titles in hwasi:titles hash
+  // 3. Store titles in hwasi:video_titles
   const withTitles = videos.filter(v => v.title);
   if (withTitles.length > 0) {
-    const titleObj = {};
-    for (const v of withTitles) titleObj[String(v.id)] = v.title;
-    await redis.hset('hwasi:titles', titleObj);
+    const { getVideoTitles, redis } = await import('@/lib/redis');
+    const existingTitles = await getVideoTitles();
+    for (const v of withTitles) existingTitles[String(v.id)] = v.title;
+    await redis.set('hwasi:video_titles', JSON.stringify(existingTitles));
   }
 
   // 4. Save/update the CDN source entry

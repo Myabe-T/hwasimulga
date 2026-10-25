@@ -7,7 +7,12 @@ import { getCurated, redis, KEYS } from '@/lib/redis';
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  return NextResponse.json(await getCurated());
+  return NextResponse.json(await getCurated(), {
+    headers: {
+      'Cache-Control': 'public, max-age=60, s-maxage=120, stale-while-revalidate=300',
+      'CDN-Cache-Control': 'public, max-age=120',
+    }
+  });
 }
 
 export async function PUT(req) {
