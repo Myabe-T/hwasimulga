@@ -1,4 +1,5 @@
 import './globals.css';
+import SecurityGuard from '@/components/SecurityGuard';
 
 export const metadata = {
   title: 'DesiHawas — Video Gallery',
@@ -20,7 +21,10 @@ export default function RootLayout({ children }) {
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
       </head>
-      <body>{children}</body>
+      <body>
+        <SecurityGuard />
+        {children}
+      </body>
     </html>
   );
 }

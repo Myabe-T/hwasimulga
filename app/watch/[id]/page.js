@@ -3,6 +3,7 @@ export const runtime = 'edge';
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { secureFetch } from '@/lib/crypto';
+import CustomVideoPlayer from '@/components/CustomVideoPlayer';
 
 export default function WatchPage() {
   const { id } = useParams();
@@ -79,6 +80,14 @@ export default function WatchPage() {
     </div>
   );
 
+  const handleDownload = () => {
+    if (viewInfo?.isPremium) {
+      window.location.href = `/api/download/${id}`;
+    } else {
+      window.location.href = '/premium';
+    }
+  };
+
   return (
     <div style={{minHeight:'100vh',background:'#000',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'12px 20px',background:'rgba(255,255,255,.05)',borderBottom:'1px solid rgba(255,255,255,.08)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
@@ -93,8 +102,14 @@ export default function WatchPage() {
           </span>
         )}
       </div>
-      <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
-        <video src={src} controls autoPlay playsInline style={{maxWidth:'100%',maxHeight:'calc(100vh - 60px)',outline:'none'}} controlsList="nodownload" onContextMenu={e => e.preventDefault()} />
+      <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',width:'100%',maxWidth:'1100px',margin:'0 auto',padding:'16px'}}>
+        <CustomVideoPlayer
+          src={src}
+          videoId={id}
+          title={title}
+          isPremium={Boolean(viewInfo?.isPremium)}
+          onDownload={handleDownload}
+        />
       </div>
     </div>
   );

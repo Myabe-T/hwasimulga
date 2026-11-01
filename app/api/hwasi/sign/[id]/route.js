@@ -1,13 +1,21 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { signVideoId } from '@/lib/sign';
-import { getVideoCdn } from '@/lib/redis';
+import { getVideoCdn, getPremium } from '@/lib/redis';
 
 // GET /api/hwasi/sign/[id] — sign a video token for download/preview (premium/admin/advisor)
 export async function GET(req, { params }) {
-  const { error, status } = await requireAuth(['admin', 'advisor', 'premium']);
-  if (error) return NextResponse.json({ error }, { status });
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const isPrivileged = ['admin', 'advisor'].includes(session.role);
+  if (!isPrivileged) {
+    const sub = await getPremium(session.sub);
+    if (!sub) {
+      return NextResponse.json({ error: 'Premium subscription required for direct download' }, { status: 403 });
+    }
+  }
 
   const { id } = await params;
   if (!id || isNaN(Number(id))) {
@@ -15,7 +23,7 @@ export async function GET(req, { params }) {
   }
 
   try {
-    // Look up CDN for this video ID (hindibf uses system IDs 10001-10243)
+    // Look up CDN for this video ID
     const cdnInfo = await getVideoCdn(String(id));
     const token = await signVideoId(String(id), cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
     const src = `/api/v/${token}`;

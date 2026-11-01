@@ -3,6 +3,7 @@ import { secureFetch } from '@/lib/crypto';
 import Link from 'next/link';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import styles from './gallery.module.css';
+import CustomVideoPlayer from '@/components/CustomVideoPlayer';
 
 const PER_PAGE = 24;
 const thumbSrc = (id) => Number(id) >= 10000
@@ -60,6 +61,9 @@ export default function GalleryPage() {
   const [page, setPage] = useState(0);
   const [curatedPage, setCuratedPage] = useState(0);
   const [modal, setModal] = useState(null);
+  const modalRef = useRef(null);
+  const openModalRef = useRef(null);
+  useEffect(() => { modalRef.current = modal; }, [modal]);
   const [view, setView] = useState('gallery'); // gallery | bookmarks | history
   const [homeTab, setHomeTab] = useState('foryou');
   const [viewStatus, setViewStatus] = useState(null);
@@ -127,6 +131,19 @@ export default function GalleryPage() {
     }
 
     const handlePopState = (e) => {
+      // 1. Video modal Back/Forward navigation handling
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash;
+        if (!hash.startsWith('#video-') && modalRef.current) {
+          setModal(null);
+        } else if (hash.startsWith('#video-')) {
+          const vid = Number(hash.replace('#video-', ''));
+          if (vid && (!modalRef.current || modalRef.current.id !== vid)) {
+            if (openModalRef.current) openModalRef.current(vid, true);
+          }
+        }
+      }
+
       const p = window.location.pathname.replace(/^\//, '').toLowerCase();
       const sp = new URLSearchParams(window.location.search);
       const tp = sp.get('tab')?.toLowerCase();
@@ -233,6 +250,16 @@ export default function GalleryPage() {
       if (!d.auth) return;
 
       setUser(d);
+
+      // Deep link support: auto-open video if URL hash has #video-ID
+      if (typeof window !== 'undefined' && window.location.hash.startsWith('#video-')) {
+        const hashVid = Number(window.location.hash.replace('#video-', ''));
+        if (hashVid) {
+          setTimeout(() => {
+            if (openModalRef.current) openModalRef.current(hashVid, true);
+          }, 150);
+        }
+      }
 
       // ── PHASE 2: load auth-gated data in background (don't block grid) ──
       fetch('/api/hwasi/plans').then(x=>x.json()).then(d=>setPlans(d.plans||null)).catch(()=>{});
@@ -433,7 +460,19 @@ export default function GalleryPage() {
     return 1;
   }
 
-  const openModal = useCallback(async (id) => {
+  const openModal = useCallback(async (id, fromPopState = false) => {
+    // Keep ref in sync
+    openModalRef.current = openModal;
+
+    // Push or replace history entry so clicking browser Back button closes the modal without leaving the site
+    if (!fromPopState && typeof window !== 'undefined') {
+      const hash = `#video-${id}`;
+      if (window.location.hash.startsWith('#video-')) {
+        window.history.replaceState({ modalVideoId: id }, '', `${window.location.pathname}${window.location.search}${hash}`);
+      } else {
+        window.history.pushState({ modalVideoId: id }, '', `${window.location.pathname}${window.location.search}${hash}`);
+      }
+    }
     const idx = allIds.indexOf(id);
 
     // Guest (not logged in) → show auth modal with pricing
@@ -492,7 +531,12 @@ export default function GalleryPage() {
     setModal(prev => prev?.id === id ? { ...prev, src: videoSrc, loading: false } : prev);
   }, [allIds, viewStatus, user, instaviralIds, isPremium]);
 
-  const closeModal = useCallback(() => setModal(null), []);
+  const closeModal = useCallback(() => {
+    setModal(null);
+    if (typeof window !== 'undefined' && window.location.hash.startsWith('#video-')) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
+  }, []);
   const prevVideo = useCallback(() => { if (!modal || modal.index <= 0) return; openModal(allIds[modal.index - 1]); }, [modal, allIds, openModal]);
   const nextVideo = useCallback(() => { if (!modal || modal.index >= allIds.length - 1) return; openModal(allIds[modal.index + 1]); }, [modal, allIds, openModal]);
 
@@ -573,7 +617,8 @@ export default function GalleryPage() {
   async function handleDownload(e, id) {
     e && e.stopPropagation();
     // Gate: only premium, admin, advisor can download
-    if (!viewStatus?.isPremium && user?.role === 'viewer') {
+    const isPrivileged = isPremium || viewStatus?.isPremium || user?.role === 'admin' || user?.role === 'advisor';
+    if (!isPrivileged) {
       setDownloadUpgradeModal(true);
       return;
     }
@@ -586,8 +631,12 @@ export default function GalleryPage() {
         a.download = `DesiHawas-${id}.mp4`;
         a.style.display = 'none';
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } else if (sd.error) {
+        setDownloadUpgradeModal(true);
       }
-    } catch { }
+    } catch {
+      setDownloadUpgradeModal(true);
+    }
   }
 
   async function toggleBookmark(e, id) {
@@ -1260,21 +1309,17 @@ export default function GalleryPage() {
               </div>
             </div>
             <div className={styles.videoWrap}>
-              {modal.loading ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '220px' }}>
-                  <div className={styles.splashSpinner} />
-                </div>
-              ) : modal.src ? (
-                <video key={modal.src} className={styles.modalVideo}
-                  src={modal.src} controls autoPlay playsInline
-                  controlsList="nodownload"
-                  onContextMenu={e => e.preventDefault()}
-                />
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: '#a78bfa' }}>
-                  Failed to load. Please try again.
-                </div>
-              )}
+              <CustomVideoPlayer
+                key={modal.src || modal.id}
+                src={modal.src}
+                loading={modal.loading}
+                videoId={modal.id}
+                title={videoTitles[String(modal.id)] || `Video #${modal.id}`}
+                isPremium={isPremium || viewStatus?.isPremium || user?.role === 'admin' || user?.role === 'advisor'}
+                onDownload={instaviralIds.includes(Number(modal.id)) ? null : (e) => handleDownload(e, modal.id)}
+                onPrev={modal.index > 0 ? prevVideo : null}
+                onNext={modal.index < allIds.length - 1 ? nextVideo : null}
+              />
             </div>
             {/* Thumbnail preview below video player */}
             {thumbIds.has(modal.id) && (

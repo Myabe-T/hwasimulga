@@ -34,7 +34,7 @@ export default function LoginPage() {
         throw new Error(d.error || 'Login failed');
       }
       // Hard navigation so the cookie is picked up by middleware fresh
-      window.location.href = '/gallery';
+      window.location.replace('/gallery');
     } catch (err) {
       setError(err.message);
     } finally {
