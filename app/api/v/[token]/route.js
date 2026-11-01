@@ -29,6 +29,15 @@ const DEFAULT_CDN = CDN_BASES.desimms;
  * ?dl=1 → triggers browser download via Content-Disposition header
  */
 export async function GET(req, { params }) {
+  // Block automated download managers and scrapers (IDM, Wget, curl, etc.)
+  const userAgent = req.headers.get('user-agent') || '';
+  if (/idm|internet\s*download\s*manager|idman|download\s*accelerator|wget|curl|python-requests|aria2/i.test(userAgent)) {
+    return new NextResponse('Access Denied: External download managers are blocked on DesiHawas.', {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+  }
+
   const { token } = await params;
   const result = await verifyVideoToken(token);
   if (!result) {

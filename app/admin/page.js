@@ -2433,7 +2433,7 @@ export default function AdminPage() {
                                 </td>
                                 <td style={{ padding: '12px 10px' }}>
                                   <span style={{ padding: '4px 10px', borderRadius: 100, background: 'rgba(16,185,129,.15)', color: '#34d399', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                    <span>✅</span> {isKey ? 'Activated (ForCloud)' : 'Approved'}
+                                    <span>✅</span> {isKey ? 'Activated (ForUs)' : 'Approved'}
                                   </span>
                                 </td>
                               </tr>

@@ -463,7 +463,7 @@ export default function PremiumPage() {
               🔑 Already Have an Access Key?
             </div>
             <p style={{fontSize:12, color:'rgba(255,255,255,.5)', margin:'0 0 14px', lineHeight:1.6}}>
-              Purchased via ForCloud? Enter your <strong style={{color:'#a78bfa'}}>FC-XXXX-XXXX</strong> key to activate your plan instantly:
+              Purchased via ForUs? Enter your <strong style={{color:'#a78bfa'}}>FC-XXXX-XXXX</strong> key to activate your plan instantly:
             </p>
             <div style={{display:'flex', gap:8}}>
               <input
@@ -510,7 +510,7 @@ export default function PremiumPage() {
               ))}
             </div>
             <p style={{fontSize:12,color:'rgba(255,255,255,.25)',maxWidth:500,margin:'0 auto',lineHeight:1.7}}>
-              ForCloud and Razorpay payments activate instantly. Prices reset after the timer.
+              ForUs payments activate instantly. Prices reset after the timer.
             </p>
           </div>
         </div>
@@ -539,12 +539,12 @@ export default function PremiumPage() {
             </div>
           </div>
 
-          {/* ── OPTION 1: ForCloud Online Checkout ── */}
+          {/* ── OPTION 1: ForUs Online Checkout ── */}
           <div style={{borderRadius:20,border:'1px solid rgba(14,165,233,.3)',background:'rgba(14,165,233,.05)',padding:'22px',marginBottom:16}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
               <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(14,165,233,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>💳</div>
               <div>
-                <div style={{fontWeight:800,fontSize:15,color:'#38bdf8'}}>Pay Online on ForCloud</div>
+                <div style={{fontWeight:800,fontSize:15,color:'#38bdf8'}}>Pay Online on ForUs</div>
                 <div style={{fontSize:12,color:'rgba(255,255,255,.4)'}}>UPI, Cards, Net Banking & Crypto • Instant Access Key</div>
               </div>
             </div>
@@ -565,45 +565,12 @@ export default function PremiumPage() {
                 boxShadow:'0 8px 24px rgba(14,165,233,.3)',transition:'all .2s',
               }}
             >
-              <span>💳 Open ForCloud Checkout (₹{selected.price}) ↗</span>
+              <span>💳 Open ForUs Checkout (₹{selected.price}) ↗</span>
             </a>
             <div style={{fontSize:11,color:'rgba(255,255,255,.35)',textAlign:'center',marginTop:8}}>
               Opens in a new tab · Complete payment and paste your key below
             </div>
           </div>
-
-          {/* ── OPTION 2: Razorpay Instant (if script loaded) ── */}
-          {rzpLoaded && (
-            <div style={{borderRadius:20,border:'1px solid rgba(34,197,94,.25)',background:'rgba(34,197,94,.04)',padding:'20px',marginBottom:16}}>
-              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
-                <div style={{width:30,height:30,borderRadius:'50%',background:'rgba(34,197,94,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:15}}>⚡</div>
-                <div>
-                  <div style={{fontWeight:800,fontSize:14,color:'#4ade80'}}>Pay Directly with Razorpay</div>
-                  <div style={{fontSize:11,color:'rgba(255,255,255,.4)'}}>Instant activation inside this page</div>
-                </div>
-              </div>
-
-              {rzpError && (
-                <div style={{padding:'10px 14px',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',borderRadius:10,color:'#f87171',fontSize:13,marginBottom:12}}>
-                  ⚠️ {rzpError}
-                </div>
-              )}
-
-              <button
-                onClick={payWithRazorpay}
-                disabled={rzpLoading}
-                style={{
-                  width:'100%',padding:'13px',borderRadius:12,border:'none',
-                  background: rzpLoading ? 'rgba(255,255,255,.1)' : 'linear-gradient(135deg,#10b981,#059669)',
-                  color:'#fff',fontWeight:800,fontSize:14,cursor:rzpLoading?'not-allowed':'pointer',
-                  display:'flex',alignItems:'center',justifyContent:'center',gap:10,
-                  transition:'all .2s',opacity:rzpLoading?0.6:1,
-                }}
-              >
-                {rzpLoading ? 'Opening Checkout...' : `⚡ Pay ₹${selected.price} via Razorpay`}
-              </button>
-            </div>
-          )}
 
           {/* ── Divider ── */}
           <div style={{display:'flex',alignItems:'center',gap:12,margin:'20px 0',color:'rgba(255,255,255,.2)',fontSize:12}}>

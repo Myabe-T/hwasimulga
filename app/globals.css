@@ -244,3 +244,17 @@ select.input option {
 [data-theme="light"] .vcard {
   box-shadow: 0 2px 12px rgba(0,0,0,.1);
 }
+
+/* Suppress 3rd-party download manager overlays (IDM, Downloader extension buttons) */
+div[id*="idm"], div[class*="idm"], .idm_panel, #idm-panel, embed[type*="idm"], object[type*="idm"],
+div[id*="downloader-panel"], div[class*="download-helper"], div[id*="fvd-"], div[class*="fvd-"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
+  top: -9999px !important;
+}

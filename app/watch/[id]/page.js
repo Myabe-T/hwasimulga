@@ -35,7 +35,7 @@ export default function WatchPage() {
           setState('playing');
           // Load title (optimized single-title lookup ~50 bytes)
           fetch(`/api/hwasi/titles?id=${id}`).then(x => x.json()).then(td => {
-            setTitle(td.title || `Video #${id}`);
+            setTitle(td.title || 'Exclusive Video');
           }).catch(() => {});
         } else {
           setState('auth');

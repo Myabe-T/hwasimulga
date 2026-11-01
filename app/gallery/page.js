@@ -1,5 +1,5 @@
 'use client';
-import { secureFetch } from '@/lib/crypto';
+import { secureFetch, encodeVideoSlug, decodeVideoSlug } from '@/lib/crypto';
 import Link from 'next/link';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import styles from './gallery.module.css';
@@ -134,13 +134,11 @@ export default function GalleryPage() {
       // 1. Video modal Back/Forward navigation handling
       if (typeof window !== 'undefined') {
         const hash = window.location.hash;
-        if (!hash.startsWith('#video-') && modalRef.current) {
+        const vid = decodeVideoSlug(hash);
+        if (!vid && modalRef.current) {
           setModal(null);
-        } else if (hash.startsWith('#video-')) {
-          const vid = Number(hash.replace('#video-', ''));
-          if (vid && (!modalRef.current || modalRef.current.id !== vid)) {
-            if (openModalRef.current) openModalRef.current(vid, true);
-          }
+        } else if (vid && (!modalRef.current || modalRef.current.id !== vid)) {
+          if (openModalRef.current) openModalRef.current(vid, true);
         }
       }
 
@@ -251,9 +249,9 @@ export default function GalleryPage() {
 
       setUser(d);
 
-      // Deep link support: auto-open video if URL hash has #video-ID
-      if (typeof window !== 'undefined' && window.location.hash.startsWith('#video-')) {
-        const hashVid = Number(window.location.hash.replace('#video-', ''));
+      // Deep link support: auto-open video if URL hash has encrypted video slug
+      if (typeof window !== 'undefined') {
+        const hashVid = decodeVideoSlug(window.location.hash);
         if (hashVid) {
           setTimeout(() => {
             if (openModalRef.current) openModalRef.current(hashVid, true);
@@ -466,8 +464,9 @@ export default function GalleryPage() {
 
     // Push or replace history entry so clicking browser Back button closes the modal without leaving the site
     if (!fromPopState && typeof window !== 'undefined') {
-      const hash = `#video-${id}`;
-      if (window.location.hash.startsWith('#video-')) {
+      const hash = `#${encodeVideoSlug(id)}`;
+      const currentVid = decodeVideoSlug(window.location.hash);
+      if (currentVid) {
         window.history.replaceState({ modalVideoId: id }, '', `${window.location.pathname}${window.location.search}${hash}`);
       } else {
         window.history.pushState({ modalVideoId: id }, '', `${window.location.pathname}${window.location.search}${hash}`);
@@ -533,7 +532,7 @@ export default function GalleryPage() {
 
   const closeModal = useCallback(() => {
     setModal(null);
-    if (typeof window !== 'undefined' && window.location.hash.startsWith('#video-')) {
+    if (typeof window !== 'undefined' && decodeVideoSlug(window.location.hash)) {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     }
   }, []);
@@ -1267,7 +1266,7 @@ export default function GalleryPage() {
               <div className={styles.modalMeta}>
                 <span className={styles.modalBadge}>▶ Now Playing</span>
                 <span className={styles.modalTitle}>
-                  {videoTitles[String(modal.id)] || `Video #${modal.id}`}
+                  {videoTitles[String(modal.id)] || (isAdminOrAdvisor ? `Video #${modal.id}` : 'Exclusive Video')}
                   {(user?.role === 'admin' || user?.role === 'advisor') && (
                     <button
                       title="Edit title"
@@ -1314,8 +1313,10 @@ export default function GalleryPage() {
                 src={modal.src}
                 loading={modal.loading}
                 videoId={modal.id}
-                title={videoTitles[String(modal.id)] || `Video #${modal.id}`}
-                isPremium={isPremium || viewStatus?.isPremium || user?.role === 'admin' || user?.role === 'advisor'}
+                title={videoTitles[String(modal.id)] || (isAdminOrAdvisor ? `Video #${modal.id}` : 'Exclusive Video')}
+                isPremium={isPremium || viewStatus?.isPremium || isAdminOrAdvisor}
+                isBookmarked={bookmarks.has(modal.id)}
+                onBookmark={(e) => toggleBookmark(e, modal.id)}
                 onDownload={instaviralIds.includes(Number(modal.id)) ? null : (e) => handleDownload(e, modal.id)}
                 onPrev={modal.index > 0 ? prevVideo : null}
                 onNext={modal.index < allIds.length - 1 ? nextVideo : null}
@@ -1331,9 +1332,11 @@ export default function GalleryPage() {
                 />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: '#e2e8f0', marginBottom: 4, lineHeight: 1.4 }}>
-                    {videoTitles[String(modal.id)] || `Video #${modal.id}`}
+                    {videoTitles[String(modal.id)] || (isAdminOrAdvisor ? `Video #${modal.id}` : 'Exclusive Video')}
                   </div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>DesiHawas · #{modal.id}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>
+                    DesiHawas {isAdminOrAdvisor ? `· #${modal.id}` : '· Exclusive HD Video'}
+                  </div>
                 </div>
               </div>
             )}
@@ -2087,7 +2090,7 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, initialT
             {/* Quick Access Key redemption */}
             <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text1)', marginBottom: 4 }}>🔑 Have an Access Key?</div>
-              <p style={{ fontSize: 12, color: 'var(--text3)', margin: '0 0 10px' }}>Enter your FC-XXXX-XXXX key from ForCloud:</p>
+              <p style={{ fontSize: 12, color: 'var(--text3)', margin: '0 0 10px' }}>Enter your FC-XXXX-XXXX key from ForUs:</p>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   style={{ ...inp, flex: 1, fontFamily: 'monospace', letterSpacing: '.06em', textAlign: 'center' }}
@@ -2448,7 +2451,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
   const quality = videoQuality(id);
   const qColor = qualityColor(quality);
   const views = viewCount(id);
-  const displayTitle = title || `Video #${id}`;
+  const displayTitle = title || (isAdmin ? `Video #${id}` : 'Exclusive Video');
 
   return (
     <div className={styles.vcard} style={{ animationDelay: `${Math.min(index, 15) * 20}ms` }}>

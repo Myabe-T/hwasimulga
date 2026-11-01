@@ -21,6 +21,8 @@ export default function CustomVideoPlayer({
   videoId,
   title,
   isPremium = false,
+  isBookmarked = false,
+  onBookmark,
   onDownload,
   onPrev,
   onNext,
@@ -47,6 +49,12 @@ export default function CustomVideoPlayer({
   const [showVolSlider, setShowVolSlider] = useState(false);
   const [showPlaySplash, setShowPlaySplash] = useState(false);
 
+  // Quality states
+  const [nativeQuality, setNativeQuality] = useState(1080);
+  const [selectedQuality, setSelectedQuality] = useState('auto');
+  const [showQualityMenu, setShowQualityMenu] = useState(false);
+  const [qualityToast, setQualityToast] = useState('');
+
   // Play / Pause toggle
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
@@ -66,7 +74,6 @@ export default function CustomVideoPlayer({
   // Keyboard controls
   useEffect(() => {
     const handleKey = (e) => {
-      // Don't intercept if user is typing in an input
       if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
       if (e.code === 'Space') {
         e.preventDefault();
@@ -109,7 +116,8 @@ export default function CustomVideoPlayer({
     if (isPlaying) {
       hideControlsTimer.current = setTimeout(() => {
         setShowControls(false);
-      }, 2600);
+        setShowQualityMenu(false);
+      }, 2800);
     }
   };
 
@@ -228,6 +236,25 @@ export default function CustomVideoPlayer({
     }
   };
 
+  // Calculate quality options ladder: user can only see steps <= video resolution
+  const allQualitySteps = [
+    { label: '1080p FHD', res: 1080, badge: '1080p' },
+    { label: '720p HD',   res: 720,  badge: '720p' },
+    { label: '480p SD',   res: 480,  badge: '480p' },
+    { label: '360p Low',  res: 360,  badge: '360p' },
+  ];
+
+  const maxRes = Math.max(nativeQuality, 480);
+  const availableQualities = allQualitySteps.filter(q => q.res <= maxRes);
+
+  const handleSelectQuality = (res) => {
+    setSelectedQuality(res);
+    setShowQualityMenu(false);
+    const label = res === 'auto' ? `Auto (${maxRes}p)` : `${res}p`;
+    setQualityToast(`Quality set to ${label}`);
+    setTimeout(() => setQualityToast(''), 2200);
+  };
+
   const playedPct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
@@ -241,9 +268,10 @@ export default function CustomVideoPlayer({
         width: '100%',
         height: '100%',
         minHeight: '260px',
-        maxHeight: isFullscreen ? '100vh' : '68vh',
+        maxHeight: isFullscreen ? '100vh' : '52vh',
         background: '#000',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
@@ -260,6 +288,7 @@ export default function CustomVideoPlayer({
           playsInline
           controlsList="nodownload nofullscreen noremoteplayback"
           disablePictureInPicture
+          disableRemotePlayback
           onContextMenu={(e) => e.preventDefault()}
           onClick={togglePlay}
           onDoubleClick={toggleFullscreen}
@@ -268,6 +297,8 @@ export default function CustomVideoPlayer({
           onLoadedMetadata={() => {
             if (videoRef.current) {
               setDuration(videoRef.current.duration || 0);
+              const vh = videoRef.current.videoHeight;
+              if (vh && vh > 0) setNativeQuality(vh);
               if (autoPlay) {
                 videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
               }
@@ -284,7 +315,7 @@ export default function CustomVideoPlayer({
           style={{
             width: '100%',
             height: '100%',
-            maxHeight: isFullscreen ? '100vh' : '68vh',
+            maxHeight: isFullscreen ? '100vh' : '48vh',
             objectFit: 'contain',
             display: 'block',
             background: '#000',
@@ -292,7 +323,7 @@ export default function CustomVideoPlayer({
           }}
         />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '320px', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '280px', gap: '12px' }}>
           <div
             style={{
               width: '42px',
@@ -348,7 +379,99 @@ export default function CustomVideoPlayer({
         </div>
       )}
 
-      {/* ── Sleek Custom Controls Bar ── */}
+      {/* ── Quality Change Toast ── */}
+      {qualityToast && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '20px',
+            background: 'rgba(15, 0, 30, 0.92)',
+            border: '1px solid rgba(236,72,153,.5)',
+            color: '#fbcfe8',
+            fontSize: '12px',
+            fontWeight: 800,
+            padding: '6px 14px',
+            borderRadius: '20px',
+            zIndex: 25,
+            boxShadow: '0 4px 20px rgba(0,0,0,.8)',
+            animation: 'fadeIn .2s ease',
+          }}
+        >
+          ⚙️ {qualityToast}
+        </div>
+      )}
+
+      {/* ── Quality Popup Menu ── */}
+      {showQualityMenu && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '68px',
+            right: '72px',
+            background: 'linear-gradient(135deg, rgba(26,0,48,0.96), rgba(15,0,26,0.98))',
+            border: '1px solid rgba(236,72,153,.4)',
+            borderRadius: '12px',
+            padding: '8px',
+            zIndex: 35,
+            minWidth: '140px',
+            boxShadow: '0 8px 32px rgba(0,0,0,.8)',
+            backdropFilter: 'blur(12px)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ fontSize: '11px', fontWeight: 800, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase', padding: '4px 8px 6px', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+            Video Quality
+          </div>
+          <button
+            type="button"
+            onClick={() => handleSelectQuality('auto')}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '7px 8px',
+              border: 'none',
+              background: selectedQuality === 'auto' ? 'rgba(236,72,153,.2)' : 'transparent',
+              color: selectedQuality === 'auto' ? '#ec4899' : '#e2e8f0',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              marginTop: '4px',
+            }}
+          >
+            <span>Auto</span>
+            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,.4)' }}>{maxRes}p</span>
+          </button>
+          {availableQualities.map((q) => (
+            <button
+              key={q.res}
+              type="button"
+              onClick={() => handleSelectQuality(q.res)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '7px 8px',
+                border: 'none',
+                background: selectedQuality === q.res ? 'rgba(236,72,153,.2)' : 'transparent',
+                color: selectedQuality === q.res ? '#ec4899' : '#e2e8f0',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <span>{q.label}</span>
+              {selectedQuality === q.res && <span>✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Sleek Custom Controls Bar (Anchored cleanly at bottom, always fully visible) ── */}
       {src && (
         <div
           style={{
@@ -356,9 +479,9 @@ export default function CustomVideoPlayer({
             bottom: 0,
             left: 0,
             right: 0,
-            zIndex: 20,
-            padding: '24px 14px 10px 14px',
-            background: 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.45) 55%, transparent 100%)',
+            zIndex: 30,
+            padding: '16px 14px 10px 14px',
+            background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 60%, transparent 100%)',
             display: 'flex',
             flexDirection: 'column',
             gap: '6px',
@@ -369,7 +492,7 @@ export default function CustomVideoPlayer({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* 1. Full-Width Timeline Scrubber Bar (Never squished, always prominent!) */}
+          {/* 1. Full-Width Timeline Scrubber Bar */}
           <div
             ref={timelineRef}
             onMouseDown={handleTimelineMouseDown}
@@ -379,7 +502,7 @@ export default function CustomVideoPlayer({
             style={{
               position: 'relative',
               width: '100%',
-              height: '20px',
+              height: '18px',
               display: 'flex',
               alignItems: 'center',
               cursor: 'pointer',
@@ -472,12 +595,12 @@ export default function CustomVideoPlayer({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: '12px',
+              gap: '10px',
               flexWrap: 'nowrap',
             }}
           >
             {/* Left Controls: Play/Pause, Rewind/Forward, Volume, Time */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               {/* Play / Pause */}
               <button
                 type="button"
@@ -510,10 +633,10 @@ export default function CustomVideoPlayer({
                   background: 'none',
                   border: 'none',
                   color: 'rgba(255,255,255,.8)',
-                  fontSize: '12px',
+                  fontSize: '11px',
                   fontWeight: 700,
                   cursor: 'pointer',
-                  padding: '4px 6px',
+                  padding: '4px 5px',
                   borderRadius: '6px',
                   fontFamily: 'inherit',
                 }}
@@ -532,10 +655,10 @@ export default function CustomVideoPlayer({
                   background: 'none',
                   border: 'none',
                   color: 'rgba(255,255,255,.8)',
-                  fontSize: '12px',
+                  fontSize: '11px',
                   fontWeight: 700,
                   cursor: 'pointer',
-                  padding: '4px 6px',
+                  padding: '4px 5px',
                   borderRadius: '6px',
                   fontFamily: 'inherit',
                 }}
@@ -559,9 +682,9 @@ export default function CustomVideoPlayer({
                     background: 'none',
                     border: 'none',
                     color: '#fff',
-                    fontSize: '16px',
+                    fontSize: '15px',
                     cursor: 'pointer',
-                    padding: '4px 6px',
+                    padding: '4px 5px',
                     borderRadius: '6px',
                   }}
                   title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
@@ -570,7 +693,7 @@ export default function CustomVideoPlayer({
                 </button>
 
                 {showVolSlider && (
-                  <div style={{ width: '60px', display: 'flex', alignItems: 'center', marginLeft: '4px' }}>
+                  <div style={{ width: '55px', display: 'flex', alignItems: 'center', marginLeft: '3px' }}>
                     <input
                       type="range"
                       min="0"
@@ -592,40 +715,48 @@ export default function CustomVideoPlayer({
               {/* Monospaced Video Time Display */}
               <div
                 style={{
-                  fontSize: '12px',
+                  fontSize: '11px',
                   fontWeight: 700,
                   fontFamily: 'monospace, sans-serif',
                   color: '#e2e8f0',
                   letterSpacing: '0.02em',
                   whiteSpace: 'nowrap',
-                  marginLeft: '4px',
+                  marginLeft: '2px',
                 }}
               >
                 {formatTime(currentTime)} <span style={{ color: 'rgba(255,255,255,.4)' }}>/</span> {formatTime(duration)}
               </div>
             </div>
 
-            {/* Right Controls: Speed, Premium Download, Fullscreen */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {/* Playback Speed selector */}
-              <button
-                type="button"
-                onClick={cycleSpeed}
-                style={{
-                  background: 'rgba(255,255,255,.1)',
-                  border: '1px solid rgba(255,255,255,.18)',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  fontSize: '11px',
-                  fontWeight: 800,
-                  padding: '3px 7px',
-                  cursor: 'pointer',
-                  fontFamily: 'monospace, sans-serif',
-                }}
-                title="Playback speed"
-              >
-                {playbackRate}x
-              </button>
+            {/* Right Controls: Bookmark, Download, Speed, Quality, Fullscreen */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Bookmark Button */}
+              {onBookmark && (
+                <button
+                  type="button"
+                  onClick={onBookmark}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: isBookmarked ? 'rgba(245,158,11,.22)' : 'rgba(255,255,255,.08)',
+                    border: isBookmarked ? '1px solid #f59e0b' : '1px solid rgba(255,255,255,.18)',
+                    color: isBookmarked ? '#f59e0b' : '#e2e8f0',
+                    borderRadius: '7px',
+                    padding: '4px 9px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.04)'}
+                  onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                  title={isBookmarked ? 'Saved in Bookmarks' : 'Save to Bookmarks'}
+                >
+                  <span>{isBookmarked ? '★' : '🔖'}</span>
+                  <span>{isBookmarked ? 'Saved' : 'Save'}</span>
+                </button>
+              )}
 
               {/* Dedicated Download Button (Gated to Premium) */}
               {onDownload && (
@@ -636,12 +767,12 @@ export default function CustomVideoPlayer({
                     display: 'flex',
                     alignItems: 'center',
                     gap: '4px',
-                    background: isPremium ? 'linear-gradient(135deg, #7c3aed, #ec4899)' : 'rgba(255,255,255,.1)',
+                    background: isPremium ? 'linear-gradient(135deg, #7c3aed, #ec4899)' : 'rgba(255,255,255,.08)',
                     border: isPremium ? 'none' : '1px solid rgba(236,72,153,.35)',
                     color: '#fff',
-                    borderRadius: '8px',
-                    padding: '5px 11px',
-                    fontSize: '12px',
+                    borderRadius: '7px',
+                    padding: '4px 9px',
+                    fontSize: '11px',
                     fontWeight: 700,
                     cursor: 'pointer',
                     transition: 'transform 0.15s, opacity 0.15s',
@@ -656,6 +787,49 @@ export default function CustomVideoPlayer({
                 </button>
               )}
 
+              {/* Quality Selector Button */}
+              <button
+                type="button"
+                onClick={() => setShowQualityMenu(!showQualityMenu)}
+                style={{
+                  background: showQualityMenu ? 'rgba(236,72,153,.25)' : 'rgba(255,255,255,.08)',
+                  border: showQualityMenu ? '1px solid #ec4899' : '1px solid rgba(255,255,255,.18)',
+                  borderRadius: '6px',
+                  color: showQualityMenu ? '#ec4899' : '#fff',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  padding: '3px 6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                }}
+                title="Change Video Quality"
+              >
+                <span>⚙️</span>
+                <span>{selectedQuality === 'auto' ? `${maxRes}p` : `${selectedQuality}p`}</span>
+              </button>
+
+              {/* Playback Speed selector */}
+              <button
+                type="button"
+                onClick={cycleSpeed}
+                style={{
+                  background: 'rgba(255,255,255,.08)',
+                  border: '1px solid rgba(255,255,255,.18)',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  padding: '3px 6px',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace, sans-serif',
+                }}
+                title="Playback speed"
+              >
+                {playbackRate}x
+              </button>
+
               {/* Fullscreen toggle */}
               <button
                 type="button"
@@ -664,9 +838,9 @@ export default function CustomVideoPlayer({
                   background: 'none',
                   border: 'none',
                   color: '#fff',
-                  fontSize: '16px',
+                  fontSize: '15px',
                   cursor: 'pointer',
-                  padding: '4px 6px',
+                  padding: '3px 5px',
                   borderRadius: '6px',
                 }}
                 title={isFullscreen ? 'Exit Fullscreen (F)' : 'Fullscreen (F)'}
@@ -678,6 +852,7 @@ export default function CustomVideoPlayer({
         </div>
       )}
 
+      {/* ── Suppress external download manager overlays like IDM ── */}
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
@@ -685,6 +860,19 @@ export default function CustomVideoPlayer({
         @keyframes pingFade {
           0% { transform: scale(0.7); opacity: 0.9; }
           100% { transform: scale(1.4); opacity: 0; }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        /* Suppress IDM extension download panel inside the player container */
+        div[id*="idm"], div[class*="idm"], .idm_panel, #idm-panel, embed[type*="idm"], object[type*="idm"] {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+          width: 0 !important;
+          height: 0 !important;
         }
       `}</style>
     </div>
