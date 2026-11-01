@@ -286,6 +286,7 @@
   .userPlanBadge { display:none; }
 }
 @media (max-width:600px) {
+  .modalBg { padding: 6px 4px !important; }
   .grid { grid-template-columns:repeat(2,1fr); gap:8px; }
   .main { padding:12px 10px 60px; }
   .tab { padding:7px 12px; font-size:12px; }

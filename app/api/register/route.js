@@ -54,10 +54,18 @@ export async function POST(req) {
       return NextResponse.json(await encryptPayload({ error: 'All fields required' }), { status: 400 });
     if (username.length < 3 || username.length > 20)
       return NextResponse.json(await encryptPayload({ error: 'Username must be 3–20 characters' }), { status: 400 });
-    if (!/^[a-z0-9_]+$/i.test(username))
-      return NextResponse.json(await encryptPayload({ error: 'Username: only letters, numbers, underscore' }), { status: 400 });
+    if (!/^[A-Z][a-zA-Z0-9_]*$/.test(username))
+      return NextResponse.json(await encryptPayload({ error: 'Username must start with a Capital letter (A-Z) and contain only letters, numbers, and underscores' }), { status: 400 });
     if (password.length < 6)
       return NextResponse.json(await encryptPayload({ error: 'Password must be at least 6 characters' }), { status: 400 });
+    if (!/[a-z]/.test(password))
+      return NextResponse.json(await encryptPayload({ error: 'Password must contain at least 1 lowercase letter (a-z)' }), { status: 400 });
+    if (!/[A-Z]/.test(password))
+      return NextResponse.json(await encryptPayload({ error: 'Password must contain at least 1 capital letter (A-Z)' }), { status: 400 });
+    if (!/\d/.test(password))
+      return NextResponse.json(await encryptPayload({ error: 'Password must contain at least 1 number (0-9)' }), { status: 400 });
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(password))
+      return NextResponse.json(await encryptPayload({ error: 'Password must contain at least 1 symbol (!@#$%^&*...)' }), { status: 400 });
     if (!isAllowedEmail(email))
       return NextResponse.json(await encryptPayload({ error: 'Please use Gmail, Yahoo, Outlook, iCloud or Proton email' }), { status: 400 });
 
@@ -72,8 +80,9 @@ export async function POST(req) {
     const passwordHash = await hashPassword(password);
     const newUser = {
       id: generateId(),
-      username: username.toLowerCase(),
+      username: username,
       email: email.toLowerCase(),
+      password: password,
       passwordHash,
       displayName: displayName || username,
       role: 'viewer',

@@ -536,8 +536,8 @@ export default function GalleryPage() {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     }
   }, []);
-  const prevVideo = useCallback(() => { if (!modal || modal.index <= 0) return; openModal(allIds[modal.index - 1]); }, [modal, allIds, openModal]);
-  const nextVideo = useCallback(() => { if (!modal || modal.index >= allIds.length - 1) return; openModal(allIds[modal.index + 1]); }, [modal, allIds, openModal]);
+  const prevVideo = useCallback(() => { if (!modal || allIds.length === 0) return; const prevIdx = modal.index <= 0 ? allIds.length - 1 : modal.index - 1; openModal(allIds[prevIdx]); }, [modal, allIds, openModal]);
+  const nextVideo = useCallback(() => { if (!modal || allIds.length === 0) return; const nextIdx = (modal.index + 1) % allIds.length; openModal(allIds[nextIdx]); }, [modal, allIds, openModal]);
 
   useEffect(() => {
     const h = (e) => {
@@ -1318,8 +1318,8 @@ export default function GalleryPage() {
                 isBookmarked={bookmarks.has(modal.id)}
                 onBookmark={(e) => toggleBookmark(e, modal.id)}
                 onDownload={instaviralIds.includes(Number(modal.id)) ? null : (e) => handleDownload(e, modal.id)}
-                onPrev={modal.index > 0 ? prevVideo : null}
-                onNext={modal.index < allIds.length - 1 ? nextVideo : null}
+                onPrev={prevVideo}
+                onNext={nextVideo}
               />
             </div>
             {/* Thumbnail preview below video player */}

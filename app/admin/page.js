@@ -2196,7 +2196,7 @@ export default function AdminPage() {
                     </div>
                     <div className={styles.userCardJoined}>Joined {new Date(u.createdAt).toLocaleDateString()}</div>
                     <div className={styles.userCardActions}>
-                      <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => setEditUser({ ...u, password: '' })}>
+                      <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => { setShowPass(false); setEditUser({ ...u, password: u.password || '' }); }}>
                         <IconEdit /> Edit
                       </button>
                       <button className="btn btn-ghost btn-sm" style={{ flex: 1, color: '#f87171' }} onClick={() => deleteUser(u.id, u.username)}>
@@ -3298,9 +3298,44 @@ export default function AdminPage() {
                 <input className="input" value={editUser.username || ''} onChange={e => setEditUser(p => ({ ...p, username: e.target.value }))} /></div>
               <div><label className={styles.fieldLabel}>Email (optional)</label>
                 <input className="input" type="email" value={editUser.email || ''} placeholder="user@example.com" onChange={e => setEditUser(p => ({ ...p, email: e.target.value }))} /></div>
-              <div><label className={styles.fieldLabel}>New Password (blank = keep current)</label>
-                <input className="input" type={showPass ? 'text' : 'password'} value={editUser.password || ''} placeholder="Leave blank to keep…"
-                  onChange={e => setEditUser(p => ({ ...p, password: e.target.value }))} /></div>
+              {user?.role === 'admin' && (
+                <div>
+                  <label className={styles.fieldLabel}>User Password (👑 Admin Only)</label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input
+                      className="input"
+                      type={showPass ? 'text' : 'password'}
+                      value={editUser.password || ''}
+                      placeholder="Enter new password or leave as-is…"
+                      onChange={e => setEditUser(p => ({ ...p, password: e.target.value }))}
+                      style={{ paddingRight: 40 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass(!showPass)}
+                      title={showPass ? 'Hide Password' : 'Show Password'}
+                      style={{
+                        position: 'absolute',
+                        right: 8,
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: 16,
+                        color: 'rgba(255,255,255,0.7)',
+                        padding: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {showPass ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+                    Only Admin can view or edit passwords. Click 👁️ to reveal.
+                  </div>
+                </div>
+              )}
               <div><label className={styles.fieldLabel}>Role</label>
                 <select className="input" value={editUser.role} onChange={e => setEditUser(p => ({ ...p, role: e.target.value }))}>
                   <option value="viewer">Viewer</option>

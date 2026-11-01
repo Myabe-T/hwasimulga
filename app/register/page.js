@@ -20,8 +20,26 @@ export default function RegisterPage() {
   const [resendCd, setResendCd] = useState(0);
   const [successMsg, setSuccessMsg] = useState('');
   const [otpRequired, setOtpRequired] = useState(true); // default ON until loaded
+  const [showPass, setShowPass] = useState(false);
   const otpRefs = useRef([]);
   const timerRef = useRef(null);
+
+  function validateUsername(uname) {
+    if (!uname || uname.length < 3) return 'Username must be at least 3 characters';
+    if (uname.length > 20) return 'Username must be at most 20 characters';
+    if (!/^[A-Z]/.test(uname)) return 'Username must start with a Capital letter (A-Z)';
+    if (!/^[A-Z][A-Za-z0-9_]*$/.test(uname)) return 'Username can only contain letters, numbers, and underscores';
+    return null;
+  }
+
+  function validatePassword(pass) {
+    if (!pass || pass.length < 6) return 'Password must be at least 6 characters';
+    if (!/[a-z]/.test(pass)) return 'Password must contain at least 1 lowercase letter (a-z)';
+    if (!/[A-Z]/.test(pass)) return 'Password must contain at least 1 capital letter (A-Z)';
+    if (!/\d/.test(pass)) return 'Password must contain at least 1 number (0-9)';
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(pass)) return 'Password must contain at least 1 symbol (!@#$%^&*...)';
+    return null;
+  }
 
   useEffect(() => {
     secureFetch('/api/verify').then(r => r.json()).then(d => {
@@ -44,8 +62,10 @@ export default function RegisterPage() {
   async function sendOtp() {
     setErr(''); setInfo('');
     if (!form.email || !emailOk(form.email)) { setErr('Use Gmail, Yahoo, Outlook, iCloud, Proton or similar email'); return; }
-    if (!form.username || form.username.length < 3) { setErr('Username must be at least 3 characters'); return; }
-    if (!form.password || form.password.length < 6) { setErr('Password must be at least 6 characters'); return; }
+    const uErr = validateUsername(form.username);
+    if (uErr) { setErr(uErr); return; }
+    const pErr = validatePassword(form.password);
+    if (pErr) { setErr(pErr); return; }
     setLoading(true);
     try {
       // If OTP is disabled by admin, skip straight to registration
@@ -196,10 +216,22 @@ export default function RegisterPage() {
                 </div>
               </div>
               <div className={styles.field}>
-                <label className={styles.label}>Username *</label>
+                <label className={styles.label}>
+                  Username * <span style={{fontSize:11,color:'rgba(255,255,255,.45)',fontWeight:400}}>(Must start with Capital letter)</span>
+                </label>
                 <div className={styles.inputWrap}>
-                  <input className={`input ${styles.input}`} style={{paddingLeft:16}} placeholder="e.g. rahul123" required
-                    value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,'') }))} />
+                  <input
+                    className={`input ${styles.input}`}
+                    style={{paddingLeft:16}}
+                    placeholder="e.g. Rahul123"
+                    required
+                    value={form.username}
+                    onChange={e => {
+                      const val = e.target.value.replace(/[^A-Za-z0-9_]/g, '');
+                      const formatted = val.length > 0 ? val[0].toUpperCase() + val.slice(1) : '';
+                      setForm(p => ({ ...p, username: formatted }));
+                    }}
+                  />
                 </div>
               </div>
               <div className={styles.field}>
@@ -213,10 +245,27 @@ export default function RegisterPage() {
                 )}
               </div>
               <div className={styles.field}>
-                <label className={styles.label}>Password *</label>
-                <div className={styles.inputWrap}>
-                  <input className={`input ${styles.input}`} style={{paddingLeft:16}} type="password" placeholder="Min. 6 characters" required
-                    value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} />
+                <label className={styles.label}>
+                  Password * <span style={{fontSize:11,color:'rgba(255,255,255,.45)',fontWeight:400}}>(1 capital, 1 small, 1 number, 1 symbol)</span>
+                </label>
+                <div className={styles.inputWrap} style={{position:'relative'}}>
+                  <input
+                    className={`input ${styles.input}`}
+                    style={{paddingLeft:16, paddingRight:44}}
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="Min. 6 chars (Aa1@)"
+                    required
+                    value={form.password}
+                    onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    className={styles.eyeBtn}
+                    onClick={() => setShowPass(!showPass)}
+                    title={showPass ? 'Hide password' : 'Show password'}
+                  >
+                    {showPass ? '🙈' : '👁️'}
+                  </button>
                 </div>
               </div>
               {err && <div className={styles.error}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>{err}</div>}

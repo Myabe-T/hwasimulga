@@ -49,11 +49,29 @@ export default function CustomVideoPlayer({
   const [showVolSlider, setShowVolSlider] = useState(false);
   const [showPlaySplash, setShowPlaySplash] = useState(false);
 
+  // YouTube-style double-tap seeking state
+  const lastTapRef = useRef({ time: 0, x: 0, y: 0, side: null });
+  const singleTapTimerRef = useRef(null);
+  const rippleTimerRef = useRef(null);
+  const [seekRipple, setSeekRipple] = useState(null); // { side: 'left' | 'right', seconds: 10, key: 123 }
+
   // Quality states
   const [nativeQuality, setNativeQuality] = useState(1080);
   const [selectedQuality, setSelectedQuality] = useState('auto');
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [qualityToast, setQualityToast] = useState('');
+
+  // Controls auto-hide
+  const triggerShowControls = useCallback(() => {
+    setShowControls(true);
+    if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+    if (isPlaying) {
+      hideControlsTimer.current = setTimeout(() => {
+        setShowControls(false);
+        setShowQualityMenu(false);
+      }, 2800);
+    }
+  }, [isPlaying]);
 
   // Play / Pause toggle
   const togglePlay = useCallback(() => {
@@ -70,6 +88,20 @@ export default function CustomVideoPlayer({
       setTimeout(() => setShowPlaySplash(false), 500);
     }
   }, []);
+
+  const seekRelative = useCallback((sec) => {
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + sec));
+    triggerShowControls();
+  }, [triggerShowControls]);
+
+  // Auto-play when new src arrives
+  useEffect(() => {
+    if (!videoRef.current || !src) return;
+    if (autoPlay) {
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  }, [src, autoPlay]);
 
   // Keyboard controls
   useEffect(() => {
@@ -94,7 +126,7 @@ export default function CustomVideoPlayer({
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [togglePlay]);
+  }, [togglePlay, seekRelative]);
 
   // Fullscreen change listener
   useEffect(() => {
@@ -108,24 +140,6 @@ export default function CustomVideoPlayer({
       document.removeEventListener('webkitfullscreenchange', handleFsChange);
     };
   }, []);
-
-  // Controls auto-hide
-  const triggerShowControls = () => {
-    setShowControls(true);
-    if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
-    if (isPlaying) {
-      hideControlsTimer.current = setTimeout(() => {
-        setShowControls(false);
-        setShowQualityMenu(false);
-      }, 2800);
-    }
-  };
-
-  const seekRelative = (sec) => {
-    if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + sec));
-    triggerShowControls();
-  };
 
   const toggleMute = () => {
     if (!videoRef.current) return;
@@ -165,6 +179,8 @@ export default function CustomVideoPlayer({
         playerRef.current.requestFullscreen().catch(() => {});
       } else if (playerRef.current.webkitRequestFullscreen) {
         playerRef.current.webkitRequestFullscreen();
+      } else if (videoRef.current && videoRef.current.webkitEnterFullscreen) {
+        videoRef.current.webkitEnterFullscreen();
       }
     } else {
       if (document.exitFullscreen) {
@@ -173,6 +189,71 @@ export default function CustomVideoPlayer({
         document.webkitExitFullscreen();
       }
     }
+  };
+
+  // YouTube-style Double-Tap (Left: -10s, Right: +10s, Center: Fullscreen)
+  const handleGestureAreaClick = (e) => {
+    const rect = playerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const width = rect.width;
+
+    const isLeft = clickX < width * 0.4;
+    const isRight = clickX > width * 0.6;
+    const isCenter = !isLeft && !isRight;
+
+    const now = Date.now();
+    const timeDiff = now - lastTapRef.current.time;
+    const distDiff = Math.hypot(e.clientX - lastTapRef.current.x, e.clientY - lastTapRef.current.y);
+
+    // Double tap detected (within 350ms and 80px radius)
+    if (timeDiff < 350 && distDiff < 80) {
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+
+      if (isLeft) {
+        seekRelative(-10);
+        setSeekRipple((prev) => ({
+          side: 'left',
+          seconds: prev && prev.side === 'left' ? prev.seconds + 10 : 10,
+          key: now,
+        }));
+        if (rippleTimerRef.current) clearTimeout(rippleTimerRef.current);
+        rippleTimerRef.current = setTimeout(() => setSeekRipple(null), 650);
+        lastTapRef.current = { time: now, x: e.clientX, y: e.clientY, side: 'left' };
+        return;
+      } else if (isRight) {
+        seekRelative(10);
+        setSeekRipple((prev) => ({
+          side: 'right',
+          seconds: prev && prev.side === 'right' ? prev.seconds + 10 : 10,
+          key: now,
+        }));
+        if (rippleTimerRef.current) clearTimeout(rippleTimerRef.current);
+        rippleTimerRef.current = setTimeout(() => setSeekRipple(null), 650);
+        lastTapRef.current = { time: now, x: e.clientX, y: e.clientY, side: 'right' };
+        return;
+      } else {
+        toggleFullscreen();
+        lastTapRef.current = { time: 0, x: 0, y: 0, side: null };
+        return;
+      }
+    }
+
+    // First tap: wait for potential double-tap, else trigger single tap
+    lastTapRef.current = { time: now, x: e.clientX, y: e.clientY, side: isLeft ? 'left' : isRight ? 'right' : 'center' };
+
+    if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+    singleTapTimerRef.current = setTimeout(() => {
+      // Single tap: toggle play / pause and show controls
+      togglePlay();
+      triggerShowControls();
+      singleTapTimerRef.current = null;
+    }, 280);
   };
 
   // Timeline seeking calculation
@@ -290,8 +371,6 @@ export default function CustomVideoPlayer({
           disablePictureInPicture
           disableRemotePlayback
           onContextMenu={(e) => e.preventDefault()}
-          onClick={togglePlay}
-          onDoubleClick={toggleFullscreen}
           onTimeUpdate={handleTimeUpdate}
           onProgress={handleProgress}
           onLoadedMetadata={() => {
@@ -304,13 +383,20 @@ export default function CustomVideoPlayer({
               }
             }
           }}
+          onCanPlay={() => {
+            if (autoPlay && videoRef.current && videoRef.current.paused) {
+              videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+            }
+          }}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onWaiting={() => setIsBuffering(true)}
           onPlaying={() => setIsBuffering(false)}
           onEnded={() => {
             setIsPlaying(false);
-            if (onNext) onNext();
+            if (onNext) {
+              onNext();
+            }
           }}
           style={{
             width: '100%',
@@ -319,7 +405,6 @@ export default function CustomVideoPlayer({
             objectFit: 'contain',
             display: 'block',
             background: '#000',
-            cursor: isPlaying && !showControls ? 'none' : 'pointer',
           }}
         />
       ) : (
@@ -335,6 +420,40 @@ export default function CustomVideoPlayer({
             }}
           />
           <span style={{ fontSize: '13px', color: 'rgba(255,255,255,.5)' }}>Loading media...</span>
+        </div>
+      )}
+
+      {/* ── Transparent Interactive Gesture Layer (Double tap Left: -10s, Right: +10s, Single tap: Play/Pause) ── */}
+      {src && !loading && (
+        <div
+          onClick={handleGestureAreaClick}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: '50px',
+            zIndex: 15,
+            cursor: isPlaying && !showControls ? 'none' : 'pointer',
+            touchAction: 'manipulation',
+          }}
+        />
+      )}
+
+      {/* ── YouTube-Style Double-Tap Seek Ripples ── */}
+      {seekRipple && (
+        <div
+          key={seekRipple.key}
+          className={`double-tap-ripple ${seekRipple.side}`}
+        >
+          <div className="ripple-content">
+            <div className="ripple-arrows">
+              {seekRipple.side === 'left' ? '◀◀◀' : '▶▶▶'}
+            </div>
+            <div className="ripple-text">
+              {seekRipple.seconds} seconds
+            </div>
+          </div>
         </div>
       )}
 
@@ -471,17 +590,18 @@ export default function CustomVideoPlayer({
         </div>
       )}
 
-      {/* ── Sleek Custom Controls Bar (Anchored cleanly at bottom, always fully visible) ── */}
+      {/* ── Sleek Responsive Custom Controls Bar ── */}
       {src && (
         <div
+          className="player-controls-bar"
           style={{
             position: 'absolute',
             bottom: 0,
             left: 0,
             right: 0,
             zIndex: 30,
-            padding: '16px 14px 10px 14px',
-            background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 60%, transparent 100%)',
+            padding: '14px 14px 10px 14px',
+            background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 65%, transparent 100%)',
             display: 'flex',
             flexDirection: 'column',
             gap: '6px',
@@ -489,6 +609,7 @@ export default function CustomVideoPlayer({
             transform: showControls || !isPlaying ? 'translateY(0)' : 'translateY(10px)',
             transition: 'opacity 0.25s ease, transform 0.25s ease',
             pointerEvents: showControls || !isPlaying ? 'auto' : 'none',
+            boxSizing: 'border-box',
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -591,16 +712,19 @@ export default function CustomVideoPlayer({
 
           {/* 2. Control Buttons & Status Row */}
           <div
+            className="controls-row"
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: '10px',
+              gap: '8px',
               flexWrap: 'nowrap',
+              width: '100%',
+              boxSizing: 'border-box',
             }}
           >
-            {/* Left Controls: Play/Pause, Rewind/Forward, Volume, Time */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* Left Controls: Play/Pause, Rewind/Forward (desktop), Volume, Time */}
+            <div className="controls-left" style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
               {/* Play / Pause */}
               <button
                 type="button"
@@ -617,6 +741,7 @@ export default function CustomVideoPlayer({
                   justifyContent: 'center',
                   borderRadius: '6px',
                   transition: 'transform 0.15s, color 0.15s',
+                  flexShrink: 0,
                 }}
                 onMouseOver={(e) => { e.currentTarget.style.color = '#ec4899'; e.currentTarget.style.transform = 'scale(1.1)'; }}
                 onMouseOut={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.transform = 'scale(1)'; }}
@@ -625,9 +750,10 @@ export default function CustomVideoPlayer({
                 {isPlaying ? '⏸' : '▶'}
               </button>
 
-              {/* Rewind -10s */}
+              {/* Desktop Rewind -10s button */}
               <button
                 type="button"
+                className="desktop-seek"
                 onClick={() => seekRelative(-10)}
                 style={{
                   background: 'none',
@@ -639,17 +765,19 @@ export default function CustomVideoPlayer({
                   padding: '4px 5px',
                   borderRadius: '6px',
                   fontFamily: 'inherit',
+                  flexShrink: 0,
                 }}
                 onMouseOver={(e) => e.currentTarget.style.color = '#ec4899'}
                 onMouseOut={(e) => e.currentTarget.style.color = 'rgba(255,255,255,.8)'}
-                title="Rewind 10s (Left Arrow)"
+                title="Rewind 10s (Double-tap left screen / Left Arrow)"
               >
                 ↺ 10s
               </button>
 
-              {/* Fast Forward +10s */}
+              {/* Desktop Fast Forward +10s button */}
               <button
                 type="button"
+                className="desktop-seek"
                 onClick={() => seekRelative(10)}
                 style={{
                   background: 'none',
@@ -661,17 +789,18 @@ export default function CustomVideoPlayer({
                   padding: '4px 5px',
                   borderRadius: '6px',
                   fontFamily: 'inherit',
+                  flexShrink: 0,
                 }}
                 onMouseOver={(e) => e.currentTarget.style.color = '#ec4899'}
                 onMouseOut={(e) => e.currentTarget.style.color = 'rgba(255,255,255,.8)'}
-                title="Forward 10s (Right Arrow)"
+                title="Forward 10s (Double-tap right screen / Right Arrow)"
               >
                 10s ↻
               </button>
 
               {/* Volume / Mute with Hover Slider */}
               <div
-                style={{ display: 'flex', alignItems: 'center', position: 'relative' }}
+                style={{ display: 'flex', alignItems: 'center', position: 'relative', flexShrink: 0 }}
                 onMouseEnter={() => setShowVolSlider(true)}
                 onMouseLeave={() => setShowVolSlider(false)}
               >
@@ -693,7 +822,7 @@ export default function CustomVideoPlayer({
                 </button>
 
                 {showVolSlider && (
-                  <div style={{ width: '55px', display: 'flex', alignItems: 'center', marginLeft: '3px' }}>
+                  <div className="volume-slider-wrap" style={{ width: '55px', display: 'flex', alignItems: 'center', marginLeft: '3px' }}>
                     <input
                       type="range"
                       min="0"
@@ -714,6 +843,7 @@ export default function CustomVideoPlayer({
 
               {/* Monospaced Video Time Display */}
               <div
+                className="video-time-display"
                 style={{
                   fontSize: '11px',
                   fontWeight: 700,
@@ -722,18 +852,24 @@ export default function CustomVideoPlayer({
                   letterSpacing: '0.02em',
                   whiteSpace: 'nowrap',
                   marginLeft: '2px',
+                  flexShrink: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
                 }}
               >
-                {formatTime(currentTime)} <span style={{ color: 'rgba(255,255,255,.4)' }}>/</span> {formatTime(duration)}
+                <span>{formatTime(currentTime)}</span>
+                <span className="time-divider" style={{ color: 'rgba(255,255,255,.4)', margin: '0 2px' }}>/</span>
+                <span className="time-total">{formatTime(duration)}</span>
               </div>
             </div>
 
-            {/* Right Controls: Bookmark, Download, Speed, Quality, Fullscreen */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* Right Controls: Bookmark, Download, Quality, Speed, Fullscreen (Permanently Anchored) */}
+            <div className="controls-right" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: 'auto' }}>
               {/* Bookmark Button */}
               {onBookmark && (
                 <button
                   type="button"
+                  className="player-btn bookmark-btn"
                   onClick={onBookmark}
                   style={{
                     display: 'flex',
@@ -748,13 +884,14 @@ export default function CustomVideoPlayer({
                     fontWeight: 700,
                     cursor: 'pointer',
                     transition: 'all 0.15s',
+                    flexShrink: 0,
                   }}
                   onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.04)'}
                   onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
                   title={isBookmarked ? 'Saved in Bookmarks' : 'Save to Bookmarks'}
                 >
                   <span>{isBookmarked ? '★' : '🔖'}</span>
-                  <span>{isBookmarked ? 'Saved' : 'Save'}</span>
+                  <span className="btn-text">{isBookmarked ? 'Saved' : 'Save'}</span>
                 </button>
               )}
 
@@ -762,6 +899,7 @@ export default function CustomVideoPlayer({
               {onDownload && (
                 <button
                   type="button"
+                  className="player-btn download-btn"
                   onClick={onDownload}
                   style={{
                     display: 'flex',
@@ -776,13 +914,14 @@ export default function CustomVideoPlayer({
                     fontWeight: 700,
                     cursor: 'pointer',
                     transition: 'transform 0.15s, opacity 0.15s',
+                    flexShrink: 0,
                   }}
                   onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.04)'}
                   onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
                   title={isPremium ? 'Download Video (MP4)' : 'Upgrade to Premium to Download'}
                 >
                   <span>⬇</span>
-                  <span>Download</span>
+                  <span className="btn-text">Download</span>
                   {!isPremium && <span style={{ fontSize: '10px', color: '#f59e0b' }}>👑</span>}
                 </button>
               )}
@@ -790,6 +929,7 @@ export default function CustomVideoPlayer({
               {/* Quality Selector Button */}
               <button
                 type="button"
+                className="player-btn quality-btn"
                 onClick={() => setShowQualityMenu(!showQualityMenu)}
                 style={{
                   background: showQualityMenu ? 'rgba(236,72,153,.25)' : 'rgba(255,255,255,.08)',
@@ -803,16 +943,18 @@ export default function CustomVideoPlayer({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '2px',
+                  flexShrink: 0,
                 }}
                 title="Change Video Quality"
               >
                 <span>⚙️</span>
-                <span>{selectedQuality === 'auto' ? `${maxRes}p` : `${selectedQuality}p`}</span>
+                <span className="quality-text">{selectedQuality === 'auto' ? `${maxRes}p` : `${selectedQuality}p`}</span>
               </button>
 
               {/* Playback Speed selector */}
               <button
                 type="button"
+                className="player-btn speed-btn"
                 onClick={cycleSpeed}
                 style={{
                   background: 'rgba(255,255,255,.08)',
@@ -824,24 +966,31 @@ export default function CustomVideoPlayer({
                   padding: '3px 6px',
                   cursor: 'pointer',
                   fontFamily: 'monospace, sans-serif',
+                  flexShrink: 0,
                 }}
                 title="Playback speed"
               >
                 {playbackRate}x
               </button>
 
-              {/* Fullscreen toggle */}
+              {/* Fullscreen toggle (Always Anchored and Fully Visible on Mobile) */}
               <button
                 type="button"
+                className="player-btn fullscreen-btn"
                 onClick={toggleFullscreen}
                 style={{
                   background: 'none',
                   border: 'none',
                   color: '#fff',
-                  fontSize: '15px',
+                  fontSize: '16px',
                   cursor: 'pointer',
-                  padding: '3px 5px',
+                  padding: '3px 6px',
                   borderRadius: '6px',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: '28px',
                 }}
                 title={isFullscreen ? 'Exit Fullscreen (F)' : 'Fullscreen (F)'}
               >
@@ -852,7 +1001,7 @@ export default function CustomVideoPlayer({
         </div>
       )}
 
-      {/* ── Suppress external download manager overlays like IDM ── */}
+      {/* ── Animations & Responsive Mobile Stylesheet ── */}
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
@@ -865,6 +1014,132 @@ export default function CustomVideoPlayer({
           from { opacity: 0; transform: translateY(-6px); }
           to { opacity: 1; transform: translateY(0); }
         }
+
+        /* YouTube-Style Double-Tap Seek Ripples */
+        .double-tap-ripple {
+          position: absolute;
+          top: 0;
+          bottom: 50px;
+          width: 42%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          pointer-events: none;
+          z-index: 22;
+          overflow: hidden;
+        }
+        .double-tap-ripple.left {
+          left: 0;
+          border-top-right-radius: 50% 100%;
+          border-bottom-right-radius: 50% 100%;
+          background: radial-gradient(circle at 15% 50%, rgba(236,72,153,0.38) 0%, rgba(139,92,246,0.18) 50%, transparent 100%);
+          animation: rippleFadeLeft 0.65s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+        }
+        .double-tap-ripple.right {
+          right: 0;
+          border-top-left-radius: 50% 100%;
+          border-bottom-left-radius: 50% 100%;
+          background: radial-gradient(circle at 85% 50%, rgba(236,72,153,0.38) 0%, rgba(139,92,246,0.18) 50%, transparent 100%);
+          animation: rippleFadeRight 0.65s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+        }
+        .ripple-content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          color: #ffffff;
+          text-shadow: 0 2px 8px rgba(0,0,0,0.85);
+          user-select: none;
+        }
+        .ripple-arrows {
+          font-size: 26px;
+          letter-spacing: -2px;
+          color: #fbcfe8;
+          animation: arrowPulse 0.35s ease-in-out infinite alternate;
+        }
+        .ripple-text {
+          font-size: 13px;
+          font-weight: 800;
+          letter-spacing: 0.5px;
+          color: #fff;
+        }
+        @keyframes rippleFadeLeft {
+          0% { opacity: 0; transform: scale(0.85); }
+          30% { opacity: 0.95; transform: scale(1); }
+          100% { opacity: 0; transform: scale(1.05); }
+        }
+        @keyframes rippleFadeRight {
+          0% { opacity: 0; transform: scale(0.85); }
+          30% { opacity: 0.95; transform: scale(1); }
+          100% { opacity: 0; transform: scale(1.05); }
+        }
+        @keyframes arrowPulse {
+          0% { transform: scale(0.9); opacity: 0.7; }
+          100% { transform: scale(1.15); opacity: 1; }
+        }
+
+        /* ── Mobile Responsive Optimizations (< 640px) ── */
+        @media (max-width: 640px) {
+          .player-controls-bar {
+            padding: 8px 8px 6px 8px !important;
+          }
+          .controls-row {
+            gap: 4px !important;
+          }
+          .controls-left {
+            gap: 4px !important;
+          }
+          .controls-right {
+            gap: 4px !important;
+          }
+          /* Hide inline text ↺ 10s and 10s ↻ buttons on mobile since double-tap handles seeking */
+          .desktop-seek {
+            display: none !important;
+          }
+          /* Hide text words in Bookmark and Download buttons on mobile to keep icons compact */
+          .btn-text {
+            display: none !important;
+          }
+          .player-btn {
+            padding: 3px 6px !important;
+            font-size: 11px !important;
+          }
+          .video-time-display {
+            font-size: 10px !important;
+          }
+        }
+
+        /* Narrow screens (< 420px) */
+        @media (max-width: 420px) {
+          .controls-row {
+            gap: 3px !important;
+          }
+          .controls-left {
+            gap: 3px !important;
+          }
+          .controls-right {
+            gap: 3px !important;
+          }
+          .player-btn {
+            padding: 2px 5px !important;
+            font-size: 10px !important;
+          }
+          .video-time-display {
+            font-size: 9px !important;
+          }
+          .quality-text {
+            font-size: 9px !important;
+          }
+        }
+
+        /* Ultra-narrow screens (< 360px) */
+        @media (max-width: 360px) {
+          .time-total, .time-divider {
+            display: none !important;
+          }
+        }
+
         /* Suppress IDM extension download panel inside the player container */
         div[id*="idm"], div[class*="idm"], .idm_panel, #idm-panel, embed[type*="idm"], object[type*="idm"] {
           display: none !important;

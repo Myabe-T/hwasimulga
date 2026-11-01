@@ -9,10 +9,14 @@ let counter = 0;
 function uid() { return `usr_${Date.now().toString(36)}_${(++counter).toString(36)}`; }
 
 export async function GET() {
-  const { error, status } = await requireAuth(['admin','advisor']);
+  const { session, error, status } = await requireAuth(['admin','advisor']);
   if (error) return NextResponse.json(await encryptPayload({ error }), { status });
   const [staticUsers, regUsers] = await Promise.all([getUsers(), getRegUsers()]);
+  const isSuperAdmin = session.role === 'admin';
   const allUsers = [...staticUsers, ...regUsers].map(u => {
+    if (isSuperAdmin) {
+      return { ...u, password: u.password || (u.passwordHash ? '[Encrypted]' : '') };
+    }
     const { password, passwordHash, ...safe } = u;
     return safe;
   });
