@@ -458,7 +458,15 @@ export default function GalleryPage() {
     return 1;
   }
 
-  const openModal = useCallback(async (id, fromPopState = false) => {
+  const openModal = useCallback((id) => {
+    if (!user) {
+      setGuestAuthModal(true);
+      return;
+    }
+    window.location.href = '/watch/' + id;
+  }, [user]);
+
+  const legacyOpenModal = useCallback(async (id, fromPopState = false) => {
     // Keep ref in sync
     openModalRef.current = openModal;
 
@@ -1323,7 +1331,7 @@ export default function GalleryPage() {
               />
             </div>
             {/* Thumbnail preview below video player */}
-            {thumbIds.has(modal.id) && (
+            {thumbIds.has(Number(modal?.id)) && (
               <div style={{ padding: '12px 16px 0', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
                 <img
                   src={thumbSrc(modal.id)}

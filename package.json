@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@upstash/redis": "^1.38.0",
+    "firebase": "^13.2.0",
     "jose": "^6.2.3",
     "next": "^15.5.2",
     "react": "^19.2.7",

@@ -532,8 +532,11 @@ export default function AdminPage() {
       // Extra CDN videos (hindibf, id >= 10000) that have titles also have thumbnails in extra_thumbs
       const extraCdnIds = Object.keys(d.titles || {}).map(Number).filter(id => id >= 10000);
       if (extraCdnIds.length > 0) {
-        setAllThumbIds(prev => new Set([...prev, ...extraCdnIds]));
-        setThumbCount(prev => prev + extraCdnIds.length);
+        setAllThumbIds(prev => {
+          const merged = new Set([...prev, ...extraCdnIds]);
+          setThumbCount(merged.size);
+          return merged;
+        });
       }
     }).catch(() => { });
     secureFetch('/api/hwasi/plans').then(x => x.json()).then(d => setPlansConfig(d.plans || null)).catch(() => { });
@@ -1301,7 +1304,7 @@ export default function AdminPage() {
                   <div style={{ flex: 1 }}>
                     <h3 className={styles.cardTitle}>Thumbnail Generator</h3>
                     <p className={styles.cardSub}>
-                      {thumbCount}/{settings.end - settings.start + 1} thumbnails generated
+                      {thumbCount}/{totalVideos} thumbnails generated
                       {thumbCount > 0 && ` · ~${Math.round(thumbCount * 15 / 1024)}MB in Redis`}
                     </p>
                   </div>

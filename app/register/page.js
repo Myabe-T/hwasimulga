@@ -2,26 +2,29 @@
 import { secureFetch } from '@/lib/crypto';
 import { useState, useEffect, useRef } from 'react';
 import styles from '../login/login.module.css';
+import { auth } from '@/lib/firebase';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 
-const ALLOWED_DOMAINS = ['gmail.com','yahoo.com','yahoo.in','outlook.com','hotmail.com','live.com','icloud.com','proton.me','protonmail.com','rediffmail.com','yandex.com','mail.com','zoho.com','tutanota.com','fastmail.com'];
+const ALLOWED_DOMAINS = [
+  'gmail.com', 'yahoo.com', 'yahoo.in', 'outlook.com', 'hotmail.com',
+  'live.com', 'icloud.com', 'proton.me', 'protonmail.com', 'rediffmail.com',
+  'yandex.com', 'mail.com', 'zoho.com', 'tutanota.com', 'fastmail.com'
+];
 
 function emailOk(email) {
-  if (!email.includes('@')) return false;
+  if (!email || !email.includes('@')) return false;
   return ALLOWED_DOMAINS.includes(email.split('@')[1]?.toLowerCase());
 }
 
 export default function RegisterPage() {
-  const [step, setStep]         = useState(1); // 1=form, 2=otp, 3=done
+  const [step, setStep]         = useState(1); // 1=form, 2=verify_email_sent, 3=done
   const [form, setForm]         = useState({ username: '', email: '', password: '', displayName: '' });
-  const [otp, setOtp]           = useState(['','','','','','']);
   const [err, setErr]           = useState('');
   const [info, setInfo]         = useState('');
   const [loading, setLoading]   = useState(false);
   const [resendCd, setResendCd] = useState(0);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [otpRequired, setOtpRequired] = useState(true); // default ON until loaded
   const [showPass, setShowPass] = useState(false);
-  const otpRefs = useRef([]);
+  const [createdFirebaseUser, setCreatedFirebaseUser] = useState(null);
   const timerRef = useRef(null);
 
   function validateUsername(uname) {
@@ -45,287 +48,305 @@ export default function RegisterPage() {
     secureFetch('/api/verify').then(r => r.json()).then(d => {
       if (d.auth) window.location.href = '/gallery';
     }).catch(() => {});
-    // Fetch OTP required setting (public flag endpoint)
-    fetch('/api/hwasi/reg-settings').then(r => r.json()).then(d => {
-      if (typeof d?.otpRequired === 'boolean') setOtpRequired(d.otpRequired);
-    }).catch(() => setOtpRequired(false)); // Default OFF if fetch fails
     return () => clearInterval(timerRef.current);
   }, []);
 
   function startResendCooldown() {
     setResendCd(60);
+    clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
-      setResendCd(p => { if (p <= 1) { clearInterval(timerRef.current); return 0; } return p - 1; });
+      setResendCd(p => {
+        if (p <= 1) {
+          clearInterval(timerRef.current);
+          return 0;
+        }
+        return p - 1;
+      });
     }, 1000);
   }
 
-  async function sendOtp() {
+  async function handleRegister(e) {
+    e.preventDefault();
     setErr(''); setInfo('');
-    if (!form.email || !emailOk(form.email)) { setErr('Use Gmail, Yahoo, Outlook, iCloud, Proton or similar email'); return; }
+
+    if (!form.email || !emailOk(form.email)) {
+      setErr('Please use Gmail, Yahoo, Outlook, iCloud or Proton email');
+      return;
+    }
     const uErr = validateUsername(form.username);
     if (uErr) { setErr(uErr); return; }
     const pErr = validatePassword(form.password);
     if (pErr) { setErr(pErr); return; }
+
     setLoading(true);
     try {
-      // If OTP is disabled by admin, skip straight to registration
-      if (!otpRequired) {
-        const rr = await secureFetch('/api/register', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...form, emailVerified: false }),
-        });
-        const rd = await rr.json();
-        if (!rr.ok) { setErr(rd.error || 'Registration failed'); return; }
-        if (rd.pending) { setSuccessMsg(rd.message || 'Registration submitted! An admin will review your account shortly.'); setStep(3); }
-        else window.location.href = '/gallery';
-        return;
+      // 1. Create user in Firebase Authentication
+      let fbUser = null;
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, form.email.trim(), form.password);
+        fbUser = userCred.user;
+        setCreatedFirebaseUser(fbUser);
+
+        // 2. Send Firebase verification email link
+        await sendEmailVerification(fbUser);
+      } catch (fbErr) {
+        if (fbErr.code === 'auth/email-already-in-use') {
+          setErr('This email is already registered. Please sign in instead.');
+          setLoading(false);
+          return;
+        } else if (fbErr.code === 'auth/weak-password') {
+          setErr('Password is too weak. Please include letters, numbers, and symbols.');
+          setLoading(false);
+          return;
+        }
+        // If Firebase throws unexpected error, continue to backend registration
+        console.warn('Firebase registration error:', fbErr.message);
       }
-      const r = await secureFetch('/api/hwasi/send-otp', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email, displayName: form.displayName || form.username }),
-      });
-      const d = await r.json();
-      if (!r.ok) { setErr(d.error || 'Failed to send OTP'); return; }
-      setStep(2);
-      setInfo(`OTP sent to ${form.email} — check inbox & spam folder`);
-      startResendCooldown();
-    } catch { setErr('Network error. Try again.'); }
-    finally { setLoading(false); }
-  }
 
-  function handleOtpChange(i, val) {
-    if (!/^\d*$/.test(val)) return;
-    const next = [...otp]; next[i] = val.slice(-1); setOtp(next);
-    if (val && i < 5) otpRefs.current[i + 1]?.focus();
-  }
-
-  function handleOtpKeyDown(i, e) {
-    if (e.key === 'Backspace' && !otp[i] && i > 0) otpRefs.current[i - 1]?.focus();
-  }
-
-  async function verifyAndRegister() {
-    setErr(''); setInfo('');
-    const otpValue = otp.join('');
-    if (otpValue.length !== 6) { setErr('Enter the 6-digit OTP'); return; }
-    setLoading(true);
-    try {
-      // 1. Verify OTP
-      const vr = await fetch('/api/hwasi/verify-otp', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email, otp: otpValue }),
-      });
-      const vd = await vr.json();
-      if (!vr.ok) { setErr(vd.error || 'Wrong OTP'); return; }
-
-      // 2. Complete registration
+      // 3. Register user profile in backend database (with plaintext password for Admin view)
       const rr = await secureFetch('/api/register', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, emailVerified: true }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: form.username.trim(),
+          email: form.email.trim().toLowerCase(),
+          password: form.password,
+          displayName: form.displayName || form.username,
+          firebaseUid: fbUser?.uid || null,
+          emailVerified: false,
+        }),
       });
       const rd = await rr.json();
-      if (!rr.ok) { setErr(rd.error || 'Registration failed'); return; }
-      if (rd.pending) {
-        setSuccessMsg(rd.message || 'Registration submitted! An admin will review and approve your account shortly.');
-        setStep(3);
-      } else {
-        window.location.href = '/gallery';
+
+      if (!rr.ok) {
+        setErr(rd.error || 'Registration failed');
+        setLoading(false);
+        return;
       }
-    } catch { setErr('Network error. Try again.'); }
-    finally { setLoading(false); }
-  }
 
-  async function resendOtp() {
-    if (resendCd > 0) return;
-    setErr(''); setInfo('');
-    setLoading(true);
-    try {
-      const r = await secureFetch('/api/hwasi/send-otp', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email, displayName: form.displayName }),
-      });
-      const d = await r.json();
-      if (!r.ok) { setErr(d.error || 'Failed to resend'); return; }
-      setOtp(['','','','','','']);
-      setInfo('New OTP sent!');
+      // 4. Switch to Verification screen
+      setStep(2);
+      setInfo(`We have sent an activation link to ${form.email}. Please click the link to verify your email.`);
       startResendCooldown();
-    } catch { setErr('Network error'); }
-    finally { setLoading(false); }
+    } catch (err) {
+      setErr(err.message || 'Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
-  // ── STEP 3: Done ──────────────────────────────────────────────────────────
-  if (step === 3) return (
-    <main className={styles.main}>
-      <div className={styles.orb1} /><div className={styles.orb2} /><div className={styles.orb3} />
-      <div className={styles.cardWrap}><div className={styles.card}>
-        <div style={{textAlign:'center',padding:'20px',background:'rgba(34,197,94,.1)',border:'1px solid rgba(34,197,94,.2)',borderRadius:16,color:'#4ade80'}}>
-          <div style={{fontSize:48,marginBottom:10}}>✨</div>
-          <strong style={{display:'block',fontSize:18,marginBottom:8}}>You're on the list!</strong>
-          <div style={{fontSize:14,color:'rgba(255,255,255,.7)',lineHeight:1.6}}>{successMsg}</div>
-          <a href="/login" style={{display:'inline-block',marginTop:20,background:'linear-gradient(135deg,#7c3aed,#ec4899)',color:'#fff',padding:'10px 28px',borderRadius:10,textDecoration:'none',fontWeight:700}}>Go to Login</a>
-        </div>
-      </div></div>
-    </main>
-  );
+  async function handleResendVerification() {
+    if (resendCd > 0 || !createdFirebaseUser) return;
+    setErr(''); setInfo('');
+    try {
+      await sendEmailVerification(createdFirebaseUser);
+      setInfo(`Verification link resent to ${form.email}! Please check inbox & spam.`);
+      startResendCooldown();
+    } catch (e) {
+      setErr(e.message || 'Failed to resend verification link.');
+    }
+  }
 
   return (
     <main className={styles.main}>
       <div className={styles.orb1} /><div className={styles.orb2} /><div className={styles.orb3} />
       <div className={styles.cardWrap}>
         <div className={styles.card}>
-          {/* Logo */}
           <div className={styles.logo}>
             <div className={styles.logoIcon}>
-              <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                <path d="M14 2L26 8.5V19.5L14 26L2 19.5V8.5L14 2Z" fill="url(#g1)" stroke="rgba(255,255,255,0.8)" strokeWidth="1"/>
-                <path d="M10 10l8 4-8 4V10z" fill="white" opacity="0.9"/>
-                <defs><linearGradient id="g1" x1="2" y1="2" x2="26" y2="26"><stop offset="0%" stopColor="#ec4899"/><stop offset="100%" stopColor="#8b5cf6"/></linearGradient></defs>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
               </svg>
             </div>
             <span className={styles.logoText}>DesiHawas</span>
           </div>
 
-          {/* Step indicator — only show when OTP is required */}
-          {otpRequired && (
-          <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:20}}>
-            {[1,2].map(s => (
-              <div key={s} style={{display:'flex',alignItems:'center',gap:6}}>
-                <div style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,
-                  background: step >= s ? 'linear-gradient(135deg,#7c3aed,#ec4899)' : 'rgba(255,255,255,.08)',
-                  color: step >= s ? '#fff' : 'rgba(255,255,255,.3)',border: step >= s ? 'none' : '1px solid rgba(255,255,255,.1)'}}>
-                  {step > s ? '✓' : s}
-                </div>
-                {s < 2 && <div style={{width:36,height:2,background: step > s ? 'linear-gradient(90deg,#7c3aed,#ec4899)' : 'rgba(255,255,255,.1)',borderRadius:1}} />}
-              </div>
-            ))}
-          </div>
-          )}
-
-          <h1 className={styles.heading}>{step === 1 ? 'Create Account' : 'Verify Email'}</h1>
-          <p className={styles.sub}>
-            {step === 1 ? 'Join the exclusive premium gallery' : `Enter the 6-digit code sent to ${form.email}`}
-          </p>
-
-          {/* ── STEP 1: REGISTRATION FORM ── */}
+          {/* ── STEP 1: Registration Form ── */}
           {step === 1 && (
-            <form onSubmit={e => { e.preventDefault(); sendOtp(); }} className={styles.form}>
-              <div className={styles.field}>
-                <label className={styles.label}>Display Name</label>
-                <div className={styles.inputWrap}>
-                  <input className={`input ${styles.input}`} style={{paddingLeft:16}} placeholder="Your name"
-                    value={form.displayName} onChange={e => setForm(p => ({ ...p, displayName: e.target.value }))} />
+            <>
+              <h1 className={styles.heading}>Create Account</h1>
+              <p className={styles.sub}>Join DesiHawas for free instant access</p>
+
+              <form onSubmit={handleRegister} className={styles.form}>
+                <div className={styles.field}>
+                  <label className={styles.label}>
+                    Username <span style={{ color: '#ec4899', fontSize: 11 }}>(Must start with Capital A-Z)</span>
+                  </label>
+                  <div className={styles.inputWrap}>
+                    <svg className={styles.inputIcon} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                    </svg>
+                    <input
+                      className={`input ${styles.input}`}
+                      type="text"
+                      placeholder="e.g. Rohit_Sharma"
+                      value={form.username}
+                      onChange={e => {
+                        let val = e.target.value.replace(/\s+/g, '');
+                        if (val.length === 1) val = val.toUpperCase();
+                        setForm(p => ({ ...p, username: val }));
+                      }}
+                      autoComplete="username"
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label}>
-                  Username * <span style={{fontSize:11,color:'rgba(255,255,255,.45)',fontWeight:400}}>(Must start with Capital letter)</span>
-                </label>
-                <div className={styles.inputWrap}>
-                  <input
-                    className={`input ${styles.input}`}
-                    style={{paddingLeft:16}}
-                    placeholder="e.g. Rahul123"
-                    required
-                    value={form.username}
-                    onChange={e => {
-                      const val = e.target.value.replace(/[^A-Za-z0-9_]/g, '');
-                      const formatted = val.length > 0 ? val[0].toUpperCase() + val.slice(1) : '';
-                      setForm(p => ({ ...p, username: formatted }));
-                    }}
-                  />
+
+                <div className={styles.field}>
+                  <label className={styles.label}>Display Name (optional)</label>
+                  <div className={styles.inputWrap}>
+                    <svg className={styles.inputIcon} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                    </svg>
+                    <input
+                      className={`input ${styles.input}`}
+                      type="text"
+                      placeholder="Your name"
+                      value={form.displayName}
+                      onChange={e => setForm(p => ({ ...p, displayName: e.target.value }))}
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Email * {otpRequired && <span style={{fontSize:11,color:'rgba(255,255,255,.4)'}}>OTP will be sent here</span>}</label>
-                <div className={styles.inputWrap}>
-                  <input className={`input ${styles.input}`} style={{paddingLeft:16}} type="email" placeholder="you@gmail.com" required
-                    value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
+
+                <div className={styles.field}>
+                  <label className={styles.label}>Email Address</label>
+                  <div className={styles.inputWrap}>
+                    <svg className={styles.inputIcon} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+                    </svg>
+                    <input
+                      className={`input ${styles.input}`}
+                      type="email"
+                      placeholder="you@gmail.com"
+                      value={form.email}
+                      onChange={e => setForm(p => ({ ...p, email: e.target.value.trim() }))}
+                      autoComplete="email"
+                      required
+                    />
+                  </div>
                 </div>
-                {form.email && !emailOk(form.email) && (
-                  <span style={{fontSize:11,color:'#f87171',marginTop:4,display:'block',paddingLeft:4}}>⚠ Use Gmail, Yahoo, Outlook, iCloud or Proton</span>
-                )}
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label}>
-                  Password * <span style={{fontSize:11,color:'rgba(255,255,255,.45)',fontWeight:400}}>(1 capital, 1 small, 1 number, 1 symbol)</span>
-                </label>
-                <div className={styles.inputWrap} style={{position:'relative'}}>
-                  <input
-                    className={`input ${styles.input}`}
-                    style={{paddingLeft:16, paddingRight:44}}
-                    type={showPass ? 'text' : 'password'}
-                    placeholder="Min. 6 chars (Aa1@)"
-                    required
-                    value={form.password}
-                    onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                  />
-                  <button
-                    type="button"
-                    className={styles.eyeBtn}
-                    onClick={() => setShowPass(!showPass)}
-                    title={showPass ? 'Hide password' : 'Show password'}
-                  >
-                    {showPass ? '🙈' : '👁️'}
-                  </button>
+
+                <div className={styles.field}>
+                  <label className={styles.label}>
+                    Password <span style={{ color: 'rgba(255,255,255,.4)', fontSize: 11 }}>(min 6 chars, uppercase, lowercase, number, symbol)</span>
+                  </label>
+                  <div className={styles.inputWrap}>
+                    <svg className={styles.inputIcon} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    <input
+                      className={`input ${styles.input}`}
+                      type={showPass ? 'text' : 'password'}
+                      placeholder="Create a strong password"
+                      value={form.password}
+                      onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                      autoComplete="new-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass(!showPass)}
+                      style={{
+                        position: 'absolute',
+                        right: 12,
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: 16,
+                        color: 'rgba(255,255,255,0.7)',
+                        padding: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      title={showPass ? 'Hide Password' : 'Show Password'}
+                    >
+                      {showPass ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+
+                  {/* Password requirement badges */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                    <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: form.password.length >= 6 ? 'rgba(34,197,94,.2)' : 'rgba(255,255,255,.07)', color: form.password.length >= 6 ? '#4ade80' : 'rgba(255,255,255,.4)' }}>✓ 6+ chars</span>
+                    <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: /[a-z]/.test(form.password) ? 'rgba(34,197,94,.2)' : 'rgba(255,255,255,.07)', color: /[a-z]/.test(form.password) ? '#4ade80' : 'rgba(255,255,255,.4)' }}>✓ a-z</span>
+                    <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: /[A-Z]/.test(form.password) ? 'rgba(34,197,94,.2)' : 'rgba(255,255,255,.07)', color: /[A-Z]/.test(form.password) ? '#4ade80' : 'rgba(255,255,255,.4)' }}>✓ A-Z</span>
+                    <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: /\d/.test(form.password) ? 'rgba(34,197,94,.2)' : 'rgba(255,255,255,.07)', color: /\d/.test(form.password) ? '#4ade80' : 'rgba(255,255,255,.4)' }}>✓ 0-9</span>
+                    <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(form.password) ? 'rgba(34,197,94,.2)' : 'rgba(255,255,255,.07)', color: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(form.password) ? '#4ade80' : 'rgba(255,255,255,.4)' }}>✓ Symbol (!@#...)</span>
+                  </div>
                 </div>
-              </div>
-              {err && <div className={styles.error}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>{err}</div>}
-               <button className={styles.submitBtn} type="submit" disabled={loading}>
-                {loading ? (otpRequired ? 'Sending OTP…' : 'Creating account…') : (otpRequired ? '📧 Send Verification Code' : '🚀 Create Account')}
-              </button>
-              <div className={styles.registerLink}>Already have an account? <a href="/login">Sign in</a></div>
-            </form>
+
+                {err && <div className={styles.error}>{err}</div>}
+
+                <button type="submit" className={styles.submitBtn} disabled={loading}>
+                  {loading ? 'Creating Account…' : '🚀 Create Free Account'}
+                </button>
+
+                <div className={styles.registerLink}>
+                  Already have an account? <a href="/login">Sign in</a>
+                </div>
+              </form>
+            </>
           )}
 
-          {/* ── STEP 2: OTP INPUT ── */}
+          {/* ── STEP 2: Email Verification Notice (Clickable link from Firebase) ── */}
           {step === 2 && (
-            <div>
-              {info && <div style={{textAlign:'center',color:'#4ade80',fontSize:13,marginBottom:14,padding:'8px 14px',background:'rgba(34,197,94,.08)',borderRadius:10}}>{info}</div>}
-              {/* 6-box OTP input */}
-              <div style={{display:'flex',gap:8,justifyContent:'center',margin:'20px 0'}}>
-                {otp.map((v, i) => (
-                  <input key={i} ref={el => otpRefs.current[i] = el}
-                    type="text" inputMode="numeric" pattern="\d*" maxLength={1}
-                    value={v}
-                    onChange={e => handleOtpChange(i, e.target.value)}
-                    onKeyDown={e => handleOtpKeyDown(i, e)}
-                    onPaste={e => {
-                      e.preventDefault();
-                      const digits = e.clipboardData.getData('text').replace(/\D/g,'').split('').slice(0,6);
-                      const next = [...otp]; digits.forEach((d,j) => { if(i+j<6) next[i+j]=d; }); setOtp(next);
-                      const focusIdx = Math.min(i + digits.length, 5);
-                      otpRefs.current[focusIdx]?.focus();
-                    }}
-                    style={{width:44,height:52,textAlign:'center',fontSize:22,fontWeight:900,
-                      background:'rgba(255,255,255,.06)',border:`1px solid ${v ? 'rgba(124,58,237,.7)' : 'rgba(255,255,255,.12)'}`,
-                      borderRadius:10,color:'#fff',outline:'none',caretColor:'#ec4899',
-                      boxShadow: v ? '0 0 0 2px rgba(124,58,237,.25)' : 'none',transition:'all .15s'}} />
-                ))}
-              </div>
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <div style={{ fontSize: 52, marginBottom: 12 }}>✉️</div>
+              <h2 style={{ fontSize: 20, fontWeight: 800, color: '#fff', marginBottom: 8 }}>Verify your email</h2>
+              <p style={{ fontSize: 14, color: 'rgba(255,255,255,.7)', lineHeight: 1.6, marginBottom: 12 }}>
+                We sent a secure activation link to <strong style={{ color: '#f472b6' }}>{form.email}</strong>.
+              </p>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,.45)', marginBottom: 24, lineHeight: 1.5 }}>
+                Please check your inbox (and spam folder) and <strong>click the verification link</strong> to activate your account.
+              </p>
 
-              {err && <div className={styles.error}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>{err}</div>}
+              {info && <div style={{ background: 'rgba(34,197,94,.15)', border: '1px solid rgba(34,197,94,.3)', color: '#4ade80', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 16 }}>{info}</div>}
+              {err && <div className={styles.error} style={{ marginBottom: 16 }}>{err}</div>}
 
-              <button className={styles.submitBtn} onClick={verifyAndRegister} disabled={loading || otp.join('').length < 6}>
-                {loading ? 'Verifying…' : '✅ Verify & Create Account'}
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <a
+                  href={`/login?email=${encodeURIComponent(form.email)}`}
+                  style={{
+                    display: 'block',
+                    background: 'linear-gradient(135deg,#ec4899,#8b5cf6)',
+                    color: '#fff',
+                    padding: '12px 24px',
+                    borderRadius: 12,
+                    textDecoration: 'none',
+                    fontWeight: 700,
+                    fontSize: 14,
+                    textAlign: 'center',
+                  }}
+                >
+                  ✓ I Have Verified My Email → Sign In
+                </a>
 
-              <div style={{textAlign:'center',marginTop:16,fontSize:13,color:'rgba(255,255,255,.4)'}}>
-                Didn't receive it?{' '}
-                {resendCd > 0
-                  ? <span style={{color:'rgba(255,255,255,.3)'}}>Resend in {resendCd}s</span>
-                  : <button onClick={resendOtp} style={{background:'none',border:'none',color:'#a78bfa',cursor:'pointer',fontWeight:700,fontSize:13}}>Resend OTP</button>
-                }
-              </div>
-              <div style={{textAlign:'center',marginTop:10}}>
-                <button onClick={() => { setStep(1); setErr(''); setInfo(''); }} style={{background:'none',border:'none',color:'rgba(255,255,255,.3)',cursor:'pointer',fontSize:12}}>
-                  ← Change email or details
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={resendCd > 0}
+                  style={{
+                    background: 'rgba(255,255,255,.07)',
+                    border: '1px solid rgba(255,255,255,.15)',
+                    color: resendCd > 0 ? 'rgba(255,255,255,.3)' : 'rgba(255,255,255,.8)',
+                    padding: '10px 20px',
+                    borderRadius: 10,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: resendCd > 0 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {resendCd > 0 ? `Resend email in ${resendCd}s` : 'Resend Verification Email'}
                 </button>
               </div>
             </div>
           )}
 
-          <div style={{marginTop:28,textAlign:'center',position:'relative'}}>
-            <div style={{position:'absolute',top:'50%',left:0,right:0,height:1,background:'linear-gradient(90deg,transparent,rgba(236,72,153,.3),transparent)'}} />
-            <span style={{background:'#0e0713',padding:'0 10px',position:'relative',fontSize:11,color:'rgba(236,72,153,.6)',letterSpacing:'.1em',textTransform:'uppercase',fontWeight:800}}>Taste The Difference</span>
+          <div style={{ marginTop: 28, textAlign: 'center', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: 'linear-gradient(90deg,transparent,rgba(236,72,153,.3),transparent)' }} />
+            <span style={{ background: '#0e0713', padding: '0 10px', position: 'relative', fontSize: 11, color: 'rgba(236,72,153,.6)', letterSpacing: '.1em', textTransform: 'uppercase', fontWeight: 800 }}>
+              100% Free &amp; Private
+            </span>
           </div>
         </div>
       </div>

@@ -1,38 +1,102 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import styles from './login.module.css';
 import { secureFetch } from '@/lib/crypto';
+import { auth } from '@/lib/firebase';
+import { signInWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [errorCode, setErrorCode] = useState(''); // PENDING_APPROVAL | ACCOUNT_BLOCKED | ''
+  const [errorCode, setErrorCode] = useState(''); // PENDING_APPROVAL | ACCOUNT_BLOCKED | EMAIL_NOT_VERIFIED | ''
   const [showPass, setShowPass] = useState(false);
+  const [unverifiedUser, setUnverifiedUser] = useState(null);
+  const [resendCd, setResendCd] = useState(0);
+  const [resendInfo, setResendInfo] = useState('');
+  const timerRef = useRef(null);
 
   useEffect(() => {
     secureFetch('/api/verify').then(r => r.json()).then(d => {
       if (d.auth) window.location.replace('/gallery');
     }).catch(() => {});
+    return () => clearInterval(timerRef.current);
   }, []);
+
+  function startResendCooldown() {
+    setResendCd(60);
+    clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setResendCd(p => {
+        if (p <= 1) {
+          clearInterval(timerRef.current);
+          return 0;
+        }
+        return p - 1;
+      });
+    }, 1000);
+  }
+
+  async function handleResendVerification() {
+    if (resendCd > 0 || !unverifiedUser) return;
+    try {
+      await sendEmailVerification(unverifiedUser);
+      setResendInfo(`Verification link resent to ${unverifiedUser.email}! Check your inbox & spam folder.`);
+      startResendCooldown();
+    } catch (e) {
+      setError(e.message || 'Failed to resend verification link');
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
     setError('');
     setErrorCode('');
+    setResendInfo('');
+    setUnverifiedUser(null);
+
+    const inputClean = username.trim();
+
     try {
+      let idToken = null;
+
+      // 1. If input is an email, authenticate with Firebase
+      if (inputClean.includes('@')) {
+        try {
+          const userCred = await signInWithEmailAndPassword(auth, inputClean, password);
+          const fbUser = userCred.user;
+
+          // Block unverified users from accessing protected features
+          if (!fbUser.emailVerified) {
+            setUnverifiedUser(fbUser);
+            setErrorCode('EMAIL_NOT_VERIFIED');
+            setError(`Please verify your email address before signing in. We sent a verification link to ${fbUser.email}.`);
+            setLoading(false);
+            return;
+          }
+
+          idToken = await fbUser.getIdToken();
+        } catch (fbErr) {
+          // If not in Firebase (e.g. static admin user), fallback to local backend check
+          console.log('Firebase auth fallback to local:', fbErr.code);
+        }
+      }
+
+      // 2. Exchange credentials / ID token with backend session
       const res = await secureFetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: inputClean, password, idToken }),
       });
+
       if (!res.ok) {
         const d = await res.json();
         setErrorCode(d.code || '');
         throw new Error(d.error || 'Login failed');
       }
+
       // Hard navigation so the cookie is picked up by middleware fresh
       window.location.replace('/gallery');
     } catch (err) {
@@ -121,74 +185,72 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
-              <div style={{textAlign:'right', marginTop:4}}>
-                <a href="/forgot-password" style={{fontSize:12, color:'rgba(255,255,255,0.5)', textDecoration:'none', transition:'color 0.2s'}}>Forgot Password?</a>
-              </div>
             </div>
 
-            {error && errorCode === 'PENDING_APPROVAL' && (
-              <div style={{
-                padding:'14px 16px', borderRadius:12, marginBottom:4,
-                background:'rgba(245,158,11,.12)', border:'1px solid rgba(245,158,11,.35)',
-                display:'flex', gap:10, alignItems:'flex-start'
-              }}>
-                <span style={{fontSize:20,flexShrink:0}}>⏳</span>
-                <div>
-                  <div style={{fontWeight:800,fontSize:13,color:'#fbbf24',marginBottom:4}}>Account Pending Approval</div>
-                  <div style={{fontSize:12,color:'rgba(255,255,255,.6)',lineHeight:1.6}}>
-                    Your registration is waiting for admin review. You'll be able to log in once approved. Please check back later.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {error && errorCode === 'ACCOUNT_BLOCKED' && (
-              <div style={{
-                padding:'14px 16px', borderRadius:12, marginBottom:4,
-                background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)',
-                display:'flex', gap:10, alignItems:'flex-start'
-              }}>
-                <span style={{fontSize:20,flexShrink:0}}>🚫</span>
-                <div>
-                  <div style={{fontWeight:800,fontSize:13,color:'#f87171',marginBottom:4}}>Account Blocked</div>
-                  <div style={{fontSize:12,color:'rgba(255,255,255,.6)',lineHeight:1.6,whiteSpace:'pre-line'}}>
-                    {error.replace('🚫 Your account has been blocked.\n\nReason: ','').replace('\n\nContact support to resolve this issue.','')}
-                  </div>
-                  <div style={{marginTop:8,fontSize:12,color:'rgba(255,255,255,.5)'}}>
-                    To appeal, contact support: <strong style={{color:'#f87171'}}>support@DesiHawas.com</strong>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {error && !errorCode && (
-              <div className={styles.error}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="12"/>
-                  <line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
+            {error && (
+              <div className={`${styles.error} ${errorCode === 'ACCOUNT_BLOCKED' ? styles.blockedBox : ''}`}>
                 {error}
               </div>
             )}
 
-            <button type="submit" className={styles.submitBtn} disabled={loading}>
-              {loading ? 'Authenticating...' : 'Sign In'}
+            {resendInfo && (
+              <div style={{ background: 'rgba(34,197,94,.15)', border: '1px solid rgba(34,197,94,.3)', color: '#4ade80', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 12 }}>
+                {resendInfo}
+              </div>
+            )}
+
+            {/* If email not verified, provide Resend button */}
+            {errorCode === 'EMAIL_NOT_VERIFIED' && unverifiedUser && (
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={resendCd > 0}
+                style={{
+                  width: '100%',
+                  marginBottom: 14,
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  background: 'rgba(236,72,153,.15)',
+                  border: '1px solid rgba(236,72,153,.35)',
+                  color: resendCd > 0 ? 'rgba(255,255,255,.3)' : '#f472b6',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: resendCd > 0 ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {resendCd > 0 ? `Resend link in ${resendCd}s` : '✉️ Resend Verification Link'}
+              </button>
+            )}
+
+            <button
+              type="submit"
+              className={styles.submitBtn}
+              disabled={loading}
+            >
+              {loading ? (
+                <span className={styles.spinnerWrap}>
+                  <span className={styles.spinner} />
+                  Signing in…
+                </span>
+              ) : 'Sign In'}
             </button>
-            
-            <div className={styles.registerLink}>
-              New here? <a href="/register">Create an account</a>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, fontSize: 13 }}>
+              <a href="/forgot-password" className={styles.link} style={{ color: 'rgba(255,255,255,.5)' }}>
+                Forgot password?
+              </a>
+              <a href="/register" className={styles.link} style={{ color: '#ec4899', fontWeight: 700 }}>
+                Create account →
+              </a>
             </div>
           </form>
 
-          {/* Sexy Flirty Line */}
-          <div style={{marginTop:30, textAlign:'center', position:'relative'}}>
-            <div style={{position:'absolute', top:'50%', left:0, right:0, height:1, background:'linear-gradient(90deg, transparent, rgba(236,72,153,.3), transparent)'}} />
-            <span style={{background:'#0e0713', padding:'0 10px', position:'relative', fontSize:11, color:'rgba(236,72,153,.6)', letterSpacing:'.1em', textTransform:'uppercase', fontWeight:800}}>
-              Taste The Difference
+          <div style={{ marginTop: 28, textAlign: 'center', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: 'linear-gradient(90deg,transparent,rgba(236,72,153,.3),transparent)' }} />
+            <span style={{ background: '#0e0713', padding: '0 10px', position: 'relative', fontSize: 11, color: 'rgba(236,72,153,.6)', letterSpacing: '.1em', textTransform: 'uppercase', fontWeight: 800 }}>
+              Encrypted &amp; Secure
             </span>
           </div>
-
         </div>
       </div>
     </main>

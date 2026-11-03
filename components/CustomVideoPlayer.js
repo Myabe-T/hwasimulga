@@ -394,9 +394,6 @@ export default function CustomVideoPlayer({
           onPlaying={() => setIsBuffering(false)}
           onEnded={() => {
             setIsPlaying(false);
-            if (onNext) {
-              onNext();
-            }
           }}
           style={{
             width: '100%',
