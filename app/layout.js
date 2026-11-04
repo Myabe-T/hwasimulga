@@ -1,5 +1,6 @@
 import './globals.css';
 import SecurityGuard from '@/components/SecurityGuard';
+import IdmGuardian from '@/components/IdmGuardian';
 
 export const metadata = {
   title: 'DesiHawas — Video Gallery',
@@ -23,6 +24,7 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <SecurityGuard />
+        <IdmGuardian />
         {children}
       </body>
     </html>

@@ -43,40 +43,35 @@ export async function GET(req, { params }) {
     ? `https://cdn.hindibf.com.co/${num - 10000}.mp4`
     : `https://cdn.desimms.com.co/${num}.mp4`;
 
-  let range = req.headers.get('Range') || req.headers.get('range');
-  if (!range || range === 'bytes=0-') {
-    range = 'bytes=0-2097151'; // 2MB preview cap to ensure instant playback and save bandwidth
-  }
-
+  // Always request only the first 1.8MB slice for lightweight, fast hover preview
   const headers = {
     'User-Agent': 'Mozilla/5.0 (compatible; DesiHawasBot/1.0)',
-    ...(range ? { Range: range } : {}),
+    'Range': 'bytes=0-1887436',
   };
 
   try {
-    const upstream = await fetch(videoUrl, { headers, signal: AbortSignal.timeout(15000) });
+    const upstream = await fetch(videoUrl, { headers, signal: AbortSignal.timeout(12000) });
     if (!upstream.ok && upstream.status !== 206) {
       return new NextResponse('Not found', { status: upstream.status });
     }
 
+    const chunkBuffer = await upstream.arrayBuffer();
+
     const responseHeaders = new Headers();
-    responseHeaders.set('Content-Type', 'video/mp4');
-    responseHeaders.set('Accept-Ranges', 'bytes');
+    // Use application/octet-stream — IDM Chrome Extension completely ignores binary data streams!
+    // Never send video/mp4 over the wire for previews so IDM sniffer is NEVER triggered.
+    responseHeaders.set('Content-Type', 'application/octet-stream');
+    responseHeaders.set('Content-Length', String(chunkBuffer.byteLength));
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     responseHeaders.set('Content-Disposition', 'inline');
     responseHeaders.set('X-Content-Type-Options', 'nosniff');
-    responseHeaders.set('Cache-Control', 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400');
+    // Strong edge caching so Cloudflare caches this 1.8MB slice for instant repeated loads
+    responseHeaders.set('Cache-Control', 'public, max-age=604800, s-maxage=604800, immutable');
     responseHeaders.set('CDN-Cache-Control', 'public, max-age=604800');
 
-    if (upstream.headers.has('Content-Range')) {
-      responseHeaders.set('Content-Range', upstream.headers.get('Content-Range'));
-    }
-    if (upstream.headers.has('Content-Length')) {
-      responseHeaders.set('Content-Length', upstream.headers.get('Content-Length'));
-    }
-
-    return new NextResponse(upstream.body, {
-      status: upstream.status,
+    // Return status 200 OK — NEVER 206 Partial Content, NEVER expose Content-Range with upstream 300MB total size!
+    return new NextResponse(chunkBuffer, {
+      status: 200,
       headers: responseHeaders,
     });
   } catch (err) {

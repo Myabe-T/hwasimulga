@@ -246,18 +246,25 @@ select.input option {
 }
 
 /* Suppress 3rd-party download manager overlays (IDM, Downloader extension buttons) */
-div[id*="idm" i], div[class*="idm" i], .idm_panel, #idm-panel, embed[type*="idm" i], object[type*="idm" i],
-div[id*="downloader-panel" i], div[class*="download-helper" i], div[id*="fvd-" i], div[class*="fvd-" i],
-div[title*="download this video" i], div[title*="IDM" i], [class*="download-panel" i], [id*="download-panel" i],
-button[id*="idm" i], button[class*="idm" i] {
+*[id*="idm" i], *[class*="idm" i], .idm_panel, #idm-panel, embed[type*="idm" i], object[type*="idm" i],
+*[id*="downloader-panel" i], *[class*="download-helper" i], *[id*="fvd-" i], *[class*="fvd-" i],
+*[title*="download this video" i], *[title*="download video from this page" i], *[title*="IDM" i],
+*[aria-label*="idm" i], *[aria-label*="download" i],
+[class*="download-panel" i], [id*="download-panel" i],
+#idm_panel_container, .idm_context_menu, #idm_editor_overlay,
+div[style*="bottom: 0"][style*="left: 0"][style*="fixed"],
+div[style*="bottom:0"][style*="left:0"][style*="fixed"] {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
   width: 0 !important;
   height: 0 !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
   position: absolute !important;
-  left: -9999px !important;
-  top: -9999px !important;
-  z-index: -99999 !important;
+  left: -99999px !important;
+  top: -99999px !important;
+  z-index: -999999 !important;
+  overflow: hidden !important;
 }

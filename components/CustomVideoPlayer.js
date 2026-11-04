@@ -153,12 +153,19 @@ export default function CustomVideoPlayer({
         const idmNodes = document.querySelectorAll('div[id*="idm" i], div[class*="idm" i], embed[type*="idm" i], [class*="download-panel" i], [id*="download-panel" i]');
         idmNodes.forEach(n => n.remove());
 
-        // Also remove any injected element containing "Download this video"
-        const candidates = document.querySelectorAll('div, a, button');
+        // Also remove any injected element containing "Download this video" or "Download video from this page"
+        const candidates = document.querySelectorAll('div, a, button, span');
         for (let i = 0; i < candidates.length; i++) {
           const el = candidates[i];
-          const txt = (el.textContent || '').trim();
-          if (txt.includes('Download this video with IDM') || txt === 'Download this video' || txt.includes('IDM - MP4 file')) {
+          if (el.closest?.('.custom-player-container') && !el.className?.includes('idm')) continue;
+          const txt = (el.textContent || '').trim().toLowerCase();
+          if (
+            txt.includes('download this video with idm') ||
+            txt === 'download this video' ||
+            txt.includes('download video from this page') ||
+            txt.includes('download with idm') ||
+            (txt.includes('download all') && txt.includes('mp4 file'))
+          ) {
             el.remove();
           }
         }
@@ -166,7 +173,7 @@ export default function CustomVideoPlayer({
     };
 
     purgeIdm();
-    const interval = setInterval(purgeIdm, 500);
+    const interval = setInterval(purgeIdm, 250);
 
     const observer = new MutationObserver((mutations) => {
       for (const m of mutations) {
@@ -176,7 +183,14 @@ export default function CustomVideoPlayer({
             const text = (el.textContent || '').toLowerCase();
             const id = (el.id || '').toLowerCase();
             const cls = (el.className || '').toLowerCase();
-            if (id.includes('idm') || cls.includes('idm') || text.includes('download this video') || text.includes('idm - mp4')) {
+            if (
+              id.includes('idm') ||
+              cls.includes('idm') ||
+              text.includes('download this video') ||
+              text.includes('download video from this page') ||
+              text.includes('download with idm') ||
+              (text.includes('download all') && text.includes('mp4 file'))
+            ) {
               try { el.remove(); } catch (_) {}
             }
           }

@@ -2127,6 +2127,27 @@ export default function WatchPage() {
   );
 }
 
+const relatedBlobCache = new Map();
+
+async function getRelatedPreviewBlobUrl(id, signal) {
+  if (relatedBlobCache.has(id)) {
+    return relatedBlobCache.get(id);
+  }
+  const res = await fetch(`/api/hwasi/preview/${id}`, { signal });
+  if (!res.ok) throw new Error('Preview fetch failed: ' + res.status);
+  const buf = await res.arrayBuffer();
+  const blob = new Blob([buf], { type: 'video/mp4' });
+  const blobUrl = URL.createObjectURL(blob);
+  if (relatedBlobCache.size > 30) {
+    const oldestKey = relatedBlobCache.keys().next().value;
+    const oldUrl = relatedBlobCache.get(oldestKey);
+    try { URL.revokeObjectURL(oldUrl); } catch (_) {}
+    relatedBlobCache.delete(oldestKey);
+  }
+  relatedBlobCache.set(id, blobUrl);
+  return blobUrl;
+}
+
 function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
   const [isHovered, setIsHovered] = useState(false);
   const hoverTimer = useRef(null);
@@ -2167,16 +2188,15 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
+    const abortCtrl = new AbortController();
+    let isCancelled = false;
+
     const v = document.createElement('video');
     v.muted = true;
     v.playsInline = true;
     v.loop = true;
-    v.preload = 'auto';
     v.crossOrigin = 'anonymous';
-    v.src = `/api/hwasi/preview/${relId}`;
     videoObjRef.current = v;
-
-    let isCancelled = false;
 
     const render = () => {
       if (isCancelled || !canvas) return;
@@ -2187,20 +2207,27 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
         }
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
       }
-      if (v.currentTime > 5) {
-        v.currentTime = 1;
+      if (v.currentTime > 4.5) {
+        v.currentTime = 0.5;
       }
       animRef.current = requestAnimationFrame(render);
     };
 
-    v.play().then(() => {
-      if (!isCancelled) {
-        animRef.current = requestAnimationFrame(render);
-      }
-    }).catch(() => {});
+    getRelatedPreviewBlobUrl(relId, abortCtrl.signal)
+      .then((blobUrl) => {
+        if (isCancelled) return;
+        v.src = blobUrl;
+        v.play().then(() => {
+          if (!isCancelled) {
+            animRef.current = requestAnimationFrame(render);
+          }
+        }).catch(() => {});
+      })
+      .catch(() => {});
 
     return () => {
       isCancelled = true;
+      abortCtrl.abort();
       if (animRef.current) cancelAnimationFrame(animRef.current);
       try {
         v.pause();
