@@ -706,6 +706,32 @@ export default function AdminPage() {
     else flash('❌ ' + d.error, 'err');
   }
 
+  async function verifyUserManually(u) {
+    try {
+      const res = await secureFetch(`/api/hwasi/users/${u.id}/verify`, { method: 'POST' });
+      const d = await res.json();
+      if (res.ok) {
+        flash(`✅ ${u.username} marked as verified in Database and Firebase!`);
+        loadAll();
+      } else {
+        flash(`❌ ${d.error || 'Failed to verify user'}`, 'err');
+      }
+    } catch {
+      flash('❌ Verification request failed', 'err');
+    }
+  }
+
+  async function toggleAllowAnyEmail() {
+    const nextVal = !settings.allowAnyEmailDomain;
+    setSettings(s => ({ ...s, allowAnyEmailDomain: nextVal }));
+    await secureFetch('/api/hwasi/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...settings, allowAnyEmailDomain: nextVal }),
+    });
+    flash(nextVal ? '🌐 Open Mode: Users can now register with ANY email domain' : '🔒 Strict Mode: Only Gmail, Yahoo, Outlook, etc. allowed');
+  }
+
   // ── Thumbnail generator (CORS streaming proxy — correct approach!) ─────────
   async function runGenerator(start, end, specificIds = null) {
     genStopRef.current = false;
@@ -2051,34 +2077,63 @@ export default function AdminPage() {
 
             <div className={styles.fadeIn}>
 
-              {/* ─ Registration Approval Toggle ─ */}
-              <div className={styles.card} style={{ marginBottom: 20 }}>
-                <div className={styles.cardHeader}>
-                  <span style={{ fontSize: 22 }}>🔐</span>
-                  <div style={{ flex: 1 }}>
-                    <h3 className={styles.cardTitle}>Registration Approval</h3>
-                    <p className={styles.cardSub}>When ON, new registrations require admin approval before they can log in</p>
-                  </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                    <span style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600 }}>{regApproval ? '🟢 ON' : '⚫ OFF'}</span>
-                    <div style={{ position: 'relative', width: 44, height: 24 }} onClick={async () => {
-                      const next = !regApproval;
-                      setRegApproval(next);
-                      await fetch('/api/hwasi/reg-approval', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ required: next }) });
-                      flash(next ? '🔐 Approval mode ON — new users need admin approval' : '🔓 Open mode — anyone can register instantly');
-                    }}>
-                      <div style={{
-                        position: 'absolute', inset: 0, borderRadius: 12,
-                        background: regApproval ? 'linear-gradient(135deg,#7c3aed,#4f46e5)' : 'rgba(255,255,255,.15)',
-                        transition: 'background .2s'
-                      }} />
-                      <div style={{
-                        position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%', background: '#fff',
-                        left: regApproval ? 23 : 3,
-                        transition: 'left .2s', boxShadow: '0 1px 4px rgba(0,0,0,.3)'
-                      }} />
+              {/* ─ Registration Settings (Approval & Email Domain Switches) ─ */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 20 }}>
+                {/* 1. Registration Approval Toggle */}
+                <div className={styles.card} style={{ margin: 0 }}>
+                  <div className={styles.cardHeader}>
+                    <span style={{ fontSize: 22 }}>🔐</span>
+                    <div style={{ flex: 1 }}>
+                      <h3 className={styles.cardTitle}>Registration Approval</h3>
+                      <p className={styles.cardSub}>When ON, new accounts need manual admin approval</p>
                     </div>
-                  </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                      <span style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600 }}>{regApproval ? '🟢 ON' : '⚫ OFF'}</span>
+                      <div style={{ position: 'relative', width: 44, height: 24 }} onClick={async () => {
+                        const next = !regApproval;
+                        setRegApproval(next);
+                        await fetch('/api/hwasi/reg-approval', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ required: next }) });
+                        flash(next ? '🔐 Approval mode ON — new users need admin approval' : '🔓 Open mode — anyone can register instantly');
+                      }}>
+                        <div style={{
+                          position: 'absolute', inset: 0, borderRadius: 12,
+                          background: regApproval ? 'linear-gradient(135deg,#7c3aed,#4f46e5)' : 'rgba(255,255,255,.15)',
+                          transition: 'background .2s'
+                        }} />
+                        <div style={{
+                          position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                          left: regApproval ? 23 : 3,
+                          transition: 'left .2s', boxShadow: '0 1px 4px rgba(0,0,0,.3)'
+                        }} />
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 2. Allow Any Email Domain Toggle */}
+                <div className={styles.card} style={{ margin: 0 }}>
+                  <div className={styles.cardHeader}>
+                    <span style={{ fontSize: 22 }}>🌐</span>
+                    <div style={{ flex: 1 }}>
+                      <h3 className={styles.cardTitle}>Allow Any Email Domain</h3>
+                      <p className={styles.cardSub}>When ON, users can register with any mail domain</p>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                      <span style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600 }}>{settings.allowAnyEmailDomain ? '🟢 ON' : '⚫ OFF'}</span>
+                      <div style={{ position: 'relative', width: 44, height: 24 }} onClick={toggleAllowAnyEmail}>
+                        <div style={{
+                          position: 'absolute', inset: 0, borderRadius: 12,
+                          background: settings.allowAnyEmailDomain ? 'linear-gradient(135deg,#06b6d4,#3b82f6)' : 'rgba(255,255,255,.15)',
+                          transition: 'background .2s'
+                        }} />
+                        <div style={{
+                          position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                          left: settings.allowAnyEmailDomain ? 23 : 3,
+                          transition: 'left .2s', boxShadow: '0 1px 4px rgba(0,0,0,.3)'
+                        }} />
+                      </div>
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -2148,9 +2203,76 @@ export default function AdminPage() {
                 <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={createUser}>Create User</button>
               </div>
 
+              {/* ─ Verification Pending Users (Image 2) ─ */}
+              {users.filter(u => u.emailVerified === false).length > 0 && (
+                <div className={styles.card} style={{ marginBottom: 20, border: '1px solid rgba(245,158,11,.3)' }}>
+                  <div className={styles.cardHeader}>
+                    <span style={{ fontSize: 22 }}>⏳</span>
+                    <div>
+                      <h3 className={styles.cardTitle} style={{ color: '#fbbf24' }}>Verification Pending Users</h3>
+                      <p className={styles.cardSub}>{users.filter(u => u.emailVerified === false).length} account(s) waiting for email verification</p>
+                    </div>
+                    <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={loadAll}>↻ Refresh</button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginTop: 14 }}>
+                    {users.filter(u => u.emailVerified === false).map(u => (
+                      <div key={u.id} style={{
+                        padding: '14px 16px',
+                        background: 'rgba(245,158,11,.05)',
+                        border: '1px solid rgba(245,158,11,.2)',
+                        borderRadius: 12,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ fontWeight: 800, fontSize: 15, color: '#fff' }}>{u.displayName || u.username}</div>
+                          <span style={{ fontSize: 11, background: 'rgba(245,158,11,.2)', color: '#fbbf24', padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>
+                            ● Unverified
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 13, color: 'rgba(255,255,255,.7)' }}>
+                          <div>@{u.username}</div>
+                          <div style={{ color: '#a78bfa', marginTop: 2 }}>{u.email || 'No email provided'}</div>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', marginTop: 4 }}>
+                            Joined {new Date(u.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            style={{ flex: 1, background: 'linear-gradient(135deg,#10b981,#059669)' }}
+                            onClick={() => verifyUserManually(u)}
+                            title="Manually verify this user in Database and Firebase Auth"
+                          >
+                            ✓ Verify User
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: '#f87171', border: '1px solid rgba(239,68,68,.3)' }}
+                            onClick={() => deleteUser(u.id, u.username)}
+                          >
+                            <IconTrash /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ─ Active Verified Users Header ─ */}
+              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: '#fff', margin: 0 }}>
+                  Active Verified Users ({users.filter(u => u.emailVerified !== false).length})
+                </h3>
+              </div>
+
               {/* Users grid — EMS style cards */}
               <div className={styles.usersGrid}>
-                {users.map(u => (
+                {users.filter(u => u.emailVerified !== false).map(u => (
                   <div key={u.id} className={styles.userCard}>
                     <div className={styles.userCardTop}>
                       <div className={styles.userCardAvatar} style={{

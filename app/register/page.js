@@ -39,7 +39,14 @@ export default function RegisterPage() {
   const [resendCd, setResendCd] = useState(0);
   const [showPass, setShowPass] = useState(false);
   const [createdFirebaseUser, setCreatedFirebaseUser] = useState(null);
+  const [allowAnyEmail, setAllowAnyEmail] = useState(false);
   const timerRef = useRef(null);
+
+  function checkEmail(email) {
+    if (!email || !email.includes('@')) return false;
+    if (allowAnyEmail) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    return emailOk(email);
+  }
 
   function validateUsername(uname) {
     if (!uname || uname.length < 3) return 'Username must be at least 3 characters';
@@ -62,6 +69,15 @@ export default function RegisterPage() {
     secureFetch('/api/verify').then(r => r.json()).then(d => {
       if (d.auth) window.location.href = '/gallery';
     }).catch(() => {});
+
+    // Check if admin has enabled any email domain
+    fetch('/api/hwasi/settings')
+      .then(r => r.json())
+      .then(d => {
+        if (d?.allowAnyEmailDomain) setAllowAnyEmail(true);
+      })
+      .catch(() => {});
+
     return () => clearInterval(timerRef.current);
   }, []);
 
@@ -87,8 +103,8 @@ export default function RegisterPage() {
       setErr('Please enter your name (at least 2 characters)');
       return;
     }
-    if (!form.email || !emailOk(form.email)) {
-      setErr('Please use Gmail, Yahoo, Outlook, iCloud or Proton email');
+    if (!form.email || !checkEmail(form.email)) {
+      setErr(allowAnyEmail ? 'Please enter a valid email address' : 'Please use Gmail, Yahoo, Outlook, iCloud or Proton email');
       return;
     }
     const uErr = validateUsername(form.username);

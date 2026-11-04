@@ -5,7 +5,7 @@ import { SignJWT } from 'jose';
 import {
   getRegUsers, saveRegUsers,
   getPendingUsers, savePendingUsers,
-  getRegApprovalRequired, getUsers,
+  getRegApprovalRequired, getUsers, getSettings,
 } from '@/lib/redis';
 
 const ALLOWED_DOMAINS = [
@@ -66,7 +66,8 @@ export async function POST(req) {
       return NextResponse.json(await encryptPayload({ error: 'Password must contain at least 1 number (0-9)' }), { status: 400 });
     if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(password))
       return NextResponse.json(await encryptPayload({ error: 'Password must contain at least 1 symbol (!@#$%^&*...)' }), { status: 400 });
-    if (!isAllowedEmail(email))
+    const settings = await getSettings().catch(() => null);
+    if (!settings?.allowAnyEmailDomain && !isAllowedEmail(email))
       return NextResponse.json(await encryptPayload({ error: 'Please use Gmail, Yahoo, Outlook, iCloud or Proton email' }), { status: 400 });
 
     // Duplicate check across all user stores

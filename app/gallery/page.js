@@ -876,7 +876,7 @@ export default function GalleryPage() {
             <input
               autoFocus
               className={styles.searchOverlayInput}
-              placeholder="Search videos by title..."
+              placeholder="Search 20k+ videos by title..."
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(0); setCuratedPage(0); }}
             />
@@ -1087,7 +1087,7 @@ export default function GalleryPage() {
           <div className={styles.searchWrap}>
             <input
               className={styles.searchInput}
-              placeholder="Search videos..."
+              placeholder="Search 20k+ videos..."
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(0); setCuratedPage(0); }}
             />
@@ -2483,7 +2483,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
   const handleMouseEnter = () => {
     hoverTimer.current = setTimeout(() => {
       setIsHovered(true);
-    }, 380); // 380ms debounce to prevent unneeded requests during fast scrolling
+    }, 120); // Quick 120ms debounce
   };
 
   const handleMouseLeave = () => {
@@ -2524,6 +2524,12 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
           {/* Fast 3-second preview directly from external CDN (0 Redis bytes, 0 Cloudflare bytes) */}
           {isHovered && (
             <video
+              ref={(el) => {
+                if (el) {
+                  el.muted = true;
+                  el.play().catch(() => {});
+                }
+              }}
               src={getPreviewCdnUrl(id)}
               autoPlay
               muted
@@ -2549,17 +2555,19 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
           )}
 
           {/* Quality badge */}
-          <div className={styles.qualityBadge} style={{ background: qColor }}>{quality}</div>
+          <div className={styles.qualityBadge} style={{ background: qColor, zIndex: 5 }}>{quality}</div>
 
           {/* Views */}
-          <div className={styles.viewsBadge}>👁 {views}</div>
+          <div className={styles.viewsBadge} style={{ zIndex: 5 }}>👁 {views}</div>
 
-          {/* Play overlay */}
-          <div className={styles.vOverlay}>
-            <div className={styles.vPlayBtn}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
+          {/* Play overlay — hidden while hover preview is active */}
+          {!isHovered && (
+            <div className={styles.vOverlay}>
+              <div className={styles.vPlayBtn}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

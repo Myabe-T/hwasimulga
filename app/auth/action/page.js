@@ -98,7 +98,12 @@ function AuthActionHandler() {
           } catch (err2) {
             console.error('Verify error:', error, err2);
             setStatus('error');
-            setErr('This email verification link has expired or is invalid. Please sign in and request a new link.');
+            const isInvalidOrUsed = err2?.code === 'auth/invalid-action-code' || error?.code === 'auth/invalid-action-code';
+            setErr(
+              isInvalidOrUsed
+                ? 'This verification link has already been used or has expired. If you clicked it already, your email may already be verified. Please try signing in!'
+                : 'This email verification link is invalid or has expired. Please sign in or request a new link.'
+            );
             setLoading(false);
           }
         });

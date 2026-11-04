@@ -588,7 +588,7 @@ export default function WatchPage() {
             <input
               type="text"
               className="watch-search-input"
-              placeholder="Search 2,000+ videos..."
+              placeholder="Search 20k+ videos..."
               value={headerSearch}
               onChange={(e) => setHeaderSearch(e.target.value)}
             />
@@ -693,8 +693,8 @@ export default function WatchPage() {
             </div>
           </div>
 
-          {/* Custom Video Player (Responsive Cinema Mode with Vertical/Portrait support) */}
-          <div className={`player-viewport ${isPortrait ? 'portrait-mode' : ''}`}>
+          {/* Custom Video Player (Responsive Cinema Mode) */}
+          <div className="player-viewport">
             <CustomVideoPlayer
               key={src || rawVideoId}
               src={src}
@@ -1522,7 +1522,7 @@ export default function WatchPage() {
           background: rgba(255, 255, 255, 0.1);
         }
 
-        /* ── Player Viewport with Portrait / Vertical Video support ── */
+        /* ── Player Viewport (Cinema Mode) ── */
         .player-viewport {
           position: relative;
           width: 100%;
@@ -1532,14 +1532,6 @@ export default function WatchPage() {
           border-radius: 14px;
           overflow: hidden;
           box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
-          transition: max-width 0.25s ease, aspect-ratio 0.25s ease;
-        }
-        .player-viewport.portrait-mode {
-          max-width: 440px;
-          margin: 0 auto;
-          aspect-ratio: 9/16;
-          max-height: 76vh;
-          box-shadow: 0 12px 45px rgba(236, 72, 153, 0.2), 0 8px 30px rgba(0, 0, 0, 0.9);
         }
 
         /* ── Tag Editor Modal ── */
@@ -2116,9 +2108,6 @@ export default function WatchPage() {
           }
           .watch-main-content {
             padding: 10px 10px 50px 10px;
-          }
-          .player-viewport.portrait-mode {
-            max-width: 100%;
           }
           .video-main-heading {
             font-size: 17px;

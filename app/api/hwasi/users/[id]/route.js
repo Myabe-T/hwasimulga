@@ -2,7 +2,8 @@ export const runtime = 'edge';
 
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getUsers, saveUsers, getRegUsers, saveRegUsers } from '@/lib/redis';
+import { getUsers, saveUsers, getRegUsers, saveRegUsers, getPendingUsers, savePendingUsers, redis, KEYS } from '@/lib/redis';
+import { adminDeleteUserByEmail } from '@/lib/firebaseAdmin';
 
 async function hashPassword(password) {
   const data = new TextEncoder().encode(password + 'hwasi_salt_2024');
@@ -115,12 +116,13 @@ export async function DELETE(req, { params }) {
   const newPending = pendingUsers.filter(u => u.id !== id && (!targetEmail || u.email?.toLowerCase() !== targetEmail) && (!targetUsername || u.username?.toLowerCase() !== targetUsername));
   if (newPending.length !== pendingUsers.length) await savePendingUsers(newPending);
 
-  // 4. Permanently remove from all associated Redis hashes
+  // 4. Permanently remove from all associated Redis hashes and Firebase Auth
   await Promise.all([
     redis.hdel(KEYS.BOOKMARKS, String(id)).catch(() => {}),
     redis.hdel(KEYS.PREMIUM, String(id)).catch(() => {}),
     targetEmail ? redis.del(`otp:rate:${targetEmail}`).catch(() => {}) : null,
     targetEmail ? redis.del(`reset:rate:${targetEmail}`).catch(() => {}) : null,
+    targetEmail ? adminDeleteUserByEmail(targetEmail).catch(() => {}) : null,
   ]);
 
   return NextResponse.json({ ok: true, message: 'User permanently deleted from all database stores' });
