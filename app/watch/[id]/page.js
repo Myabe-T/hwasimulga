@@ -442,7 +442,7 @@ export default function WatchPage() {
         <div style={{ fontSize: 56, marginBottom: 16 }}>💎</div>
         <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 10, background: 'linear-gradient(to right,#fbcfe8,#ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Daily Limit Reached</h1>
         <p style={{ color: 'rgba(255,255,255,.6)', marginBottom: 8, maxWidth: 420 }}>You have used all {viewInfo?.limit ?? 5} free videos today.{viewInfo?.hoursLeft ? ` Resets in ${viewInfo.hoursLeft}h.` : ''}</p>
-        <p style={{ color: 'rgba(255,255,255,.4)', fontSize: 13, marginBottom: 26, maxWidth: 380 }}>Upgrade to Premium for unlimited access to all 2,000+ exclusive videos!</p>
+        <p style={{ color: 'rgba(255,255,255,.4)', fontSize: 13, marginBottom: 26, maxWidth: 380 }}>Upgrade to Premium for unlimited access to all 20,000+ exclusive videos!</p>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
           <Link href="/premium" style={{ padding: '12px 26px', background: 'linear-gradient(135deg,#7c3aed,#ec4899)', borderRadius: 12, color: '#fff', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>🚀 Get Premium</Link>
           <Link href="/gallery" style={{ padding: '12px 26px', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 12, color: '#fff', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>Back to Gallery</Link>
@@ -487,7 +487,7 @@ export default function WatchPage() {
                   : viewInfo?.isPremium
                   ? `👑 ${viewInfo?.plan || 'VIP Premium'}`
                   : user
-                  ? `Free (${viewInfo?.viewsToday ?? 0}/${viewInfo?.limit ?? 5})`
+                  ? `Free (${(viewInfo?.viewsToday ?? viewInfo?.count) ?? 0}/${viewInfo?.limit ?? 5})`
                   : 'Guest'}
               </span>
             </div>
@@ -614,7 +614,7 @@ export default function WatchPage() {
             ) : user ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className="views-badge">
-                  Free ({viewInfo?.viewsToday ?? 0}/{viewInfo?.limit ?? 5})
+                  Free ({(viewInfo?.viewsToday ?? viewInfo?.count) ?? 0}/{viewInfo?.limit ?? 5})
                 </span>
                 <Link href="/premium" className="vip-btn">
                   🚀 Upgrade

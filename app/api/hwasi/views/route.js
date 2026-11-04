@@ -85,7 +85,15 @@ export async function POST(req) {
     const now = new Date();
     const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
     const hoursLeft = Math.ceil((tomorrow - now) / 3600000);
-    return NextResponse.json(await encryptPayload({ allowed: false, count, limit: FREE_LIMIT, remaining: 0, hoursLeft, limitMsg }));
+    return NextResponse.json(await encryptPayload({
+      allowed: false,
+      count,
+      viewsToday: count,
+      limit: FREE_LIMIT,
+      remaining: 0,
+      hoursLeft,
+      limitMsg
+    }));
   }
 
   await incrementViewCount(userKey);
@@ -97,8 +105,9 @@ export async function POST(req) {
     allowed: true,
     isPremium: false,
     count: newCount,
+    viewsToday: newCount,
     limit: FREE_LIMIT,
-    remaining: FREE_LIMIT - newCount,
+    remaining: Math.max(0, FREE_LIMIT - newCount),
     limitMsg,
     token
   }));
@@ -128,6 +137,7 @@ export async function GET(req) {
     allowed: count < FREE_LIMIT,
     isPremium: false,
     count,
+    viewsToday: count,
     limit: FREE_LIMIT,
     remaining: Math.max(0, FREE_LIMIT - count),
     hoursLeft,

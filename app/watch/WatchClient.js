@@ -102,7 +102,7 @@ export default function WatchClient({ shareToken }) {
                 {viewInfo?.hoursLeft ? ` Resets in ${viewInfo.hoursLeft}h.` : ''}
               </p>
               <p style={{ color: 'rgba(255,255,255,.4)', fontSize: 13, marginBottom: 28 }}>
-                Upgrade to Premium for unlimited access!
+                Upgrade to Premium for unlimited access to all 20,000+ exclusive videos!
               </p>
             </>
           )}

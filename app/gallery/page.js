@@ -894,7 +894,11 @@ export default function GalleryPage() {
 
 
   const initials = (user.avatar || user.username?.slice(0, 2) || 'U').toUpperCase();
-  const planLabel = viewStatus?.isPremium ? 'PREMIUM' : (user.role === 'admin' ? 'ADMIN' : user.role === 'advisor' ? 'ADVISOR' : 'FREE PLAN');
+  const freeCount = (viewStatus?.viewsToday ?? viewStatus?.count) ?? 0;
+  const freeLimit = viewStatus?.limit ?? 5;
+  const planLabel = viewStatus?.isPremium
+    ? (viewStatus?.plan ? viewStatus.plan.toUpperCase() : 'PREMIUM')
+    : (user.role === 'admin' ? 'ADMIN' : user.role === 'advisor' ? 'ADVISOR' : `FREE (${freeCount}/${freeLimit})`);
   const isPrem = viewStatus?.isPremium || false;
 
   // ── LOGGED IN VIEW ──
@@ -1991,7 +1995,9 @@ function ProfileView({ user, viewStatus, plans, myHistory, bookmarkIds, initialT
   }
 
   const initials = (user.displayName || user.username || 'U').slice(0, 2).toUpperCase();
-  const planLabel = viewStatus?.isPremium ? 'PREMIUM' : user.role === 'admin' ? 'ADMIN' : user.role === 'advisor' ? 'ADVISOR' : 'FREE PLAN';
+  const freeCount = (viewStatus?.viewsToday ?? viewStatus?.count) ?? 0;
+  const freeLimit = viewStatus?.limit ?? 5;
+  const planLabel = viewStatus?.isPremium ? (viewStatus?.plan ? viewStatus.plan.toUpperCase() : 'PREMIUM') : user.role === 'admin' ? 'ADMIN' : user.role === 'advisor' ? 'ADVISOR' : `FREE (${freeCount}/${freeLimit})`;
   const watchCount = myHistory?.length || 0;
 
   const inp = { background: 'var(--inp)', border: '1px solid var(--inp-brd)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: 'var(--text1)', width: '100%', outline: 'none', fontFamily: 'inherit' };
