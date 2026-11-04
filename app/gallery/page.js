@@ -2560,7 +2560,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     if (disablePreview) return;
     hoverTimer.current = setTimeout(() => {
       setIsHovered(true);
-    }, 100); // 100ms snappy hover response
+    }, 35); // 35ms ultra-fast hover trigger
   };
 
   const handleMouseLeave = () => {
@@ -2628,6 +2628,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
       }
     };
 
+    v.addEventListener('loadedmetadata', startPlayback);
     v.addEventListener('loadeddata', startPlayback);
     v.addEventListener('canplay', startPlayback);
     v.addEventListener('playing', startPlayback);

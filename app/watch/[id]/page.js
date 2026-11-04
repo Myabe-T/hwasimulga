@@ -2138,7 +2138,7 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
   const handleMouseEnter = () => {
     hoverTimer.current = setTimeout(() => {
       setIsHovered(true);
-    }, 100); // 100ms snappy response
+    }, 35); // 35ms ultra-fast hover response
   };
 
   const handleMouseLeave = () => {
@@ -2203,6 +2203,7 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
       }
     };
 
+    v.addEventListener('loadedmetadata', startPlayback);
     v.addEventListener('loadeddata', startPlayback);
     v.addEventListener('canplay', startPlayback);
     v.addEventListener('playing', startPlayback);
