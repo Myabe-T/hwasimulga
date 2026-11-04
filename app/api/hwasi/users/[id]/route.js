@@ -3,7 +3,7 @@ export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getUsers, saveUsers, getRegUsers, saveRegUsers, getPendingUsers, savePendingUsers, redis, KEYS } from '@/lib/redis';
-import { adminDeleteUserByEmail } from '@/lib/firebaseAdmin';
+import { adminDeleteUserByEmail, adminUpdateUserPasswordByEmail } from '@/lib/firebaseAdmin';
 
 async function hashPassword(password) {
   const data = new TextEncoder().encode(password + 'hwasi_salt_2024');
@@ -47,6 +47,9 @@ export async function PUT(req, { params }) {
     if (isAdmin && body.password && body.password !== '[Encrypted]') {
       regUsers[ridx].password = body.password;
       regUsers[ridx].passwordHash = await hashPassword(body.password);
+      if (regUsers[ridx].email) {
+        await adminUpdateUserPasswordByEmail(regUsers[ridx].email, body.password).catch(() => {});
+      }
     }
     // Update any other allowed fields (displayName, username, email, role, etc.)
     const { password: _p, passwordHash: _ph, ...otherBody } = body;

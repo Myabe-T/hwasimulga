@@ -107,6 +107,7 @@ export default function GalleryPage() {
   const [ageVerified, setAgeVerified] = useState(true); // 18+ gate
   const [cookieConsent, setCookieConsent] = useState(true); // cookie banner
   const [mobileGridCols, setMobileGridCols] = useState(1); // 1 or 2 columns on mobile
+  const [hoverPreviewEnabled, setHoverPreviewEnabled] = useState(true); // Toggle hover preview on/off
   const [quickCurateFlash, setQuickCurateFlash] = useState(''); // flash toast for quick curate
 
   // ── Browser back/forward & Profile URL routing ──
@@ -183,6 +184,8 @@ export default function GalleryPage() {
       if (!localStorage.getItem('dh_cookie')) setCookieConsent(false);
       const g = localStorage.getItem('dh_grid');
       if (g) setMobileGridCols(Number(g) || 1);
+      const hp = localStorage.getItem('dh_preview');
+      if (hp !== null) setHoverPreviewEnabled(hp === '1');
     } catch {}
   }, []);
   useEffect(() => {
@@ -193,6 +196,10 @@ export default function GalleryPage() {
   function toggleMobileGrid(cols) {
     setMobileGridCols(cols);
     try { localStorage.setItem('dh_grid', String(cols)); } catch {}
+  }
+  function toggleHoverPreview(enabled) {
+    setHoverPreviewEnabled(enabled);
+    try { localStorage.setItem('dh_preview', enabled ? '1' : '0'); } catch {}
   }
   function acceptAge() {
     try { localStorage.setItem('dh_age_ok', '1'); } catch {}
@@ -782,7 +789,7 @@ export default function GalleryPage() {
               title={videoTitles[String(id)] || null}
               hasThumb={thumbIds.has(id)}
               isBookmarked={false} isAdmin={false} showHash={false}
-              disablePreview={instaviralIds.includes(Number(id))}
+              disablePreview={!hoverPreviewEnabled || instaviralIds.includes(Number(id))}
               onPlay={() => setGuestAuthModal(true)}
               onDownload={null}
               onBookmark={() => setGuestAuthModal(true)}
@@ -901,7 +908,7 @@ export default function GalleryPage() {
                         isBookmarked={bookmarks.has(id)}
                         isAdmin={isAdminOrAdvisor}
                         showHash={isAdminOrAdvisor}
-                        disablePreview={instaviralIds.includes(Number(id)) && !isPremium}
+                        disablePreview={!hoverPreviewEnabled || ((homeTab === 'instaviral' || instaviralIds.includes(Number(id))) && !isPremium)}
                         onPlay={() => { setSearchOpen(false); openModal(id); }}
                         onDownload={null}
                         onBookmark={e => toggleBookmark(e, id)}
@@ -946,6 +953,19 @@ export default function GalleryPage() {
             </button>
             <button className={`${styles.gridToggleBtn} ${mobileGridCols === 2 ? styles.gridToggleActive : ''}`} onClick={() => toggleMobileGrid(2)}>
               <span>⊞</span> 2 per row
+            </button>
+          </div>
+        </div>
+
+        {/* Hover preview toggle */}
+        <div className={styles.sidebarGridToggle} style={{ display:'block', marginTop: 10 }}>
+          <div className={styles.sidebarGridLabel}>🎬 Hover Video Preview</div>
+          <div className={styles.sidebarGridBtns}>
+            <button className={`${styles.gridToggleBtn} ${hoverPreviewEnabled ? styles.gridToggleActive : ''}`} onClick={() => toggleHoverPreview(true)}>
+              <span>▶</span> ON
+            </button>
+            <button className={`${styles.gridToggleBtn} ${!hoverPreviewEnabled ? styles.gridToggleActive : ''}`} onClick={() => toggleHoverPreview(false)}>
+              <span>✕</span> OFF
             </button>
           </div>
         </div>
@@ -1206,7 +1226,7 @@ export default function GalleryPage() {
                       isBookmarked={bookmarks.has(id)}
                       isAdmin={isAdminOrAdvisor}
                       showHash={isAdminOrAdvisor}
-                      disablePreview={(homeTab === 'instaviral' || instaviralIds.includes(Number(id))) && !isPremium}
+                      disablePreview={!hoverPreviewEnabled || ((homeTab === 'instaviral' || instaviralIds.includes(Number(id))) && !isPremium)}
                       onPlay={() => openModal(id)}
                       onDownload={instaviralIds.includes(Number(id)) ? null : e => handleDownload(e, id)}
                       onBookmark={e => toggleBookmark(e, id)}
@@ -1255,7 +1275,7 @@ export default function GalleryPage() {
                     title={videoTitles[String(id)] || null}
                     hasThumb={thumbIds.has(id)} isBookmarked={true}
                     isAdmin={isAdminOrAdvisor} showHash={isAdminOrAdvisor}
-                    disablePreview={instaviralIds.includes(Number(id)) && !isPremium}
+                    disablePreview={!hoverPreviewEnabled || ((homeTab === 'instaviral' || instaviralIds.includes(Number(id))) && !isPremium)}
                     onPlay={() => openModal(id)}
                     onDownload={instaviralIds.includes(Number(id)) ? null : e => handleDownload(e, id)}
                     onBookmark={e => toggleBookmark(e, id)}
@@ -2489,7 +2509,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     if (disablePreview) return;
     hoverTimer.current = setTimeout(() => {
       setIsHovered(true);
-    }, 120); // Quick 120ms debounce
+    }, 350); // Deliberate 350ms hover prevents rapid accidental requests while scrolling
   };
 
   const handleMouseLeave = () => {
@@ -2502,6 +2522,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
       if (videoObjRef.current) {
         try {
           videoObjRef.current.pause();
+          videoObjRef.current.src = '';
           videoObjRef.current.removeAttribute('src');
           videoObjRef.current.load();
         } catch (_) {}
@@ -2523,7 +2544,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     v.muted = true;
     v.playsInline = true;
     v.loop = true;
-    v.preload = 'auto';
+    v.preload = 'metadata';
     v.src = getPreviewCdnUrl(id);
     videoObjRef.current = v;
 
@@ -2555,6 +2576,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
       if (animRef.current) cancelAnimationFrame(animRef.current);
       try {
         v.pause();
+        v.src = '';
         v.removeAttribute('src');
         v.load();
       } catch (_) {}
