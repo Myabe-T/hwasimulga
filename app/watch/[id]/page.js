@@ -88,6 +88,20 @@ export default function WatchPage() {
   const [allVideoIds, setAllVideoIds] = useState([]);
   const [relatedLimit, setRelatedLimit] = useState(12);
 
+  // Header Search State
+  const [headerSearch, setHeaderSearch] = useState('');
+
+  // Video Aspect Ratio / Portrait Mode (removes black bars for vertical videos)
+  const [isPortrait, setIsPortrait] = useState(false);
+
+  // Interactive Video Tags State (Image 3)
+  const [tags, setTags] = useState([]);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [newTagInput, setNewTagInput] = useState('');
+  const [tagError, setTagError] = useState('');
+  const [tagSubmitting, setTagSubmitting] = useState(false);
+  const [userHasAddedTag, setUserHasAddedTag] = useState(false);
+
   const thumbSrc = useCallback((id) => {
     return Number(id) >= 10000 ? `/api/hwasi/thumb-extra/${id}` : `/api/hwasi/thumbnail/${id}`;
   }, []);
@@ -118,8 +132,9 @@ export default function WatchPage() {
         ]).then(([td, th]) => {
           const titles = td.titles || {};
           setAllTitles(titles);
-          if (titles[String(rawVideoId)]) {
-            setTitle(titles[String(rawVideoId)]);
+          const curTitle = titles[String(rawVideoId)] || '';
+          if (curTitle) {
+            setTitle(curTitle);
           } else {
             setTitle(user?.role === 'admin' || user?.role === 'advisor' ? `Exclusive Video #${rawVideoId}` : 'Exclusive DesiHawas Video');
           }
@@ -127,6 +142,17 @@ export default function WatchPage() {
           setThumbIds(tIds);
           const vIds = Object.keys(titles).map(Number).sort((a, b) => b - a);
           setAllVideoIds(vIds.length > 0 ? vIds : Array.from({ length: 1177 }, (_, i) => 1177 - i));
+
+          // Load / Initialize Tags with video title
+          fetch(`/api/hwasi/tags?videoId=${rawVideoId}&title=${encodeURIComponent(curTitle)}`)
+            .then(r => r.json())
+            .then(d => {
+              if (d.tags) {
+                setTags(d.tags);
+                setUserHasAddedTag(Boolean(d.userHasAdded));
+              }
+            })
+            .catch(() => {});
         });
 
         // Request video stream token from views API
@@ -318,6 +344,67 @@ export default function WatchPage() {
     }
   };
 
+  // Handle Add Tag (Image 3)
+  const handleAddTag = async (customTag) => {
+    const tagText = (customTag || newTagInput).trim();
+    if (!tagText) return;
+    if (!user) {
+      router.push(`/login?redirect=/watch/${encodedVideoId}`);
+      return;
+    }
+    setTagError('');
+    setTagSubmitting(true);
+    try {
+      const res = await fetch('/api/hwasi/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: Number(rawVideoId),
+          tag: tagText,
+          title: title || '',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTagError(data.error || 'Failed to add tag');
+      } else {
+        setTags(data.tags || []);
+        setUserHasAddedTag(true);
+        setNewTagInput('');
+        setShowTagModal(false);
+      }
+    } catch (e) {
+      setTagError('Network error while adding tag');
+    } finally {
+      setTagSubmitting(false);
+    }
+  };
+
+  // Handle Delete Tag (Image 3)
+  const handleDeleteTag = async (tagObj) => {
+    if (!user) return;
+    try {
+      const res = await fetch('/api/hwasi/tags', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: Number(rawVideoId),
+          tagId: tagObj.id,
+          tag: tagObj.tag,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.tags) {
+        setTags(data.tags);
+        const currentUserId = user.id || user.username;
+        const stillHas = data.tags.some(t => !t.isDefault && (t.userId === currentUserId || t.username === user.username));
+        setUserHasAddedTag(stillHas);
+      }
+    } catch (e) {
+      console.warn('Failed to delete tag:', e);
+    }
+  };
+
   // Navigate to another video smoothly with encrypted URL
   const handleOpenRelated = (id) => {
     router.push(`/watch/${encodeVideoId(id)}`);
@@ -487,6 +574,36 @@ export default function WatchPage() {
             </Link>
           </div>
 
+          {/* Header Search Banner */}
+          <form
+            className="watch-search-wrap"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (headerSearch.trim()) {
+                router.push('/gallery?q=' + encodeURIComponent(headerSearch.trim()));
+              }
+            }}
+          >
+            <span className="watch-search-icon">🔍</span>
+            <input
+              type="text"
+              className="watch-search-input"
+              placeholder="Search 2,000+ videos..."
+              value={headerSearch}
+              onChange={(e) => setHeaderSearch(e.target.value)}
+            />
+            {headerSearch && (
+              <button
+                type="button"
+                className="watch-search-clear"
+                onClick={() => setHeaderSearch('')}
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </form>
+
           <div className="watch-header-right">
             {user?.role === 'admin' ? (
               <span className="vip-badge-pill admin-pill">🛡️ Admin</span>
@@ -524,11 +641,60 @@ export default function WatchPage() {
               {(user?.role === 'admin' || user?.role === 'advisor') && Number(rawVideoId) >= 10000 && (
                 <span className="badge-item badge-cdn">HindiBF</span>
               )}
+
+              {/* ── Interactive Tags Row (Matching Image 3) ── */}
+              <div className="tags-row-wrapper">
+                <span className="tags-heading-label">Tags:</span>
+                <div className="tags-pills-container">
+                  {tags.map((t) => (
+                    <span
+                      key={t.id || t.tag}
+                      className="tag-badge-pill"
+                      onClick={() => router.push(`/gallery?q=${encodeURIComponent(t.tag)}`)}
+                      title={`Filter by tag "${t.tag}"`}
+                    >
+                      {t.tag}
+                      {t.canDelete && (
+                        <button
+                          type="button"
+                          className="tag-delete-x"
+                          title="Delete tag"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteTag(t);
+                          }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </span>
+                  ))}
+
+                  {/* ✏️ Edit tags button (Image 3) */}
+                  {tags.length < 10 && (
+                    <button
+                      type="button"
+                      className="edit-tags-action-btn"
+                      onClick={() => {
+                        if (!user) {
+                          router.push(`/login?redirect=/watch/${encodedVideoId}`);
+                          return;
+                        }
+                        setShowTagModal(true);
+                        setTagError('');
+                      }}
+                      title={userHasAddedTag ? 'Edit or delete your tag' : 'Add a tag to this video'}
+                    >
+                      ✏️ Edit tags
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Custom Video Player (Responsive Cinema Mode) */}
-          <div className="player-viewport">
+          {/* Custom Video Player (Responsive Cinema Mode with Vertical/Portrait support) */}
+          <div className={`player-viewport ${isPortrait ? 'portrait-mode' : ''}`}>
             <CustomVideoPlayer
               key={src || rawVideoId}
               src={src}
@@ -536,6 +702,7 @@ export default function WatchPage() {
               title={title}
               isPremium={Boolean(viewInfo?.isPremium || user?.role === 'admin' || user?.role === 'advisor')}
               autoPlay={true}
+              onAspectChange={({ isPortrait }) => setIsPortrait(Boolean(isPortrait))}
               onNext={null} /* NO auto-play next video on ended */
             />
           </div>
@@ -544,6 +711,101 @@ export default function WatchPage() {
           {bookmarkToast && (
             <div className="toast-notification">
               {bookmarkToast}
+            </div>
+          )}
+
+          {/* ── Interactive Tag Editor Modal (Image 3) ── */}
+          {showTagModal && (
+            <div className="tag-modal-overlay" onClick={() => setShowTagModal(false)}>
+              <div className="tag-modal-box" onClick={(e) => e.stopPropagation()}>
+                <div className="tag-modal-header">
+                  <h3 className="tag-modal-title">🏷️ Video Tags ({tags.length}/10)</h3>
+                  <button type="button" className="tag-modal-close" onClick={() => setShowTagModal(false)}>✕</button>
+                </div>
+
+                <p className="tag-modal-sub">
+                  {user?.role === 'admin' || user?.role === 'advisor'
+                    ? '🛡️ Admin Mode: You can add and delete any tag on this video (max 10).'
+                    : userHasAddedTag
+                    ? '✓ You have added 1 tag to this video. You can delete or edit it below.'
+                    : 'Add 1 relevant tag to this video (e.g. bhabhi, boobs, romantic). Max 10 per video.'}
+                </p>
+
+                {tagError && <div className="tag-modal-err">{tagError}</div>}
+
+                {/* Add new tag form if user has not added or is admin */}
+                {(user?.role === 'admin' || user?.role === 'advisor' || !userHasAddedTag) && tags.length < 10 && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleAddTag();
+                    }}
+                    className="tag-modal-form"
+                  >
+                    <input
+                      type="text"
+                      className="tag-modal-input"
+                      placeholder="e.g. big boobs, bhabhi, cute..."
+                      value={newTagInput}
+                      onChange={(e) => setNewTagInput(e.target.value)}
+                      maxLength={25}
+                      autoFocus
+                    />
+                    <button
+                      type="submit"
+                      className="tag-modal-submit-btn"
+                      disabled={tagSubmitting || !newTagInput.trim()}
+                    >
+                      {tagSubmitting ? 'Adding...' : '+ Add Tag'}
+                    </button>
+                  </form>
+                )}
+
+                {/* Quick suggestions */}
+                {(!userHasAddedTag || user?.role === 'admin' || user?.role === 'advisor') && tags.length < 10 && (
+                  <div className="tag-suggestions-wrap">
+                    <span className="tag-sugg-title">Quick suggestions:</span>
+                    <div className="tag-sugg-pills">
+                      {['bhabhi', 'boobs', 'sexy', 'desi', 'mms', 'viral', 'romantic', 'cute']
+                        .filter(s => !tags.some(t => t.tag.toLowerCase() === s))
+                        .slice(0, 6)
+                        .map(s => (
+                          <button
+                            key={s}
+                            type="button"
+                            className="tag-sugg-chip"
+                            onClick={() => handleAddTag(s)}
+                            disabled={tagSubmitting}
+                          >
+                            +{s}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Current tags in this video */}
+                <div className="tag-modal-current">
+                  <div className="tag-current-heading">Active tags on this video:</div>
+                  <div className="tag-current-list">
+                    {tags.map(t => (
+                      <div key={t.id || t.tag} className="tag-current-item">
+                        <span className="tag-badge-pill static-view">{t.tag}</span>
+                        {t.canDelete && (
+                          <button
+                            type="button"
+                            className="tag-current-del-btn"
+                            onClick={() => handleDeleteTag(t)}
+                            title="Delete this tag"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1019,6 +1281,56 @@ export default function WatchPage() {
           color: #fff;
         }
 
+        /* ── Header Search ── */
+        .watch-search-wrap {
+          flex: 1;
+          max-width: 480px;
+          margin: 0 12px;
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+        .watch-search-input {
+          width: 100%;
+          background: rgba(255, 255, 255, 0.07);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 20px;
+          color: #fff;
+          font-size: 13px;
+          padding: 7px 32px 7px 34px;
+          outline: none;
+          transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+        }
+        .watch-search-input:focus {
+          background: rgba(255, 255, 255, 0.12);
+          border-color: #ec4899;
+          box-shadow: 0 0 12px rgba(236, 72, 153, 0.25);
+        }
+        .watch-search-input::placeholder {
+          color: rgba(255, 255, 255, 0.4);
+        }
+        .watch-search-icon {
+          position: absolute;
+          left: 11px;
+          font-size: 13px;
+          pointer-events: none;
+          opacity: 0.7;
+        }
+        .watch-search-clear {
+          position: absolute;
+          right: 9px;
+          background: none;
+          border: none;
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 13px;
+          cursor: pointer;
+          padding: 2px 5px;
+          border-radius: 50%;
+        }
+        .watch-search-clear:hover {
+          color: #fff;
+        }
+
         .watch-header-right {
           display: flex;
           align-items: center;
@@ -1124,6 +1436,93 @@ export default function WatchPage() {
           border: 1px solid rgba(139, 92, 246, 0.3);
         }
 
+        /* ── Tags Row (Image 3) ── */
+        .tags-row-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-left: 4px;
+        }
+        .tags-heading-label {
+          font-style: italic;
+          text-decoration: underline;
+          color: #ffffff;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: 0.3px;
+          user-select: none;
+        }
+        .tags-pills-container {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+        .tag-badge-pill {
+          background: #3b82f6;
+          color: #ffffff;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 3px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          text-decoration: none;
+          letter-spacing: 0.2px;
+          box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+          transition: background 0.15s, transform 0.1s;
+          white-space: nowrap;
+        }
+        .tag-badge-pill:hover {
+          background: #2563eb;
+          transform: translateY(-1px);
+        }
+        .tag-badge-pill.static-view {
+          cursor: default;
+          transform: none;
+        }
+        .tag-delete-x {
+          background: rgba(0, 0, 0, 0.25);
+          border: none;
+          color: #fff;
+          font-size: 9px;
+          border-radius: 50%;
+          width: 14px;
+          height: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          padding: 0;
+          line-height: 1;
+          transition: background 0.1s;
+        }
+        .tag-delete-x:hover {
+          background: rgba(239, 68, 68, 0.85);
+        }
+        .edit-tags-action-btn {
+          background: none;
+          border: none;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 12px;
+          font-weight: 600;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          cursor: pointer;
+          padding: 2px 6px;
+          border-radius: 4px;
+          transition: color 0.15s, background 0.15s;
+        }
+        .edit-tags-action-btn:hover {
+          color: #fff;
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* ── Player Viewport with Portrait / Vertical Video support ── */
         .player-viewport {
           position: relative;
           width: 100%;
@@ -1133,6 +1532,187 @@ export default function WatchPage() {
           border-radius: 14px;
           overflow: hidden;
           box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+          transition: max-width 0.25s ease, aspect-ratio 0.25s ease;
+        }
+        .player-viewport.portrait-mode {
+          max-width: 440px;
+          margin: 0 auto;
+          aspect-ratio: 9/16;
+          max-height: 76vh;
+          box-shadow: 0 12px 45px rgba(236, 72, 153, 0.2), 0 8px 30px rgba(0, 0, 0, 0.9);
+        }
+
+        /* ── Tag Editor Modal ── */
+        .tag-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(6px);
+          z-index: 100;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+        }
+        .tag-modal-box {
+          background: #130a21;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 16px;
+          width: 100%;
+          max-width: 480px;
+          padding: 22px;
+          box-shadow: 0 16px 50px rgba(0, 0, 0, 0.8);
+          animation: fadeIn 0.2s ease;
+        }
+        .tag-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 8px;
+        }
+        .tag-modal-title {
+          font-size: 18px;
+          font-weight: 800;
+          color: #fff;
+          margin: 0;
+        }
+        .tag-modal-close {
+          background: none;
+          border: none;
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 18px;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 6px;
+        }
+        .tag-modal-close:hover {
+          color: #fff;
+        }
+        .tag-modal-sub {
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.65);
+          line-height: 1.5;
+          margin: 0 0 16px 0;
+        }
+        .tag-modal-err {
+          background: rgba(239, 68, 68, 0.15);
+          border: 1px solid rgba(239, 68, 68, 0.35);
+          color: #f87171;
+          padding: 8px 12px;
+          border-radius: 8px;
+          font-size: 12px;
+          margin-bottom: 12px;
+        }
+        .tag-modal-form {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 16px;
+        }
+        .tag-modal-input {
+          flex: 1;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          border-radius: 10px;
+          padding: 10px 14px;
+          color: #fff;
+          font-size: 14px;
+          outline: none;
+        }
+        .tag-modal-input:focus {
+          border-color: #3b82f6;
+          box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+        }
+        .tag-modal-submit-btn {
+          background: #3b82f6;
+          border: none;
+          color: #fff;
+          font-size: 13px;
+          font-weight: 700;
+          padding: 0 16px;
+          border-radius: 10px;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background 0.15s;
+        }
+        .tag-modal-submit-btn:hover:not(:disabled) {
+          background: #2563eb;
+        }
+        .tag-modal-submit-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .tag-suggestions-wrap {
+          margin-bottom: 18px;
+        }
+        .tag-sugg-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.45);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          display: block;
+          margin-bottom: 6px;
+        }
+        .tag-sugg-pills {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+        .tag-sugg-chip {
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: rgba(255, 255, 255, 0.85);
+          font-size: 12px;
+          font-weight: 600;
+          padding: 4px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: background 0.15s, border-color 0.15s;
+        }
+        .tag-sugg-chip:hover:not(:disabled) {
+          background: rgba(59, 130, 246, 0.2);
+          border-color: #3b82f6;
+          color: #fff;
+        }
+        .tag-modal-current {
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          padding-top: 14px;
+        }
+        .tag-current-heading {
+          font-size: 12px;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.6);
+          margin-bottom: 10px;
+        }
+        .tag-current-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .tag-current-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(255, 255, 255, 0.05);
+          padding: 4px 8px;
+          border-radius: 6px;
+        }
+        .tag-current-del-btn {
+          background: rgba(239, 68, 68, 0.15);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          color: #f87171;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 6px;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .tag-current-del-btn:hover {
+          background: rgba(239, 68, 68, 0.35);
+          color: #fff;
         }
 
         .toast-notification {
@@ -1522,8 +2102,23 @@ export default function WatchPage() {
 
         /* ── Mobile & Tablet Responsiveness ── */
         @media (max-width: 768px) {
+          .watch-search-wrap {
+            max-width: 180px;
+            margin: 0 4px;
+          }
+          .watch-search-input {
+            font-size: 11px;
+            padding: 5px 22px 5px 26px;
+          }
+          .watch-search-icon {
+            left: 7px;
+            font-size: 11px;
+          }
           .watch-main-content {
             padding: 10px 10px 50px 10px;
+          }
+          .player-viewport.portrait-mode {
+            max-width: 100%;
           }
           .video-main-heading {
             font-size: 17px;
@@ -1550,7 +2145,10 @@ export default function WatchPage() {
             display: none;
           }
           .brand-title {
-            font-size: 16px;
+            display: none;
+          }
+          .watch-search-wrap {
+            max-width: 140px;
           }
         }
       `}</style>

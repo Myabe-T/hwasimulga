@@ -26,6 +26,7 @@ export default function CustomVideoPlayer({
   onDownload,
   onPrev,
   onNext,
+  onAspectChange,
   autoPlay = true,
 }) {
   const videoRef = useRef(null);
@@ -34,6 +35,8 @@ export default function CustomVideoPlayer({
   const hideControlsTimer = useRef(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState(16 / 9);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
@@ -349,7 +352,7 @@ export default function CustomVideoPlayer({
         width: '100%',
         height: '100%',
         minHeight: '260px',
-        maxHeight: isFullscreen ? '100vh' : '52vh',
+        maxHeight: isFullscreen ? '100vh' : (isPortrait ? '75vh' : '70vh'),
         background: '#000',
         display: 'flex',
         flexDirection: 'column',
@@ -377,7 +380,17 @@ export default function CustomVideoPlayer({
             if (videoRef.current) {
               setDuration(videoRef.current.duration || 0);
               const vh = videoRef.current.videoHeight;
+              const vw = videoRef.current.videoWidth;
               if (vh && vh > 0) setNativeQuality(vh);
+              if (vw && vh) {
+                const ratio = vw / vh;
+                setAspectRatio(ratio);
+                const portrait = ratio < 0.95;
+                setIsPortrait(portrait);
+                if (onAspectChange) {
+                  onAspectChange({ isPortrait: portrait, ratio, width: vw, height: vh });
+                }
+              }
               if (autoPlay) {
                 videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
               }
@@ -398,7 +411,7 @@ export default function CustomVideoPlayer({
           style={{
             width: '100%',
             height: '100%',
-            maxHeight: isFullscreen ? '100vh' : '48vh',
+            maxHeight: isFullscreen ? '100vh' : (isPortrait ? '75vh' : '70vh'),
             objectFit: 'contain',
             display: 'block',
             background: '#000',

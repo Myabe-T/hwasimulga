@@ -8,7 +8,7 @@ import CustomVideoPlayer from '@/components/CustomVideoPlayer';
 
 function getPreviewCdnUrl(id) {
   const num = Number(id);
-  if (num >= 10000) return `https://cdn.hindibf.com.co/${num}.mp4`;
+  if (num >= 10000) return `https://cdn.hindibf.com.co/${num - 10000}.mp4`;
   return `https://cdn.desimms.com.co/${num}.mp4`;
 }
 
@@ -116,6 +116,10 @@ export default function GalleryPage() {
     const pathname = window.location.pathname.replace(/^\//, '').toLowerCase();
     const searchParams = new URLSearchParams(window.location.search);
     const tabParam = searchParams.get('tab')?.toLowerCase();
+    const queryParam = searchParams.get('q') || searchParams.get('search');
+    if (queryParam) {
+      setSearchQuery(queryParam);
+    }
 
     const pathToTab = {
       'profile': 'account',

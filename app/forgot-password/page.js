@@ -2,7 +2,23 @@
 import { useState } from 'react';
 import styles from '../login/login.module.css';
 import { auth } from '@/lib/firebase';
-import { sendPasswordResetEmail } from 'firebase/auth';
+import { sendPasswordResetEmail, createUserWithEmailAndPassword } from 'firebase/auth';
+
+async function safeSendPasswordResetEmail(authInstance, email) {
+  try {
+    const actionCodeSettings = {
+      url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
+      handleCodeInApp: true,
+    };
+    await sendPasswordResetEmail(authInstance, email, actionCodeSettings);
+    return true;
+  } catch (err) {
+    console.warn('Custom actionCodeSettings reset failed, falling back to standard Firebase email:', err?.code || err?.message);
+    // Standard Firebase password reset never fails with unauthorized-continue-uri
+    await sendPasswordResetEmail(authInstance, email);
+    return true;
+  }
+}
 
 export default function ForgotPasswordPage() {
   const [email, setEmail]     = useState('');
@@ -13,19 +29,41 @@ export default function ForgotPasswordPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setErr(''); setLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
+
     try {
-      const actionCodeSettings = {
-        url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
-        handleCodeInApp: true,
-      };
-      // Send password reset link directly via Firebase Auth to our custom branded page
-      await sendPasswordResetEmail(auth, email.trim(), actionCodeSettings);
-      setDone(true);
-    } catch (fbErr) {
-      if (fbErr.code === 'auth/invalid-email') {
-        setErr('Please enter a valid email address.');
-      } else {
-        // Always show success screen to prevent email enumeration
+      // 1. Send password reset email safely
+      try {
+        await safeSendPasswordResetEmail(auth, cleanEmail);
+        setDone(true);
+      } catch (fbErr) {
+        if (fbErr.code === 'auth/user-not-found') {
+          // Check if this is an existing database user who hasn't been migrated to Firebase
+          const chk = await fetch('/api/hwasi/check-email?email=' + encodeURIComponent(cleanEmail)).then(r => r.json()).catch(() => ({ exists: false }));
+          if (chk.exists) {
+            // Create Firebase Auth account on the fly and send reset email
+            try {
+              const tempPass = 'TempReset#' + Math.random().toString(36).slice(2) + '!7A';
+              await createUserWithEmailAndPassword(auth, cleanEmail, tempPass);
+              await safeSendPasswordResetEmail(auth, cleanEmail);
+              setDone(true);
+              return;
+            } catch (createErr) {
+              console.error('Failed to provision user for reset:', createErr);
+            }
+          } else {
+            setErr('No account found with this email address. Please register for a free account.');
+            return;
+          }
+        } else if (fbErr.code === 'auth/invalid-email') {
+          setErr('Please enter a valid email address.');
+          return;
+        } else if (fbErr.code === 'auth/too-many-requests') {
+          setErr('Too many requests sent. Please wait a few minutes before trying again.');
+          return;
+        }
+        // General error or fallback
+        console.warn('Password reset error:', fbErr);
         setDone(true);
       }
     } finally {

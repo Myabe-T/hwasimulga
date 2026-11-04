@@ -3,7 +3,21 @@ import { secureFetch } from '@/lib/crypto';
 import { useState, useEffect, useRef } from 'react';
 import styles from '../login/login.module.css';
 import { auth } from '@/lib/firebase';
-import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+
+async function safeSendEmailVerification(user) {
+  try {
+    const actionCodeSettings = {
+      url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
+      handleCodeInApp: true,
+    };
+    await sendEmailVerification(user, actionCodeSettings);
+  } catch (err) {
+    console.warn('Custom actionCodeSettings verification failed, attempting standard Firebase email:', err?.code || err?.message);
+    // Standard Firebase email verification never fails with unauthorized-continue-uri
+    await sendEmailVerification(user);
+  }
+}
 
 const ALLOWED_DOMAINS = [
   'gmail.com', 'yahoo.com', 'yahoo.in', 'outlook.com', 'hotmail.com',
@@ -84,19 +98,12 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      // 1. Create user in Firebase Authentication
+      // 1. Create or connect user in Firebase Authentication
       let fbUser = null;
       try {
         const userCred = await createUserWithEmailAndPassword(auth, form.email.trim(), form.password);
         fbUser = userCred.user;
         setCreatedFirebaseUser(fbUser);
-
-        // 2. Send Firebase verification email link with our custom branded action page
-        const actionCodeSettings = {
-          url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
-          handleCodeInApp: true,
-        };
-        await sendEmailVerification(fbUser, actionCodeSettings);
       } catch (fbErr) {
         if (fbErr.code === 'auth/email-already-in-use') {
           // Check if user exists in the website database
@@ -106,15 +113,30 @@ export default function RegisterPage() {
             setLoading(false);
             return;
           }
-          // User was deleted by admin from DB — allow re-registration!
-          console.log('Allowing re-registration for deleted user:', form.email);
+          // User was deleted by admin from DB — try signing into Firebase to get fbUser
+          try {
+            const cred = await signInWithEmailAndPassword(auth, form.email.trim(), form.password);
+            fbUser = cred.user;
+            setCreatedFirebaseUser(fbUser);
+          } catch {
+            console.log('Firebase user exists with different credentials, continuing backend registration');
+          }
         } else if (fbErr.code === 'auth/weak-password') {
           setErr('Password is too weak. Please include letters, numbers, and symbols.');
           setLoading(false);
           return;
+        } else {
+          console.warn('Firebase registration notice:', fbErr.message);
         }
-        // If Firebase throws unexpected error, continue to backend registration
-        console.warn('Firebase registration notice:', fbErr.message);
+      }
+
+      // 2. Safely send Firebase verification email (resilient to custom domains or standard delivery)
+      if (fbUser) {
+        try {
+          await safeSendEmailVerification(fbUser);
+        } catch (emailErr) {
+          console.warn('Failed to send verification email on first attempt:', emailErr);
+        }
       }
 
       // 3. Register user profile in backend database (with plaintext password for Admin view)
@@ -150,15 +172,23 @@ export default function RegisterPage() {
   }
 
   async function handleResendVerification() {
-    if (resendCd > 0 || !createdFirebaseUser) return;
+    if (resendCd > 0) return;
     setErr(''); setInfo('');
     try {
-      const actionCodeSettings = {
-        url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
-        handleCodeInApp: true,
-      };
-      await sendEmailVerification(createdFirebaseUser, actionCodeSettings);
-      setInfo(`Verification link resent to ${form.email}! Please check inbox & spam.`);
+      let targetUser = createdFirebaseUser || auth.currentUser;
+      if (!targetUser && form.email && form.password) {
+        try {
+          const cred = await signInWithEmailAndPassword(auth, form.email.trim(), form.password);
+          targetUser = cred.user;
+          setCreatedFirebaseUser(targetUser);
+        } catch {}
+      }
+      if (!targetUser) {
+        setErr('Unable to resend email right now. Please go to the Login page and try signing in to request a new verification link.');
+        return;
+      }
+      await safeSendEmailVerification(targetUser);
+      setInfo(`Verification link resent to ${form.email}! Please check your inbox and spam folder.`);
       startResendCooldown();
     } catch (e) {
       setErr(e.message || 'Failed to resend verification link.');

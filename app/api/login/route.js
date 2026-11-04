@@ -22,16 +22,20 @@ export async function POST(req) {
     const rawBody = await req.json();
     
     // Decrypt the payload if it's encrypted
-    let username, password;
+    let username, password, idToken, fbEmailVerified;
     if (rawBody.cipher && rawBody.iv) {
       const decrypted = await decryptPayload(rawBody.cipher, rawBody.iv);
       if (!decrypted) return NextResponse.json(await encryptPayload({ error: 'Decryption failed. Check AES key.' }), { status: 400 });
       username = decrypted.username;
       password = decrypted.password;
+      idToken = decrypted.idToken || rawBody.idToken;
+      fbEmailVerified = decrypted.fbEmailVerified ?? rawBody.fbEmailVerified;
     } else {
       // Fallback for unencrypted (or if we want to enforce encryption, we could throw here)
       username = rawBody.username;
       password = rawBody.password;
+      idToken = rawBody.idToken;
+      fbEmailVerified = rawBody.fbEmailVerified;
     }
 
     const usernameClean = (username || rawBody.identifier || rawBody.email || '')?.toLowerCase()?.trim();
@@ -51,6 +55,34 @@ export async function POST(req) {
               u.email?.toLowerCase() === usernameClean) &&
              u.passwordHash === pwHash
       );
+
+      // If password hash mismatched in Redis, but Firebase Auth already authenticated this user with this password
+      if (!user && idToken) {
+        const userIdx = regUsers.findIndex(
+          u => u.username?.toLowerCase() === usernameClean ||
+               u.email?.toLowerCase() === usernameClean
+        );
+        if (userIdx !== -1) {
+          // Auto-sync reset password & verification state to Redis
+          regUsers[userIdx].password = password;
+          regUsers[userIdx].passwordHash = pwHash;
+          if (fbEmailVerified) {
+            regUsers[userIdx].emailVerified = true;
+          }
+          await saveRegUsers(regUsers);
+          user = regUsers[userIdx];
+        }
+      }
+
+      // If user matched and Firebase confirmed email is verified, update Redis
+      if (user && fbEmailVerified && user.emailVerified === false) {
+        const userIdx = regUsers.findIndex(u => u.id === user.id);
+        if (userIdx !== -1) {
+          regUsers[userIdx].emailVerified = true;
+          await saveRegUsers(regUsers);
+          user.emailVerified = true;
+        }
+      }
     }
 
     // ── 3. If still not found, check if they're in PENDING queue ──

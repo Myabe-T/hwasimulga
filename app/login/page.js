@@ -5,6 +5,20 @@ import { secureFetch } from '@/lib/crypto';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 
+async function safeSendEmailVerification(user) {
+  try {
+    const actionCodeSettings = {
+      url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
+      handleCodeInApp: true,
+    };
+    await sendEmailVerification(user, actionCodeSettings);
+  } catch (err) {
+    console.warn('Custom actionCodeSettings verification failed, attempting standard Firebase email:', err?.code || err?.message);
+    // Standard Firebase email verification never fails with unauthorized-continue-uri
+    await sendEmailVerification(user);
+  }
+}
+
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -57,13 +71,8 @@ export default function LoginPage() {
     if (resendCd > 0) return;
     setResendInfo(''); setError('');
     try {
-      const actionCodeSettings = {
-        url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
-        handleCodeInApp: true,
-      };
-
       if (unverifiedUser) {
-        await sendEmailVerification(unverifiedUser, actionCodeSettings);
+        await safeSendEmailVerification(unverifiedUser);
         setResendInfo(`Verification link resent to ${unverifiedUser.email}! Check your inbox & spam folder.`);
         startResendCooldown();
       } else {
@@ -71,10 +80,10 @@ export default function LoginPage() {
         if (targetEmail && password) {
           try {
             const cred = await signInWithEmailAndPassword(auth, targetEmail, password);
-            await sendEmailVerification(cred.user, actionCodeSettings);
+            await safeSendEmailVerification(cred.user);
             setResendInfo(`Verification link resent to ${targetEmail}! Check your inbox & spam folder.`);
             startResendCooldown();
-          } catch {
+          } catch (e) {
             setResendInfo(`Verification link resent to ${targetEmail}! Check your inbox & spam folder.`);
             startResendCooldown();
           }
@@ -99,12 +108,14 @@ export default function LoginPage() {
 
     try {
       let idToken = null;
+      let fbEmailVerified = null;
 
       // 1. If input is an email, authenticate with Firebase
       if (inputClean.includes('@')) {
         try {
           const userCred = await signInWithEmailAndPassword(auth, inputClean, password);
           const fbUser = userCred.user;
+          fbEmailVerified = fbUser.emailVerified;
 
           // Block unverified users from accessing protected features
           if (!fbUser.emailVerified) {
@@ -126,7 +137,7 @@ export default function LoginPage() {
       const res = await secureFetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: inputClean, password, idToken }),
+        body: JSON.stringify({ username: inputClean, password, idToken, fbEmailVerified }),
       });
 
       if (!res.ok) {

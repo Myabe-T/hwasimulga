@@ -9,6 +9,7 @@ import {
   verifyPasswordResetCode,
   confirmPasswordReset,
   applyActionCode,
+  checkActionCode,
 } from 'firebase/auth';
 
 function AuthActionHandler() {
@@ -53,32 +54,53 @@ function AuthActionHandler() {
           setLoading(false);
         });
     } else if (mode === 'verifyEmail') {
-      // 2. Automatically apply email verification code
-      applyActionCode(auth, oobCode)
-        .then(async () => {
+      // 2. Extract email from oobCode and apply email verification code
+      checkActionCode(auth, oobCode)
+        .then(async (info) => {
+          const verifiedEmail = info.data?.email || auth.currentUser?.email;
+          await applyActionCode(auth, oobCode);
+
           setStatus('verified_success');
-          setMsg('Email verified successfully!');
+          setMsg(`Email (${verifiedEmail || ''}) verified successfully!`);
           setLoading(false);
 
           // Sync email verification to Redis
-          if (auth.currentUser?.email) {
+          if (verifiedEmail) {
             await fetch('/api/hwasi/mark-verified', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: auth.currentUser.email }),
+              body: JSON.stringify({ email: verifiedEmail }),
             }).catch(() => {});
           }
 
-          // Auto redirect to login after 2.5 seconds
+          // Auto redirect to login after 2 seconds
           setTimeout(() => {
-            router.push('/login?verified=1');
-          }, 2500);
+            router.push(`/login?verified=1${verifiedEmail ? `&email=${encodeURIComponent(verifiedEmail)}` : ''}`);
+          }, 2000);
         })
-        .catch(error => {
-          console.error('Apply verify code error:', error);
-          setStatus('error');
-          setErr('This email verification link has expired or is invalid. Please sign in and request a new link.');
-          setLoading(false);
+        .catch(async (error) => {
+          // If checkActionCode fails, try applyActionCode directly
+          try {
+            await applyActionCode(auth, oobCode);
+            setStatus('verified_success');
+            setMsg('Email verified successfully!');
+            setLoading(false);
+            if (auth.currentUser?.email) {
+              await fetch('/api/hwasi/mark-verified', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: auth.currentUser.email }),
+              }).catch(() => {});
+            }
+            setTimeout(() => {
+              router.push('/login?verified=1');
+            }, 2000);
+          } catch (err2) {
+            console.error('Verify error:', error, err2);
+            setStatus('error');
+            setErr('This email verification link has expired or is invalid. Please sign in and request a new link.');
+            setLoading(false);
+          }
         });
     } else {
       setStatus('error');
