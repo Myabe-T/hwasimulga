@@ -3,6 +3,7 @@ export const runtime = 'edge';
 import { SignJWT } from 'jose';
 import { NextResponse } from 'next/server';
 import { getUsers, getRegUsers, getPendingUsers, getDeviceData, getBlockReason } from '@/lib/redis';
+import { adminLookupUserByEmail, verifyFirebasePassword } from '@/lib/firebaseAdmin';
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024'
@@ -56,26 +57,32 @@ export async function POST(req) {
              u.passwordHash === pwHash
       );
 
-      // If password hash mismatched in Redis, but Firebase Auth already authenticated this user with this password
-      if (!user && idToken) {
-        const userIdx = regUsers.findIndex(
+      // If password hash mismatched in Redis, check if Firebase Auth has the updated password (e.g. after password reset)
+      if (!user) {
+        const candidateIdx = regUsers.findIndex(
           u => u.username?.toLowerCase() === usernameClean ||
                u.email?.toLowerCase() === usernameClean
         );
-        if (userIdx !== -1) {
-          // Auto-sync reset password & verification state to Redis
-          regUsers[userIdx].password = password;
-          regUsers[userIdx].passwordHash = pwHash;
-          if (fbEmailVerified) {
-            regUsers[userIdx].emailVerified = true;
+        if (candidateIdx !== -1) {
+          const candidate = regUsers[candidateIdx];
+          if (candidate.email) {
+            const fbAuth = await verifyFirebasePassword(candidate.email, password);
+            if (fbAuth.ok) {
+              // Firebase authenticated this user with this new password!
+              regUsers[candidateIdx].password = password;
+              regUsers[candidateIdx].passwordHash = pwHash;
+              if (fbAuth.emailVerified) {
+                regUsers[candidateIdx].emailVerified = true;
+              }
+              await saveRegUsers(regUsers);
+              user = regUsers[candidateIdx];
+            }
           }
-          await saveRegUsers(regUsers);
-          user = regUsers[userIdx];
         }
       }
 
       // If user matched and Firebase confirmed email is verified, update Redis
-      if (user && fbEmailVerified && user.emailVerified === false) {
+      if (user && fbEmailVerified && user.emailVerified !== true) {
         const userIdx = regUsers.findIndex(u => u.id === user.id);
         if (userIdx !== -1) {
           regUsers[userIdx].emailVerified = true;
@@ -115,9 +122,26 @@ export async function POST(req) {
 
     // ── 4b. Check if email is verified (registered accounts only, exempting admin & advisor) ──
     if (user.role !== 'admin' && user.role !== 'advisor') {
-      if (user.emailVerified === false) {
+      let isVerified = Boolean(user.emailVerified);
+
+      // If not marked verified in Redis, verify in real-time against Firebase Auth
+      if (!isVerified && user.email) {
+        const fbLookup = await adminLookupUserByEmail(user.email).catch(() => null);
+        if (fbLookup?.emailVerified) {
+          isVerified = true;
+          // Auto-sync verified state to Redis
+          const regUsers = await getRegUsers();
+          const uIdx = regUsers.findIndex(u => u.id === user.id);
+          if (uIdx !== -1) {
+            regUsers[uIdx].emailVerified = true;
+            await saveRegUsers(regUsers);
+          }
+        }
+      }
+
+      if (!isVerified) {
         return NextResponse.json(await encryptPayload({
-          error: `Please verify your email before logging in. A verification link was sent to ${user.email}. Check your inbox and spam folder.`,
+          error: `Please verify your email address before logging in. A verification link was sent to ${user.email}. Check your inbox and spam folder.`,
           code: 'EMAIL_NOT_VERIFIED',
           email: user.email,
         }), { status: 403 });
