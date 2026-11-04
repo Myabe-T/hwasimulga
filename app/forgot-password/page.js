@@ -14,24 +14,16 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setErr(''); setLoading(true);
     try {
-      // 1. Send password reset link via Firebase Auth
-      try {
-        await sendPasswordResetEmail(auth, email.trim());
-      } catch (fbErr) {
-        console.log('Firebase reset fallback:', fbErr.code);
-      }
-
-      // 2. Call backend forgot-password endpoint as fallback
-      await fetch('/api/hwasi/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      }).catch(() => {});
-
-      // Always show success screen
+      // Send password reset link directly via Firebase Auth
+      await sendPasswordResetEmail(auth, email.trim());
       setDone(true);
-    } catch {
-      setErr('Network error. Please try again.');
+    } catch (fbErr) {
+      if (fbErr.code === 'auth/invalid-email') {
+        setErr('Please enter a valid email address.');
+      } else {
+        // Always show success screen to prevent email enumeration
+        setDone(true);
+      }
     } finally {
       setLoading(false);
     }
