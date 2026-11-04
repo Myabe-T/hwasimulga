@@ -1,4 +1,6 @@
 'use client';
+export const runtime = 'edge';
+
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import styles from '../../login/login.module.css';

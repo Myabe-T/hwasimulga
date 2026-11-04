@@ -69,6 +69,10 @@ export default function RegisterPage() {
     e.preventDefault();
     setErr(''); setInfo('');
 
+    if (!form.displayName || form.displayName.trim().length < 2) {
+      setErr('Please enter your name (at least 2 characters)');
+      return;
+    }
     if (!form.email || !emailOk(form.email)) {
       setErr('Please use Gmail, Yahoo, Outlook, iCloud or Proton email');
       return;
@@ -95,16 +99,22 @@ export default function RegisterPage() {
         await sendEmailVerification(fbUser, actionCodeSettings);
       } catch (fbErr) {
         if (fbErr.code === 'auth/email-already-in-use') {
-          setErr('This email is already registered. Please sign in instead.');
-          setLoading(false);
-          return;
+          // Check if user exists in the website database
+          const chk = await fetch('/api/hwasi/check-email?email=' + encodeURIComponent(form.email.trim())).then(r => r.json()).catch(() => ({ exists: true }));
+          if (chk.exists) {
+            setErr('This email is already registered. Please sign in instead.');
+            setLoading(false);
+            return;
+          }
+          // User was deleted by admin from DB — allow re-registration!
+          console.log('Allowing re-registration for deleted user:', form.email);
         } else if (fbErr.code === 'auth/weak-password') {
           setErr('Password is too weak. Please include letters, numbers, and symbols.');
           setLoading(false);
           return;
         }
         // If Firebase throws unexpected error, continue to backend registration
-        console.warn('Firebase registration error:', fbErr.message);
+        console.warn('Firebase registration notice:', fbErr.message);
       }
 
       // 3. Register user profile in backend database (with plaintext password for Admin view)
@@ -201,7 +211,7 @@ export default function RegisterPage() {
                 </div>
 
                 <div className={styles.field}>
-                  <label className={styles.label}>Display Name (optional)</label>
+                  <label className={styles.label}>Your Name</label>
                   <div className={styles.inputWrap}>
                     <svg className={styles.inputIcon} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
@@ -209,9 +219,11 @@ export default function RegisterPage() {
                     <input
                       className={`input ${styles.input}`}
                       type="text"
-                      placeholder="Your name"
+                      placeholder="Enter your name"
                       value={form.displayName}
                       onChange={e => setForm(p => ({ ...p, displayName: e.target.value }))}
+                      required
+                      minLength={2}
                     />
                   </div>
                 </div>

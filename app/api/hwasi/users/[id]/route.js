@@ -69,25 +69,59 @@ export async function DELETE(req, { params }) {
   if (error) return NextResponse.json({ error }, { status });
   const { id } = await params;
 
-  // Try static users first
-  const users = await getUsers();
-  const idx = users.findIndex(u => u.id === id);
-  if (idx !== -1) {
-    if (users[idx].username === session?.username)
+  const [staticUsers, regUsers, pendingUsers] = await Promise.all([
+    getUsers(),
+    getRegUsers(),
+    getPendingUsers()
+  ]);
+
+  // Find user to identify email and username
+  let targetEmail = null;
+  let targetUsername = null;
+
+  const foundStatic = staticUsers.find(u => u.id === id);
+  if (foundStatic) {
+    if (foundStatic.username === session?.username)
       return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 });
-    users.splice(idx, 1);
-    await saveUsers(users);
-    return NextResponse.json({ ok: true });
+    targetEmail = foundStatic.email?.toLowerCase();
+    targetUsername = foundStatic.username?.toLowerCase();
   }
 
-  // Try registered users
-  const regUsers = await getRegUsers();
-  const ridx = regUsers.findIndex(u => u.id === id);
-  if (ridx !== -1) {
-    regUsers.splice(ridx, 1);
-    await saveRegUsers(regUsers);
-    return NextResponse.json({ ok: true });
+  const foundReg = regUsers.find(u => u.id === id);
+  if (foundReg) {
+    targetEmail = targetEmail || foundReg.email?.toLowerCase();
+    targetUsername = targetUsername || foundReg.username?.toLowerCase();
   }
 
-  return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  const foundPending = pendingUsers.find(u => u.id === id);
+  if (foundPending) {
+    targetEmail = targetEmail || foundPending.email?.toLowerCase();
+    targetUsername = targetUsername || foundPending.username?.toLowerCase();
+  }
+
+  if (!foundStatic && !foundReg && !foundPending) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+
+  // 1. Permanently remove from static users
+  const newStatic = staticUsers.filter(u => u.id !== id && (!targetEmail || u.email?.toLowerCase() !== targetEmail) && (!targetUsername || u.username?.toLowerCase() !== targetUsername));
+  if (newStatic.length !== staticUsers.length) await saveUsers(newStatic);
+
+  // 2. Permanently remove from registered users
+  const newReg = regUsers.filter(u => u.id !== id && (!targetEmail || u.email?.toLowerCase() !== targetEmail) && (!targetUsername || u.username?.toLowerCase() !== targetUsername));
+  if (newReg.length !== regUsers.length) await saveRegUsers(newReg);
+
+  // 3. Permanently remove from pending users queue
+  const newPending = pendingUsers.filter(u => u.id !== id && (!targetEmail || u.email?.toLowerCase() !== targetEmail) && (!targetUsername || u.username?.toLowerCase() !== targetUsername));
+  if (newPending.length !== pendingUsers.length) await savePendingUsers(newPending);
+
+  // 4. Permanently remove from all associated Redis hashes
+  await Promise.all([
+    redis.hdel(KEYS.BOOKMARKS, String(id)).catch(() => {}),
+    redis.hdel(KEYS.PREMIUM, String(id)).catch(() => {}),
+    targetEmail ? redis.del(`otp:rate:${targetEmail}`).catch(() => {}) : null,
+    targetEmail ? redis.del(`reset:rate:${targetEmail}`).catch(() => {}) : null,
+  ]);
+
+  return NextResponse.json({ ok: true, message: 'User permanently deleted from all database stores' });
 }

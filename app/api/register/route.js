@@ -50,8 +50,8 @@ export async function POST(req) {
       displayName = rawBody.displayName;
     }
 
-    if (!username || !email || !password)
-      return NextResponse.json(await encryptPayload({ error: 'All fields required' }), { status: 400 });
+    if (!username || !email || !password || !displayName || displayName.trim().length < 2)
+      return NextResponse.json(await encryptPayload({ error: 'All fields are required, including your Name (at least 2 characters)' }), { status: 400 });
     if (username.length < 3 || username.length > 20)
       return NextResponse.json(await encryptPayload({ error: 'Username must be 3–20 characters' }), { status: 400 });
     if (!/^[A-Z][a-zA-Z0-9_]*$/.test(username))
