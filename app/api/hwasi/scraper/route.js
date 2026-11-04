@@ -143,69 +143,62 @@ export async function GET(req) {
       });
     }
 
-    // 3. Inspect each post on this page
-    for (const p of posts) {
-      const rawTitle = (p.title?.rendered || '').replace(/<[^>]+>/g, '').trim();
-      const postLink = p.link || '';
-      let thumbUrl = p.yoast_head_json?.og_image?.[0]?.url || '';
+    // 3. Inspect posts in parallel with individual 3.5s timeouts (prevents Cloudflare 524 timeouts)
+    const postResults = await Promise.allSettled(
+      posts.map(async (p) => {
+        const rawTitle = (p.title?.rendered || '').replace(/<[^>]+>/g, '').trim();
+        const postLink = p.link || '';
+        let thumbUrl = p.yoast_head_json?.og_image?.[0]?.url || '';
 
-      if (!postLink) continue;
+        if (!postLink) return null;
 
-      try {
-        // Fetch post HTML to extract player iframe base64 query param
-        const pageRes = await fetch(postLink, {
-          headers: {
-            'User-Agent': UA,
-            'Accept': 'text/html,application/xhtml+xml',
-          },
-        });
+        try {
+          const pageRes = await fetch(postLink, {
+            headers: {
+              'User-Agent': UA,
+              'Accept': 'text/html,application/xhtml+xml',
+            },
+            signal: AbortSignal.timeout(3500),
+          });
 
-        if (!pageRes.ok) continue;
+          if (!pageRes.ok) return null;
 
-        const html = await pageRes.text();
-        const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-        let cdnId = null;
-        let cdnUrl = null;
+          const html = await pageRes.text();
+          const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+          let cdnId = null;
+          let cdnUrl = null;
 
-        if (iframeMatch) {
-          const iframeSrc = iframeMatch[1];
-          const qMatch = iframeSrc.match(/q=([a-zA-Z0-9+/=]+)/);
-          if (qMatch) {
-            const decoded = base64ToUtf8(qMatch[1]);
-            const urlDecoded = decodeURIComponent(decoded);
+          if (iframeMatch) {
+            const iframeSrc = iframeMatch[1];
+            const qMatch = iframeSrc.match(/q=([a-zA-Z0-9+/=]+)/);
+            if (qMatch) {
+              const decoded = base64ToUtf8(qMatch[1]);
+              const urlDecoded = decodeURIComponent(decoded);
 
-            const m = urlDecoded.match(cfg.cdnPattern);
-            if (m) {
-              cdnId = parseInt(m[1], 10);
-              cdnUrl = m[0];
-            }
+              const m = urlDecoded.match(cfg.cdnPattern);
+              if (m) {
+                cdnId = parseInt(m[1], 10);
+                cdnUrl = m[0];
+              }
 
-            // Fallback for thumbnail from decoded video poster attribute
-            if (!thumbUrl) {
-              const posterMatch = urlDecoded.match(/poster=["']([^"']+)["']/i);
-              if (posterMatch) thumbUrl = posterMatch[1];
+              if (!thumbUrl) {
+                const posterMatch = urlDecoded.match(/poster=["']([^"']+)["']/i);
+                if (posterMatch) thumbUrl = posterMatch[1];
+              }
             }
           }
-        }
 
-        // If no iframe match, fallback direct scan of HTML
-        if (!cdnId) {
-          const directMatch = html.match(cfg.cdnPattern);
-          if (directMatch) {
-            cdnId = parseInt(directMatch[1], 10);
-            cdnUrl = directMatch[0];
+          if (!cdnId) {
+            const directMatch = html.match(cfg.cdnPattern);
+            if (directMatch) {
+              cdnId = parseInt(directMatch[1], 10);
+              cdnUrl = directMatch[0];
+            }
           }
-        }
 
-        if (cdnId) {
-          const systemId = cfg.isExtra ? (cfg.offset + cdnId) : cdnId;
-          const strSysId = String(systemId);
-
-          if (knownSystemIds.has(strSysId)) {
-            knownCount++;
-          } else {
-            knownSystemIds.add(strSysId);
-            newVideos.push({
+          if (cdnId) {
+            const systemId = cfg.isExtra ? (cfg.offset + cdnId) : cdnId;
+            return {
               postId: p.id,
               cdnId,
               systemId,
@@ -214,11 +207,25 @@ export async function GET(req) {
               cdnUrl: cdnUrl || `${cfg.cdnBase}/${cdnId}.mp4`,
               postUrl: postLink,
               site: siteKey,
-            });
+            };
           }
+        } catch (_) {
+          return null;
         }
-      } catch (itemErr) {
-        console.warn(`Error scanning post ${p.id}:`, itemErr.message);
+        return null;
+      })
+    );
+
+    for (const res of postResults) {
+      if (res.status === 'fulfilled' && res.value) {
+        const item = res.value;
+        const strSysId = String(item.systemId);
+        if (knownSystemIds.has(strSysId)) {
+          knownCount++;
+        } else {
+          knownSystemIds.add(strSysId);
+          newVideos.push(item);
+        }
       }
     }
 

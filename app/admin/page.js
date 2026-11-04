@@ -150,6 +150,8 @@ export default function AdminPage() {
   const [captureAt, setCaptureAt] = useState(1.5);
   const [regenIds, setRegenIds] = useState('');
   const [showThumbGrid, setShowThumbGrid] = useState(false);
+  const [reviewPage, setReviewPage] = useState(0);
+  const [reviewFilter, setReviewFilter] = useState('');
   const [selectedGridIds, setSelectedGridIds] = useState(new Set()); // multi-select in grid
 
   // Auto Scraper & Manual Add State
@@ -217,8 +219,14 @@ export default function AdminPage() {
     try {
       for (let p = 1; p <= scrapePages; p++) {
         setScrapeLogs(prev => [...prev, '⏳ Scanning page ' + p + ' of ' + scrapePages + '...']);
-        const res = await secureFetch('/api/hwasi/scraper?site=' + scrapeSite + '&page=' + p + '&perPage=10&deep=' + scrapeDeep);
-        const data = await res.json();
+        const res = await secureFetch('/api/hwasi/scraper?site=' + scrapeSite + '&page=' + p + '&perPage=6&deep=' + scrapeDeep);
+        let data = {};
+        try {
+          const txt = await res.text();
+          data = JSON.parse(txt);
+        } catch (_) {
+          throw new Error('Scraper timed out or remote server returned invalid response. Try scanning 1 or 2 pages.');
+        }
         if (!res.ok || data.error) throw new Error(data.error || 'Failed to scan page ' + p);
 
         totalScanned += data.scannedPosts || 0;
@@ -1441,7 +1449,52 @@ export default function AdminPage() {
                 </div>
                 {showThumbGrid && (
                   <>
-                    {/* Selection toolbar */}
+                    {/* Selection toolbar & Search / Pagination */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 200 }}>
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="Filter video ID (e.g. 1162, 10760)..."
+                          value={reviewFilter}
+                          onChange={e => { setReviewFilter(e.target.value); setReviewPage(0); }}
+                          style={{ maxWidth: 260, fontSize: 12, padding: '6px 10px' }}
+                        />
+                        {reviewFilter && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => { setReviewFilter(''); setReviewPage(0); }}>✕</button>
+                        )}
+                      </div>
+
+                      {/* Pagination Controls */}
+                      {(() => {
+                        const primary = Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start);
+                        const extra = (settings.extraRanges || []).flatMap(r =>
+                          Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
+                        );
+                        const allReview = reviewFilter.trim()
+                          ? [...primary, ...extra].filter(id => String(id).includes(reviewFilter.trim()))
+                          : [...primary, ...extra];
+                        const totalReviewPages = Math.max(1, Math.ceil(allReview.length / 80));
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+                              Page {reviewPage + 1} of {totalReviewPages} ({allReview.length} videos)
+                            </span>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              disabled={reviewPage <= 0}
+                              onClick={() => setReviewPage(p => Math.max(0, p - 1))}
+                            >← Prev</button>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              disabled={reviewPage >= totalReviewPages - 1}
+                              onClick={() => setReviewPage(p => Math.min(totalReviewPages - 1, p + 1))}
+                            >Next →</button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
                     {selectedGridIds.size > 0 && (
                       <div style={{
                         display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10,
@@ -1460,80 +1513,80 @@ export default function AdminPage() {
                           }}>⬆ Fill Regen Field</button>
                       </div>
                     )}
+
+                    {/* Paginated Grid (80 items per page = instant 60fps, zero lag!) */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(100px,1fr))', gap: 6 }}>
-                      {[
-                        // Primary range
-                        ...Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start),
-                        // Extra ranges (2500-2560, 10001-10243, etc.)
-                        ...(settings.extraRanges || []).flatMap(r =>
+                      {(() => {
+                        const primary = Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start);
+                        const extra = (settings.extraRanges || []).flatMap(r =>
                           Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
-                        ),
-                      ].map(id => {
-                        const hasThumb = allThumbIds.has(id);
-                        const isSelected = selectedGridIds.has(id);
-                        return (
-                          <div key={id}
-                            style={{
-                              position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#0a0010',
-                              border: isSelected
-                                ? '2px solid #f59e0b'
-                                : hasThumb ? '1px solid rgba(124,58,237,.3)' : '1px solid rgba(239,68,68,.3)',
-                              cursor: 'pointer',
-                              boxShadow: isSelected ? '0 0 0 2px rgba(245,158,11,.3)' : 'none',
-                              transform: isSelected ? 'scale(0.96)' : 'scale(1)',
-                              transition: 'border .15s,transform .15s,box-shadow .15s',
-                              userSelect: 'none',
-                            }}
-                            onClick={(e) => {
-                              if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                                // Ctrl/Cmd/Shift+click: toggle this ID in multi-selection
-                                setSelectedGridIds(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(id)) next.delete(id);
-                                  else next.add(id);
-                                  // Auto-fill regen field with sorted selection
-                                  const sorted = Array.from(next).sort((a, b) => a - b);
-                                  setRegenIds(sorted.join(', '));
-                                  return next;
-                                });
-                              } else {
-                                // Normal click: single select → fill regen field directly
-                                setSelectedGridIds(new Set([id]));
-                                setRegenIds(String(id));
-                              }
-                            }}
-                          >
-                            {/* Selection checkbox indicator */}
-                            {isSelected && (
-                              <div style={{
-                                position: 'absolute', top: 4, right: 4, zIndex: 2,
-                                width: 18, height: 18, borderRadius: 4,
-                                background: '#f59e0b', display: 'flex', alignItems: 'center',
-                                justifyContent: 'center', fontSize: 11, fontWeight: 900, color: '#000'
-                              }}>✓</div>
-                            )}
-                            {hasThumb ? (
-                              <img src={id >= 10000 ? `/api/hwasi/thumb-extra/${id}` : `/api/hwasi/thumbnail/${id}`}
-                                style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }}
-                                loading="lazy" alt={`#${id}`}
-                                onError={e => { e.target.style.display = 'none'; }} />
-                            ) : (
-                              <div style={{
-                                width: '100%', aspectRatio: '16/9', display: 'flex', alignItems: 'center',
-                                justifyContent: 'center', background: 'rgba(239,68,68,.1)', fontSize: 16
-                              }}>❌</div>
-                            )}
-                            {/* Video ID label */}
-                            <div style={{
-                              position: 'absolute', bottom: 0, left: 0, right: 0,
-                              background: 'linear-gradient(transparent,rgba(0,0,0,.9))',
-                              padding: '10px 3px 3px', textAlign: 'center',
-                              fontSize: 10, fontWeight: 700,
-                              color: isSelected ? '#f59e0b' : hasThumb ? '#a78bfa' : '#f87171'
-                            }}>#{id}</div>
-                          </div>
                         );
-                      })}
+                        const allReview = reviewFilter.trim()
+                          ? [...primary, ...extra].filter(id => String(id).includes(reviewFilter.trim()))
+                          : [...primary, ...extra];
+                        const pageItems = allReview.slice(reviewPage * 80, (reviewPage + 1) * 80);
+                        return pageItems.map(id => {
+                          const hasThumb = allThumbIds.has(id);
+                          const isSelected = selectedGridIds.has(id);
+                          return (
+                            <div key={id}
+                              style={{
+                                position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#0a0010',
+                                border: isSelected
+                                  ? '2px solid #f59e0b'
+                                  : hasThumb ? '1px solid rgba(124,58,237,.3)' : '1px solid rgba(239,68,68,.3)',
+                                cursor: 'pointer',
+                                boxShadow: isSelected ? '0 0 0 2px rgba(245,158,11,.3)' : 'none',
+                                transform: isSelected ? 'scale(0.96)' : 'scale(1)',
+                                transition: 'border .15s,transform .15s,box-shadow .15s',
+                                userSelect: 'none',
+                              }}
+                              onClick={(e) => {
+                                if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                                  setSelectedGridIds(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(id)) next.delete(id);
+                                    else next.add(id);
+                                    const sorted = Array.from(next).sort((a, b) => a - b);
+                                    setRegenIds(sorted.join(', '));
+                                    return next;
+                                  });
+                                } else {
+                                  setSelectedGridIds(new Set([id]));
+                                  setRegenIds(String(id));
+                                }
+                              }}
+                            >
+                              {isSelected && (
+                                <div style={{
+                                  position: 'absolute', top: 4, right: 4, zIndex: 2,
+                                  width: 18, height: 18, borderRadius: 4,
+                                  background: '#f59e0b', display: 'flex', alignItems: 'center',
+                                  justifyContent: 'center', fontSize: 11, fontWeight: 900, color: '#000'
+                                }}>✓</div>
+                              )}
+                              {hasThumb ? (
+                                <img src={id >= 10000 ? `/api/hwasi/thumb-extra/${id}` : `/api/hwasi/thumbnail/${id}`}
+                                  style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }}
+                                  loading="lazy" alt={`#${id}`}
+                                  onError={e => { e.target.style.display = 'none'; }} />
+                              ) : (
+                                <div style={{
+                                  width: '100%', aspectRatio: '16/9', display: 'flex', alignItems: 'center',
+                                  justifyContent: 'center', background: 'rgba(239,68,68,.1)', fontSize: 16
+                                }}>❌</div>
+                              )}
+                              <div style={{
+                                position: 'absolute', bottom: 0, left: 0, right: 0,
+                                background: 'linear-gradient(transparent,rgba(0,0,0,.9))',
+                                padding: '10px 3px 3px', textAlign: 'center',
+                                fontSize: 10, fontWeight: 700,
+                                color: isSelected ? '#f59e0b' : hasThumb ? '#a78bfa' : '#f87171'
+                              }}>#{id}</div>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                     <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 10, textAlign: 'center' }}>
                       <strong style={{ color: '#a78bfa' }}>Click</strong> = select one ·

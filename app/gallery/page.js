@@ -63,14 +63,37 @@ export default function GalleryPage() {
   const [myHistory, setMyHistory] = useState([]);
   const [allIds, setAllIds] = useState([]);
   const [thumbIds, setThumbIds] = useState(new Set());
-  const [page, setPage] = useState(0);
-  const [curatedPage, setCuratedPage] = useState(0);
+  const [page, setPage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const qp = parseInt(sp.get('page') || '1', 10);
+      return !isNaN(qp) && qp > 0 ? qp - 1 : 0;
+    }
+    return 0;
+  });
+  const [curatedPage, setCuratedPage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const qp = parseInt(sp.get('page') || '1', 10);
+      return !isNaN(qp) && qp > 0 ? qp - 1 : 0;
+    }
+    return 0;
+  });
   const [modal, setModal] = useState(null);
   const modalRef = useRef(null);
   const openModalRef = useRef(null);
   useEffect(() => { modalRef.current = modal; }, [modal]);
   const [view, setView] = useState('gallery'); // gallery | bookmarks | history
-  const [homeTab, setHomeTab] = useState('foryou');
+  const [homeTab, setHomeTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const tabParam = sp.get('tab')?.toLowerCase();
+      if (['foryou', 'trending', 'popular', 'instaviral', 'recent'].includes(tabParam)) {
+        return tabParam;
+      }
+    }
+    return 'foryou';
+  });
   const [viewStatus, setViewStatus] = useState(null);
   const [isPremium, setIsPremium] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -192,6 +215,28 @@ export default function GalleryPage() {
     document.documentElement.setAttribute('data-theme', theme);
     try { localStorage.setItem('dh_theme', theme); } catch {}
   }, [theme]);
+
+  // Sync pagination and tab state into browser address bar (preserves page on refresh!)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const currentPageNum = (homeTab === 'foryou' ? page : curatedPage) + 1;
+    if (currentPageNum > 1) {
+      sp.set('page', String(currentPageNum));
+    } else {
+      sp.delete('page');
+    }
+    if (homeTab && homeTab !== 'foryou') {
+      sp.set('tab', homeTab);
+    } else {
+      sp.delete('tab');
+    }
+    const newQuery = sp.toString() ? `?${sp.toString()}` : '';
+    const newUrl = `${window.location.pathname}${newQuery}${window.location.hash}`;
+    if (window.location.search !== (newQuery || '')) {
+      window.history.replaceState(window.history.state, '', newUrl);
+    }
+  }, [page, curatedPage, homeTab]);
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
   function toggleMobileGrid(cols) {
     setMobileGridCols(cols);
@@ -2509,7 +2554,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     if (disablePreview) return;
     hoverTimer.current = setTimeout(() => {
       setIsHovered(true);
-    }, 350); // Deliberate 350ms hover prevents rapid accidental requests while scrolling
+    }, 120); // 120ms snappy hover response
   };
 
   const handleMouseLeave = () => {
@@ -2544,7 +2589,8 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     v.muted = true;
     v.playsInline = true;
     v.loop = true;
-    v.preload = 'metadata';
+    v.preload = 'auto';
+    v.crossOrigin = 'anonymous';
     v.src = getPreviewCdnUrl(id);
     videoObjRef.current = v;
 

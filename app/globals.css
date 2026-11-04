@@ -246,8 +246,10 @@ select.input option {
 }
 
 /* Suppress 3rd-party download manager overlays (IDM, Downloader extension buttons) */
-div[id*="idm"], div[class*="idm"], .idm_panel, #idm-panel, embed[type*="idm"], object[type*="idm"],
-div[id*="downloader-panel"], div[class*="download-helper"], div[id*="fvd-"], div[class*="fvd-"] {
+div[id*="idm" i], div[class*="idm" i], .idm_panel, #idm-panel, embed[type*="idm" i], object[type*="idm" i],
+div[id*="downloader-panel" i], div[class*="download-helper" i], div[id*="fvd-" i], div[class*="fvd-" i],
+div[title*="download this video" i], div[title*="IDM" i], [class*="download-panel" i], [id*="download-panel" i],
+button[id*="idm" i], button[class*="idm" i] {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
@@ -257,4 +259,5 @@ div[id*="downloader-panel"], div[class*="download-helper"], div[id*="fvd-"], div
   position: absolute !important;
   left: -9999px !important;
   top: -9999px !important;
+  z-index: -99999 !important;
 }

@@ -144,6 +144,54 @@ export default function CustomVideoPlayer({
     };
   }, []);
 
+  // Active defense against IDM (Internet Download Manager) floating panels
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const purgeIdm = () => {
+      try {
+        const idmNodes = document.querySelectorAll('div[id*="idm" i], div[class*="idm" i], embed[type*="idm" i], [class*="download-panel" i], [id*="download-panel" i]');
+        idmNodes.forEach(n => n.remove());
+
+        // Also remove any injected element containing "Download this video"
+        const candidates = document.querySelectorAll('div, a, button');
+        for (let i = 0; i < candidates.length; i++) {
+          const el = candidates[i];
+          const txt = (el.textContent || '').trim();
+          if (txt.includes('Download this video with IDM') || txt === 'Download this video' || txt.includes('IDM - MP4 file')) {
+            el.remove();
+          }
+        }
+      } catch (_) {}
+    };
+
+    purgeIdm();
+    const interval = setInterval(purgeIdm, 500);
+
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType === 1) {
+            const el = node;
+            const text = (el.textContent || '').toLowerCase();
+            const id = (el.id || '').toLowerCase();
+            const cls = (el.className || '').toLowerCase();
+            if (id.includes('idm') || cls.includes('idm') || text.includes('download this video') || text.includes('idm - mp4')) {
+              try { el.remove(); } catch (_) {}
+            }
+          }
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      clearInterval(interval);
+      observer.disconnect();
+    };
+  }, []);
+
   const toggleMute = () => {
     if (!videoRef.current) return;
     const nextMuted = !isMuted;

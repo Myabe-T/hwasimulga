@@ -44,8 +44,8 @@ export async function GET(req, { params }) {
     : `https://cdn.desimms.com.co/${num}.mp4`;
 
   let range = req.headers.get('Range') || req.headers.get('range');
-  if (!range) {
-    range = 'bytes=0-2097151'; // 2MB default preview cap to save bandwidth
+  if (!range || range === 'bytes=0-') {
+    range = 'bytes=0-2097151'; // 2MB preview cap to ensure instant playback and save bandwidth
   }
 
   const headers = {
@@ -65,7 +65,8 @@ export async function GET(req, { params }) {
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     responseHeaders.set('Content-Disposition', 'inline');
     responseHeaders.set('X-Content-Type-Options', 'nosniff');
-    responseHeaders.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+    responseHeaders.set('Cache-Control', 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400');
+    responseHeaders.set('CDN-Cache-Control', 'public, max-age=604800');
 
     if (upstream.headers.has('Content-Range')) {
       responseHeaders.set('Content-Range', upstream.headers.get('Content-Range'));

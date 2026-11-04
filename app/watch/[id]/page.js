@@ -908,32 +908,14 @@ export default function WatchPage() {
 
             <div className="related-grid">
               {relatedVideos.slice(0, relatedLimit).map(relId => (
-                <div
+                <RelatedVideoCard
                   key={relId}
-                  className="related-card"
-                  onClick={() => handleOpenRelated(relId)}
-                >
-                  <div className="related-thumb-wrap">
-                    <img
-                      src={thumbSrc(relId)}
-                      alt=""
-                      className="related-thumb-img"
-                      loading="lazy"
-                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                    />
-                    <span className="related-badge-dur">720p</span>
-                  </div>
-                  <div className="related-card-info">
-                    <h3 className="related-card-title">
-                      {allTitles[String(relId)] || (user?.role === 'admin' || user?.role === 'advisor' ? `Exclusive Video #${relId}` : 'Exclusive DesiHawas Video')}
-                    </h3>
-                    <div className="related-card-meta">
-                      {(user?.role === 'admin' || user?.role === 'advisor')
-                        ? `DesiHawas · #${relId}`
-                        : 'DesiHawas · Exclusive HD'}
-                    </div>
-                  </div>
-                </div>
+                  relId={relId}
+                  title={allTitles[String(relId)] || (user?.role === 'admin' || user?.role === 'advisor' ? `Exclusive Video #${relId}` : 'Exclusive DesiHawas Video')}
+                  thumbSrc={thumbSrc}
+                  user={user}
+                  onOpen={handleOpenRelated}
+                />
               ))}
             </div>
 
@@ -2141,6 +2123,136 @@ export default function WatchPage() {
           }
         }
       `}</style>
+    </div>
+  );
+}
+
+function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
+  const [isHovered, setIsHovered] = useState(false);
+  const hoverTimer = useRef(null);
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+  const videoObjRef = useRef(null);
+
+  const handleMouseEnter = () => {
+    hoverTimer.current = setTimeout(() => {
+      setIsHovered(true);
+    }, 120); // 120ms snappy response
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setIsHovered(false);
+  };
+
+  useEffect(() => {
+    if (!isHovered) {
+      if (videoObjRef.current) {
+        try {
+          videoObjRef.current.pause();
+          videoObjRef.current.src = '';
+          videoObjRef.current.removeAttribute('src');
+          videoObjRef.current.load();
+        } catch (_) {}
+        videoObjRef.current = null;
+      }
+      if (animRef.current) {
+        cancelAnimationFrame(animRef.current);
+        animRef.current = null;
+      }
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.loop = true;
+    v.preload = 'auto';
+    v.crossOrigin = 'anonymous';
+    v.src = `/api/hwasi/preview/${relId}`;
+    videoObjRef.current = v;
+
+    let isCancelled = false;
+
+    const render = () => {
+      if (isCancelled || !canvas) return;
+      if (v.readyState >= 2) {
+        if (canvas.width !== v.videoWidth && v.videoWidth > 0) {
+          canvas.width = v.videoWidth;
+          canvas.height = v.videoHeight;
+        }
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      }
+      if (v.currentTime > 5) {
+        v.currentTime = 1;
+      }
+      animRef.current = requestAnimationFrame(render);
+    };
+
+    v.play().then(() => {
+      if (!isCancelled) {
+        animRef.current = requestAnimationFrame(render);
+      }
+    }).catch(() => {});
+
+    return () => {
+      isCancelled = true;
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      try {
+        v.pause();
+        v.src = '';
+        v.removeAttribute('src');
+        v.load();
+      } catch (_) {}
+    };
+  }, [isHovered, relId]);
+
+  return (
+    <div
+      className="related-card"
+      onClick={() => onOpen(relId)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onTouchStart={handleMouseEnter}
+      onTouchEnd={handleMouseLeave}
+    >
+      <div className="related-thumb-wrap" style={{ position: 'relative', overflow: 'hidden' }}>
+        <img
+          src={thumbSrc(relId)}
+          alt=""
+          className="related-thumb-img"
+          loading="lazy"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        />
+        {isHovered && (
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              zIndex: 3,
+              pointerEvents: 'none',
+              borderRadius: 8,
+            }}
+          />
+        )}
+        <span className="related-badge-dur" style={{ zIndex: 4 }}>720p</span>
+      </div>
+      <div className="related-card-info">
+        <h3 className="related-card-title">{title}</h3>
+        <div className="related-card-meta">
+          {(user?.role === 'admin' || user?.role === 'advisor')
+            ? `DesiHawas · #${relId}`
+            : 'DesiHawas · Exclusive HD'}
+        </div>
+      </div>
     </div>
   );
 }
