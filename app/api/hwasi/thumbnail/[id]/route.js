@@ -59,7 +59,10 @@ export async function PUT(req, { params }) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { id } = await params;
-  const videoUrl = `${CDN_BASE}/${id}.mp4`;
+  const num = Number(id);
+  const videoUrl = num >= 10000
+    ? `https://cdn.hindibf.com.co/${num - 10000}.mp4`
+    : `${CDN_BASE}/${num}.mp4`;
 
   const FIRST = 2 * 1024 * 1024;  // 2MB start (ftyp + early frames)
   const LAST  = 3 * 1024 * 1024;  // 3MB end   (moov atom for non-faststart)

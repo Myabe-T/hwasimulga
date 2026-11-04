@@ -7,9 +7,7 @@ import styles from './gallery.module.css';
 import CustomVideoPlayer from '@/components/CustomVideoPlayer';
 
 function getPreviewCdnUrl(id) {
-  const num = Number(id);
-  if (num >= 10000) return `https://cdn.hindibf.com.co/${num - 10000}.mp4`;
-  return `https://cdn.desimms.com.co/${num}.mp4`;
+  return `/api/hwasi/preview/${id}`;
 }
 
 const PER_PAGE = 24;

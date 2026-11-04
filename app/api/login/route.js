@@ -47,36 +47,40 @@ export async function POST(req) {
       u => (u.username.toLowerCase() === usernameClean || u.email?.toLowerCase() === usernameClean) && u.password === password
     );
 
-    // ── 2. Check registered users (hashed password) ──
+    // ── 2. Check registered users ──
     if (!user) {
       const regUsers = await getRegUsers();
       const pwHash = await hashPassword(password);
-      user = regUsers.find(
-        u => (u.username?.toLowerCase() === usernameClean ||
-              u.email?.toLowerCase() === usernameClean) &&
-             u.passwordHash === pwHash
+
+      const candidateIdx = regUsers.findIndex(
+        u => u.username?.toLowerCase() === usernameClean ||
+             u.email?.toLowerCase() === usernameClean
       );
 
-      // If password hash mismatched in Redis, check if Firebase Auth has the updated password (e.g. after password reset)
-      if (!user) {
-        const candidateIdx = regUsers.findIndex(
-          u => u.username?.toLowerCase() === usernameClean ||
-               u.email?.toLowerCase() === usernameClean
-        );
-        if (candidateIdx !== -1) {
-          const candidate = regUsers[candidateIdx];
-          if (candidate.email) {
-            const fbAuth = await verifyFirebasePassword(candidate.email, password);
-            if (fbAuth.ok) {
-              // Firebase authenticated this user with this new password!
-              regUsers[candidateIdx].password = password;
-              regUsers[candidateIdx].passwordHash = pwHash;
-              if (fbAuth.emailVerified) {
-                regUsers[candidateIdx].emailVerified = true;
-              }
-              await saveRegUsers(regUsers);
-              user = regUsers[candidateIdx];
+      if (candidateIdx !== -1) {
+        const candidate = regUsers[candidateIdx];
+
+        // If candidate has an email, Firebase Auth is the source of truth for passwords
+        if (candidate.email) {
+          const fbAuth = await verifyFirebasePassword(candidate.email, password);
+          if (fbAuth.ok) {
+            // Password is valid in Firebase Auth! Update Redis with this active password
+            regUsers[candidateIdx].password = password;
+            regUsers[candidateIdx].passwordHash = pwHash;
+            if (fbAuth.emailVerified) {
+              regUsers[candidateIdx].emailVerified = true;
             }
+            await saveRegUsers(regUsers);
+            user = regUsers[candidateIdx];
+          } else {
+            // Firebase Auth rejected this password (e.g. old password after reset)!
+            // Do NOT allow login with old password
+            user = null;
+          }
+        } else {
+          // Legacy account without email: fallback to Redis passwordHash
+          if (candidate.passwordHash === pwHash) {
+            user = candidate;
           }
         }
       }

@@ -28,7 +28,10 @@ export async function GET(req, { params }) {
     return new NextResponse('Forbidden', { status: 403 });
 
   const { id } = await params;
-  const videoUrl = `${CDN_BASE}/${id}.mp4`;
+  const num = Number(id);
+  const videoUrl = num >= 10000
+    ? `https://cdn.hindibf.com.co/${num - 10000}.mp4`
+    : `${CDN_BASE}/${num}.mp4`;
 
   // Forward Range header from browser (critical for seekable streaming)
   const rangeHeader = req.headers.get('Range') || req.headers.get('range') || '';
@@ -77,7 +80,10 @@ export async function HEAD(req, { params }) {
     return new NextResponse('Forbidden', { status: 403 });
 
   const { id } = await params;
-  const videoUrl = `${CDN_BASE}/${id}.mp4`;
+  const num = Number(id);
+  const videoUrl = num >= 10000
+    ? `https://cdn.hindibf.com.co/${num - 10000}.mp4`
+    : `${CDN_BASE}/${num}.mp4`;
 
   try {
     const upstream = await fetch(videoUrl, {
