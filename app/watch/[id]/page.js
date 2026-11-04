@@ -2131,6 +2131,8 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
   const [isHovered, setIsHovered] = useState(false);
   const [isPlayingFrame, setIsPlayingFrame] = useState(false);
   const hoverTimer = useRef(null);
+  const touchStartTimeRef = useRef(0);
+  const touchMovedRef = useRef(false);
   const canvasRef = useRef(null);
   const animRef = useRef(null);
   const videoObjRef = useRef(null);
@@ -2144,6 +2146,42 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
   const handleMouseLeave = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     setIsHovered(false);
+  };
+
+  const handleTouchStart = () => {
+    touchStartTimeRef.current = Date.now();
+    touchMovedRef.current = false;
+    hoverTimer.current = setTimeout(() => {
+      setIsHovered(true);
+    }, 45);
+  };
+
+  const handleTouchMove = () => {
+    touchMovedRef.current = true;
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setIsHovered(false);
+  };
+
+  const handleTouchEnd = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    const holdDuration = Date.now() - touchStartTimeRef.current;
+    if (!touchMovedRef.current && holdDuration > 250) {
+      setTimeout(() => {
+        setIsHovered(false);
+      }, 3000);
+    } else {
+      setIsHovered(false);
+    }
+  };
+
+  const handleCardClick = (e) => {
+    const holdDuration = Date.now() - touchStartTimeRef.current;
+    if (touchStartTimeRef.current > 0 && holdDuration > 250 && !touchMovedRef.current) {
+      touchStartTimeRef.current = 0;
+      return;
+    }
+    touchStartTimeRef.current = 0;
+    if (onOpen) onOpen(relId);
   };
 
   useEffect(() => {
@@ -2229,11 +2267,12 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
   return (
     <div
       className="related-card"
-      onClick={() => onOpen(relId)}
+      onClick={handleCardClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onTouchStart={handleMouseEnter}
-      onTouchEnd={handleMouseLeave}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       <div className="related-thumb-wrap" style={{ position: 'relative', overflow: 'hidden' }}>
         <img

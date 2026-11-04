@@ -130,9 +130,9 @@
 
 /* Tab Pills */
 .tabContainer { display:flex; justify-content:center; padding:0 0 20px; }
-.tabPill { display:flex; align-items:center; gap:3px; background:var(--tab-bg); border:1px solid var(--border); border-radius:100px; padding:4px; overflow-x:auto; scrollbar-width:none; }
+.tabPill { display:flex; align-items:center; gap:4px; background:var(--tab-bg); border:1px solid var(--border); border-radius:100px; padding:4px; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; scroll-behavior:smooth; }
 .tabPill::-webkit-scrollbar { display:none; }
-.tab { display:inline-flex; align-items:center; gap:5px; padding:8px 16px; border-radius:100px; font-size:13px; font-weight:700; cursor:pointer; transition:all .2s; border:none; background:none; color:var(--text2); white-space:nowrap; font-family:inherit; }
+.tab { display:inline-flex; align-items:center; gap:5px; padding:8px 16px; border-radius:100px; font-size:13px; font-weight:700; cursor:pointer; transition:all .2s; border:none; background:none; color:var(--text2); white-space:nowrap; font-family:inherit; flex-shrink:0; }
 .tab:hover { color:var(--text1); }
 .tabActive { background:linear-gradient(135deg,#7c3aed,#4f46e5) !important; color:#fff !important; box-shadow:0 4px 14px rgba(124,58,237,.4); }
 
@@ -145,7 +145,6 @@
 /* Grid */
 .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; overflow-x:hidden; }
 .grid > * { min-width: 0; }
-.gridCols2 { grid-template-columns:repeat(2,1fr) !important; }
 /* Compact action buttons in 2-col mode */
 .gridCols2 .actionBtn { padding:6px 2px 5px; gap:3px; }
 .gridCols2 .actionBtnLabel { font-size:7px; }
@@ -272,30 +271,41 @@
 .navBtn:hover { background:var(--shi); color:var(--text1); }
 .headerRight { display:flex; align-items:center; gap:8px; margin-left:auto; flex-shrink:0; }
 .freeChip { font-size:10px; font-weight:800; padding:4px 10px; border-radius:100px; background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.25); color:#f59e0b; cursor:pointer; white-space:nowrap; }
-.tabBar { display:flex; align-items:center; gap:8px; padding:12px 0 16px; overflow-x:auto; scrollbar-width:none; }
+.tabBar { display:flex; align-items:center; gap:8px; padding:12px 0 16px; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
 .tabBar::-webkit-scrollbar { display:none; }
 .premiumBadge { background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; border-radius:100px; color:#fff; font-size:14px; padding:6px 10px; cursor:pointer; }
 
-/* RESPONSIVE */
-@media (max-width:1100px) { .grid { grid-template-columns:repeat(3,1fr); } }
-@media (max-width:900px) {
-  .grid { grid-template-columns:repeat(2,1fr); gap:10px; }
-  .searchWrap { display:none; }
-  .searchMobileBtn { display:flex; }
-  .userName { display:none; }
-  .userPlanBadge { display:none; }
+/* ── RESPONSIVE ADAPTIVE LAYOUT (Mobile, Tablet, Desktop) ── */
+@media (min-width: 1200px) {
+  .grid { grid-template-columns: repeat(4, 1fr); gap: 14px; }
 }
-@media (max-width:600px) {
+
+@media (max-width: 1199px) and (min-width: 901px) {
+  .grid { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+}
+
+/* Tablet ("tab auto best" - 641px to 900px) */
+@media (max-width: 900px) and (min-width: 641px) {
+  .grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .gridCols2 { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+  .searchWrap { display: none; }
+  .searchMobileBtn { display: flex; }
+  .userName { display: none; }
+  .userPlanBadge { display: none; }
+}
+
+/* Mobile Screens (<= 640px) */
+@media (max-width: 640px) {
   .modalBg { padding: 6px 4px !important; }
-  .grid { grid-template-columns:repeat(2,1fr); gap:8px; }
-  .main { padding:12px 10px 60px; }
-  .tab { padding:7px 12px; font-size:12px; }
-  .vOverlay { background:rgba(0,0,0,.18); }
-  .vPlayBtn { opacity:.75; transform:scale(.85); }
-  .modalBox { max-height:96vh; border-radius:16px; }
-  .upgradeCards { gap:6px; }
-  .upgradeCard { padding:12px 4px; }
-}
-@media (max-width:400px) {
-  .grid { grid-template-columns:1fr; }
+  /* Default mobile layout: 1 column clean cards */
+  .grid { grid-template-columns: 1fr; gap: 12px; }
+  /* 2-col compact mode */
+  .gridCols2 { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+  .main { padding: 10px 8px 60px; }
+  .tab { padding: 7px 12px; font-size: 12px; }
+  .vOverlay { background: rgba(0,0,0,.18); }
+  .vPlayBtn { opacity: .75; transform: scale(.85); }
+  .modalBox { max-height: 96vh; border-radius: 16px; }
+  .upgradeCards { gap: 6px; }
+  .upgradeCard { padding: 12px 4px; }
 }

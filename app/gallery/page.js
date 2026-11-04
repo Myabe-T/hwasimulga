@@ -132,6 +132,16 @@ export default function GalleryPage() {
   const [mobileGridCols, setMobileGridCols] = useState(1); // 1 or 2 columns on mobile
   const [hoverPreviewEnabled, setHoverPreviewEnabled] = useState(true); // Toggle hover preview on/off
   const [quickCurateFlash, setQuickCurateFlash] = useState(''); // flash toast for quick curate
+  const tabPillRef = useRef(null);
+
+  // Auto-scroll active tab into view on mobile and tablet
+  useEffect(() => {
+    if (!tabPillRef.current) return;
+    const activeBtn = tabPillRef.current.querySelector(`.${styles.tabActive}`);
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [homeTab]);
 
   // ── Browser back/forward & Profile URL routing ──
   useEffect(() => {
@@ -1022,7 +1032,7 @@ export default function GalleryPage() {
         {/* Nav */}
         <nav className={styles.sidebarNav}>
           <button className={`${styles.sidebarItem} ${view === 'gallery' ? styles.sidebarActive : ''}`}
-            onClick={() => { setView('gallery'); setHomeTab('full'); setSidebarOpen(false); }}>
+            onClick={() => { setView('gallery'); setHomeTab('foryou'); setSidebarOpen(false); }}>
             <span className={styles.sidebarIcon} style={{ background:'rgba(59,130,246,.18)' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
@@ -1234,7 +1244,7 @@ export default function GalleryPage() {
           <main className={styles.main}>
             {/* Dynamic Island Tabs */}
             <div className={styles.tabContainer}>
-              <div className={styles.tabPill}>
+              <div className={styles.tabPill} ref={tabPillRef}>
                 {HOME_TABS.map(t => (
                   <button key={t.id} onClick={() => { setHomeTab(t.id); setPage(0); setCuratedPage(0); }}
                     className={`${styles.tab} ${homeTab === t.id ? styles.tabActive : ''}`}>
@@ -2552,6 +2562,8 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
   const [showCurateMenu, setShowCurateMenu] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const hoverTimer = useRef(null);
+  const touchStartTimeRef = useRef(0);
+  const touchMovedRef = useRef(false);
   const canvasRef = useRef(null);
   const animRef = useRef(null);
   const videoObjRef = useRef(null);
@@ -2566,6 +2578,44 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
   const handleMouseLeave = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     setIsHovered(false);
+  };
+
+  const handleTouchStart = () => {
+    if (disablePreview) return;
+    touchStartTimeRef.current = Date.now();
+    touchMovedRef.current = false;
+    hoverTimer.current = setTimeout(() => {
+      setIsHovered(true);
+    }, 45);
+  };
+
+  const handleTouchMove = () => {
+    touchMovedRef.current = true;
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setIsHovered(false);
+  };
+
+  const handleTouchEnd = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    const holdDuration = Date.now() - touchStartTimeRef.current;
+    if (!touchMovedRef.current && holdDuration > 250) {
+      // User held finger down to preview: keep playing preview for 3s
+      setTimeout(() => {
+        setIsHovered(false);
+      }, 3000);
+    } else {
+      setIsHovered(false);
+    }
+  };
+
+  const handleCardClick = (e) => {
+    const holdDuration = Date.now() - touchStartTimeRef.current;
+    if (touchStartTimeRef.current > 0 && holdDuration > 250 && !touchMovedRef.current) {
+      touchStartTimeRef.current = 0;
+      return;
+    }
+    touchStartTimeRef.current = 0;
+    if (onPlay) onPlay(e);
   };
 
   const [isPlayingFrame, setIsPlayingFrame] = useState(false);
@@ -2661,11 +2711,12 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
       {/* Thumbnail */}
       <div
         className={styles.vthumb}
-        onClick={onPlay}
+        onClick={handleCardClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        onTouchStart={handleMouseEnter}
-        onTouchEnd={handleMouseLeave}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         <div className={styles.vthumbInner}>
           {hasThumb && !err ? (
@@ -2703,8 +2754,19 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
           {/* Quality badge */}
           <div className={styles.qualityBadge} style={{ background: qColor, zIndex: 5 }}>{quality}</div>
 
-          {/* Views */}
-          <div className={styles.viewsBadge} style={{ zIndex: 5 }}>👁 {views}</div>
+          {/* Views — tap to toggle preview on mobile */}
+          <div
+            className={styles.viewsBadge}
+            style={{ zIndex: 5, cursor: 'pointer' }}
+            title="Tap to preview"
+            onClick={(e) => {
+              if (disablePreview) return;
+              e.stopPropagation();
+              setIsHovered(p => !p);
+            }}
+          >
+            👁 {views}
+          </div>
 
           {/* Play overlay — hidden while hover preview is active */}
           {!isHovered && (
