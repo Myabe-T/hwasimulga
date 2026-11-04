@@ -33,8 +33,7 @@ function AuthActionHandler() {
 
   useEffect(() => {
     if (!oobCode || !mode) {
-      setStatus('error');
-      setErr('Invalid or missing authentication link parameters.');
+      setStatus('action_complete');
       setLoading(false);
       return;
     }
@@ -190,6 +189,20 @@ function AuthActionHandler() {
               <div style={{ background: 'rgba(34,197,94,.15)', border: '1px solid rgba(34,197,94,.3)', color: '#4ade80', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 24 }}>
                 Auto-redirecting to sign in...
               </div>
+              <a href="/login" style={{ display: 'inline-block', background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', padding: '12px 28px', borderRadius: 12, textDecoration: 'none', fontWeight: 700, fontSize: 14 }}>
+                Go to Sign In →
+              </a>
+            </div>
+          )}
+
+          {/* ── 2b. ACTION ALREADY COMPLETED OR REDIRECT ── */}
+          {status === 'action_complete' && (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ fontSize: 52, marginBottom: 14 }}>✅</div>
+              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 10 }}>Action Completed!</h2>
+              <p style={{ fontSize: 14, color: 'rgba(255,255,255,.7)', lineHeight: 1.6, marginBottom: 20 }}>
+                If you just verified your email or reset your password, your request has been processed successfully. You can now sign in to your DesiHawas account.
+              </p>
               <a href="/login" style={{ display: 'inline-block', background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', padding: '12px 28px', borderRadius: 12, textDecoration: 'none', fontWeight: 700, fontSize: 14 }}>
                 Go to Sign In →
               </a>

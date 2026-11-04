@@ -7,8 +7,8 @@ import { sendPasswordResetEmail, createUserWithEmailAndPassword } from 'firebase
 async function safeSendPasswordResetEmail(authInstance, email) {
   try {
     const actionCodeSettings = {
-      url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
-      handleCodeInApp: true,
+      url: typeof window !== 'undefined' ? `${window.location.origin}/login?reset=1` : 'https://desihawas.pages.dev/login?reset=1',
+      handleCodeInApp: false,
     };
     await sendPasswordResetEmail(authInstance, email, actionCodeSettings);
     return true;

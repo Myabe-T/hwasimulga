@@ -14,7 +14,10 @@ export async function GET() {
     deletedIds = Array.from(rawDeleted || []).map(Number);
   }
   const payload = await encryptPayload({ ...settings, deletedIds });
-  return NextResponse.json(payload);
+  return NextResponse.json({
+    ...payload,
+    allowAnyEmailDomain: Boolean(settings?.allowAnyEmailDomain),
+  });
 }
 
 export async function PUT(req) {

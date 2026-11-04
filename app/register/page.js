@@ -8,8 +8,8 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVe
 async function safeSendEmailVerification(user) {
   try {
     const actionCodeSettings = {
-      url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
-      handleCodeInApp: true,
+      url: typeof window !== 'undefined' ? `${window.location.origin}/login?verified=1` : 'https://desihawas.pages.dev/login?verified=1',
+      handleCodeInApp: false,
     };
     await sendEmailVerification(user, actionCodeSettings);
   } catch (err) {
@@ -71,12 +71,19 @@ export default function RegisterPage() {
     }).catch(() => {});
 
     // Check if admin has enabled any email domain
-    fetch('/api/hwasi/settings')
+    secureFetch('/api/hwasi/settings')
       .then(r => r.json())
       .then(d => {
         if (d?.allowAnyEmailDomain) setAllowAnyEmail(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        fetch('/api/hwasi/settings')
+          .then(r => r.json())
+          .then(d => {
+            if (d?.allowAnyEmailDomain) setAllowAnyEmail(true);
+          })
+          .catch(() => {});
+      });
 
     return () => clearInterval(timerRef.current);
   }, []);

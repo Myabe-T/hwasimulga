@@ -2,7 +2,7 @@ export const runtime = 'edge';
 
 import { SignJWT } from 'jose';
 import { NextResponse } from 'next/server';
-import { getUsers, getRegUsers, getPendingUsers, getDeviceData, getBlockReason } from '@/lib/redis';
+import { getUsers, getRegUsers, saveRegUsers, getPendingUsers, getDeviceData, getBlockReason } from '@/lib/redis';
 import { adminLookupUserByEmail, verifyFirebasePassword } from '@/lib/firebaseAdmin';
 
 const SECRET = new TextEncoder().encode(

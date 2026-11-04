@@ -784,6 +784,7 @@ export default function GalleryPage() {
               title={videoTitles[String(id)] || null}
               hasThumb={thumbIds.has(id)}
               isBookmarked={false} isAdmin={false} showHash={false}
+              disablePreview={instaviralIds.includes(Number(id))}
               onPlay={() => setGuestAuthModal(true)}
               onDownload={null}
               onBookmark={() => setGuestAuthModal(true)}
@@ -902,6 +903,7 @@ export default function GalleryPage() {
                         isBookmarked={bookmarks.has(id)}
                         isAdmin={isAdminOrAdvisor}
                         showHash={isAdminOrAdvisor}
+                        disablePreview={instaviralIds.includes(Number(id)) && !isPremium}
                         onPlay={() => { setSearchOpen(false); openModal(id); }}
                         onDownload={null}
                         onBookmark={e => toggleBookmark(e, id)}
@@ -1206,6 +1208,7 @@ export default function GalleryPage() {
                       isBookmarked={bookmarks.has(id)}
                       isAdmin={isAdminOrAdvisor}
                       showHash={isAdminOrAdvisor}
+                      disablePreview={(homeTab === 'instaviral' || instaviralIds.includes(Number(id))) && !isPremium}
                       onPlay={() => openModal(id)}
                       onDownload={instaviralIds.includes(Number(id)) ? null : e => handleDownload(e, id)}
                       onBookmark={e => toggleBookmark(e, id)}
@@ -1254,6 +1257,7 @@ export default function GalleryPage() {
                     title={videoTitles[String(id)] || null}
                     hasThumb={thumbIds.has(id)} isBookmarked={true}
                     isAdmin={isAdminOrAdvisor} showHash={isAdminOrAdvisor}
+                    disablePreview={instaviralIds.includes(Number(id)) && !isPremium}
                     onPlay={() => openModal(id)}
                     onDownload={instaviralIds.includes(Number(id)) ? null : e => handleDownload(e, id)}
                     onBookmark={e => toggleBookmark(e, id)}
@@ -2472,15 +2476,19 @@ function Logo({ size }) {
   );
 }
 
-/* ── VideoCard — TeraViralHub style with Fast CDN Hover Preview ── */
-function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete, onCurate }) {
+/* ── VideoCard — TeraViralHub style with Canvas Hover Preview (Blocks IDM Video Capture) ── */
+function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete, onCurate, disablePreview }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
   const [showCurateMenu, setShowCurateMenu] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const hoverTimer = useRef(null);
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+  const videoObjRef = useRef(null);
 
   const handleMouseEnter = () => {
+    if (disablePreview) return;
     hoverTimer.current = setTimeout(() => {
       setIsHovered(true);
     }, 120); // Quick 120ms debounce
@@ -2490,6 +2498,70 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     setIsHovered(false);
   };
+
+  useEffect(() => {
+    if (!isHovered || disablePreview) {
+      if (videoObjRef.current) {
+        try {
+          videoObjRef.current.pause();
+          videoObjRef.current.removeAttribute('src');
+          videoObjRef.current.load();
+        } catch (_) {}
+        videoObjRef.current = null;
+      }
+      if (animRef.current) {
+        cancelAnimationFrame(animRef.current);
+        animRef.current = null;
+      }
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    // In-memory video element NEVER appended to DOM — IDM content script CANNOT hook this!
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.loop = true;
+    v.preload = 'auto';
+    v.src = getPreviewCdnUrl(id);
+    videoObjRef.current = v;
+
+    let isCancelled = false;
+
+    const render = () => {
+      if (isCancelled || !canvas) return;
+      if (v.readyState >= 2) {
+        if (canvas.width !== v.videoWidth && v.videoWidth > 0) {
+          canvas.width = v.videoWidth;
+          canvas.height = v.videoHeight;
+        }
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      }
+      if (v.currentTime > 5) {
+        v.currentTime = 1;
+      }
+      animRef.current = requestAnimationFrame(render);
+    };
+
+    v.play().then(() => {
+      if (!isCancelled) {
+        animRef.current = requestAnimationFrame(render);
+      }
+    }).catch(() => {});
+
+    return () => {
+      isCancelled = true;
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      try {
+        v.pause();
+        v.removeAttribute('src');
+        v.load();
+      } catch (_) {}
+    };
+  }, [isHovered, disablePreview, id]);
 
   const quality = videoQuality(id);
   const qColor = qualityColor(quality);
@@ -2521,21 +2593,10 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
             </div>
           )}
 
-          {/* Fast 3-second preview directly from external CDN (0 Redis bytes, 0 Cloudflare bytes) */}
-          {isHovered && (
-            <video
-              ref={(el) => {
-                if (el) {
-                  el.muted = true;
-                  el.play().catch(() => {});
-                }
-              }}
-              src={getPreviewCdnUrl(id)}
-              autoPlay
-              muted
-              playsInline
-              loop
-              preload="auto"
+          {/* Canvas-rendered preview — IDM cannot see any <video> tag in the DOM */}
+          {isHovered && !disablePreview && (
+            <canvas
+              ref={canvasRef}
               style={{
                 position: 'absolute',
                 inset: 0,
@@ -2545,11 +2606,6 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
                 zIndex: 4,
                 pointerEvents: 'none',
                 borderRadius: 8,
-              }}
-              onTimeUpdate={(e) => {
-                if (e.currentTarget.currentTime > 5) {
-                  e.currentTarget.currentTime = 1;
-                }
               }}
             />
           )}
