@@ -2546,27 +2546,6 @@ function Logo({ size }) {
 }
 
 /* ── VideoCard — TeraViralHub style with Canvas Hover Preview (Blocks IDM Video Capture) ── */
-const previewBlobCache = new Map();
-
-async function getPreviewBlobUrl(id, signal) {
-  if (previewBlobCache.has(id)) {
-    return previewBlobCache.get(id);
-  }
-  const res = await fetch(`/api/hwasi/preview/${id}`, { signal });
-  if (!res.ok) throw new Error('Preview fetch failed: ' + res.status);
-  const buf = await res.arrayBuffer();
-  const blob = new Blob([buf], { type: 'video/mp4' });
-  const blobUrl = URL.createObjectURL(blob);
-  if (previewBlobCache.size > 50) {
-    const oldestKey = previewBlobCache.keys().next().value;
-    const oldUrl = previewBlobCache.get(oldestKey);
-    try { URL.revokeObjectURL(oldUrl); } catch (_) {}
-    previewBlobCache.delete(oldestKey);
-  }
-  previewBlobCache.set(id, blobUrl);
-  return blobUrl;
-}
-
 function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete, onCurate, disablePreview }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
@@ -2581,7 +2560,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     if (disablePreview) return;
     hoverTimer.current = setTimeout(() => {
       setIsHovered(true);
-    }, 120); // 120ms snappy hover response
+    }, 100); // 100ms snappy hover response
   };
 
   const handleMouseLeave = () => {
@@ -2611,16 +2590,17 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
-    const abortCtrl = new AbortController();
-    let isCancelled = false;
-
     // In-memory video element NEVER appended to DOM — IDM content script CANNOT hook this!
     const v = document.createElement('video');
     v.muted = true;
     v.playsInline = true;
     v.loop = true;
+    v.preload = 'auto';
     v.crossOrigin = 'anonymous';
+    v.src = getPreviewCdnUrl(id);
     videoObjRef.current = v;
+
+    let isCancelled = false;
 
     const render = () => {
       if (isCancelled || !canvas) return;
@@ -2631,27 +2611,20 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
         }
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
       }
-      if (v.currentTime > 4.5) {
-        v.currentTime = 0.5;
+      if (v.currentTime > 5) {
+        v.currentTime = 0.5; // loop smoothly
       }
       animRef.current = requestAnimationFrame(render);
     };
 
-    getPreviewBlobUrl(id, abortCtrl.signal)
-      .then((blobUrl) => {
-        if (isCancelled) return;
-        v.src = blobUrl;
-        v.play().then(() => {
-          if (!isCancelled) {
-            animRef.current = requestAnimationFrame(render);
-          }
-        }).catch(() => {});
-      })
-      .catch(() => {});
+    v.play().then(() => {
+      if (!isCancelled) {
+        animRef.current = requestAnimationFrame(render);
+      }
+    }).catch(() => {});
 
     return () => {
       isCancelled = true;
-      abortCtrl.abort();
       if (animRef.current) cancelAnimationFrame(animRef.current);
       try {
         v.pause();

@@ -38,15 +38,31 @@ export async function GET(req, { params }) {
     }
   } catch (_) {}
 
-  // 3. Routing to correct CDN
+  // 3. Routing to correct CDN (both CDNs supported seamlessly)
   const videoUrl = num >= 10000
     ? `https://cdn.hindibf.com.co/${num - 10000}.mp4`
     : `https://cdn.desimms.com.co/${num}.mp4`;
 
-  // Always request only the first 1.8MB slice for lightweight, fast hover preview
+  let range = req.headers.get('Range') || req.headers.get('range');
+  
+  // Range handling:
+  // - Initial request with no range or bytes=0- → cap to first 2MB for fast preview
+  // - Subsequent range requests (e.g. browser seeking tail moov atom or early frames) → allow up to 2.5MB per slice
+  if (!range || range === 'bytes=0-') {
+    range = 'bytes=0-2097151';
+  } else {
+    const match = range.match(/bytes=(\d+)-(\d*)/);
+    if (match) {
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : start + 2097151;
+      const cappedEnd = Math.min(end, start + 2097151); // Never serve more than 2MB per request
+      range = `bytes=${start}-${cappedEnd}`;
+    }
+  }
+
   const headers = {
     'User-Agent': 'Mozilla/5.0 (compatible; DesiHawasBot/1.0)',
-    'Range': 'bytes=0-1887436',
+    ...(range ? { Range: range } : {}),
   };
 
   try {
@@ -55,23 +71,25 @@ export async function GET(req, { params }) {
       return new NextResponse('Not found', { status: upstream.status });
     }
 
-    const chunkBuffer = await upstream.arrayBuffer();
-
     const responseHeaders = new Headers();
-    // Use application/octet-stream — IDM Chrome Extension completely ignores binary data streams!
-    // Never send video/mp4 over the wire for previews so IDM sniffer is NEVER triggered.
-    responseHeaders.set('Content-Type', 'application/octet-stream');
-    responseHeaders.set('Content-Length', String(chunkBuffer.byteLength));
+    responseHeaders.set('Content-Type', 'video/mp4');
+    responseHeaders.set('Accept-Ranges', 'bytes');
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     responseHeaders.set('Content-Disposition', 'inline');
     responseHeaders.set('X-Content-Type-Options', 'nosniff');
-    // Strong edge caching so Cloudflare caches this 1.8MB slice for instant repeated loads
-    responseHeaders.set('Cache-Control', 'public, max-age=604800, s-maxage=604800, immutable');
+    // Strong edge caching for fast repeat loads across Cloudflare POPs
+    responseHeaders.set('Cache-Control', 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400');
     responseHeaders.set('CDN-Cache-Control', 'public, max-age=604800');
 
-    // Return status 200 OK — NEVER 206 Partial Content, NEVER expose Content-Range with upstream 300MB total size!
-    return new NextResponse(chunkBuffer, {
-      status: 200,
+    if (upstream.headers.has('Content-Range')) {
+      responseHeaders.set('Content-Range', upstream.headers.get('Content-Range'));
+    }
+    if (upstream.headers.has('Content-Length')) {
+      responseHeaders.set('Content-Length', upstream.headers.get('Content-Length'));
+    }
+
+    return new NextResponse(upstream.body, {
+      status: upstream.status,
       headers: responseHeaders,
     });
   } catch (err) {
