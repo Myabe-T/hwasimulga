@@ -2568,8 +2568,11 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     setIsHovered(false);
   };
 
+  const [isPlayingFrame, setIsPlayingFrame] = useState(false);
+
   useEffect(() => {
     if (!isHovered || disablePreview) {
+      setIsPlayingFrame(false);
       if (videoObjRef.current) {
         try {
           videoObjRef.current.pause();
@@ -2596,7 +2599,6 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     v.playsInline = true;
     v.loop = true;
     v.preload = 'auto';
-    v.crossOrigin = 'anonymous';
     v.src = getPreviewCdnUrl(id);
     videoObjRef.current = v;
 
@@ -2604,21 +2606,34 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
 
     const render = () => {
       if (isCancelled || !canvas) return;
-      if (v.readyState >= 2) {
-        if (canvas.width !== v.videoWidth && v.videoWidth > 0) {
+      if (v.readyState >= 2 && v.videoWidth > 0) {
+        if (canvas.width !== v.videoWidth) {
           canvas.width = v.videoWidth;
           canvas.height = v.videoHeight;
         }
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+        setIsPlayingFrame(true);
       }
       if (v.currentTime > 5) {
-        v.currentTime = 0.5; // loop smoothly
+        v.currentTime = 0.2; // loop smoothly
       }
       animRef.current = requestAnimationFrame(render);
     };
 
+    const startPlayback = () => {
+      if (isCancelled) return;
+      v.play().catch(() => {});
+      if (!animRef.current) {
+        animRef.current = requestAnimationFrame(render);
+      }
+    };
+
+    v.addEventListener('loadeddata', startPlayback);
+    v.addEventListener('canplay', startPlayback);
+    v.addEventListener('playing', startPlayback);
+
     v.play().then(() => {
-      if (!isCancelled) {
+      if (!isCancelled && !animRef.current) {
         animRef.current = requestAnimationFrame(render);
       }
     }).catch(() => {});
@@ -2678,6 +2693,8 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
                 zIndex: 4,
                 pointerEvents: 'none',
                 borderRadius: 8,
+                opacity: isPlayingFrame ? 1 : 0,
+                transition: 'opacity .2s ease-in',
               }}
             />
           )}

@@ -47,15 +47,18 @@ export async function GET(req, { params }) {
   
   // Range handling:
   // - Initial request with no range or bytes=0- → cap to first 2MB for fast preview
-  // - Subsequent range requests (e.g. browser seeking tail moov atom or early frames) → allow up to 2.5MB per slice
+  // - Suffix range (bytes=-500000) for reading tail moov metadata → forward directly
+  // - Other range requests → cap slice to max 2MB
   if (!range || range === 'bytes=0-') {
     range = 'bytes=0-2097151';
+  } else if (/^bytes=-\d+$/.test(range)) {
+    // Suffix range allowed as-is (used by MP4 demuxer to find tail moov)
   } else {
     const match = range.match(/bytes=(\d+)-(\d*)/);
     if (match) {
       const start = parseInt(match[1], 10);
       const end = match[2] ? parseInt(match[2], 10) : start + 2097151;
-      const cappedEnd = Math.min(end, start + 2097151); // Never serve more than 2MB per request
+      const cappedEnd = Math.min(end, start + 2097151);
       range = `bytes=${start}-${cappedEnd}`;
     }
   }

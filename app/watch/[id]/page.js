@@ -2129,6 +2129,7 @@ export default function WatchPage() {
 
 function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
   const [isHovered, setIsHovered] = useState(false);
+  const [isPlayingFrame, setIsPlayingFrame] = useState(false);
   const hoverTimer = useRef(null);
   const canvasRef = useRef(null);
   const animRef = useRef(null);
@@ -2147,6 +2148,7 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
 
   useEffect(() => {
     if (!isHovered) {
+      setIsPlayingFrame(false);
       if (videoObjRef.current) {
         try {
           videoObjRef.current.pause();
@@ -2172,7 +2174,6 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
     v.playsInline = true;
     v.loop = true;
     v.preload = 'auto';
-    v.crossOrigin = 'anonymous';
     v.src = `/api/hwasi/preview/${relId}`;
     videoObjRef.current = v;
 
@@ -2180,21 +2181,34 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
 
     const render = () => {
       if (isCancelled || !canvas) return;
-      if (v.readyState >= 2) {
-        if (canvas.width !== v.videoWidth && v.videoWidth > 0) {
+      if (v.readyState >= 2 && v.videoWidth > 0) {
+        if (canvas.width !== v.videoWidth) {
           canvas.width = v.videoWidth;
           canvas.height = v.videoHeight;
         }
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+        setIsPlayingFrame(true);
       }
       if (v.currentTime > 5) {
-        v.currentTime = 0.5; // loop preview smoothly
+        v.currentTime = 0.2; // loop preview smoothly
       }
       animRef.current = requestAnimationFrame(render);
     };
 
+    const startPlayback = () => {
+      if (isCancelled) return;
+      v.play().catch(() => {});
+      if (!animRef.current) {
+        animRef.current = requestAnimationFrame(render);
+      }
+    };
+
+    v.addEventListener('loadeddata', startPlayback);
+    v.addEventListener('canplay', startPlayback);
+    v.addEventListener('playing', startPlayback);
+
     v.play().then(() => {
-      if (!isCancelled) {
+      if (!isCancelled && !animRef.current) {
         animRef.current = requestAnimationFrame(render);
       }
     }).catch(() => {});
@@ -2240,6 +2254,8 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
               zIndex: 3,
               pointerEvents: 'none',
               borderRadius: 8,
+              opacity: isPlayingFrame ? 1 : 0,
+              transition: 'opacity .2s ease-in',
             }}
           />
         )}
