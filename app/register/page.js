@@ -87,8 +87,12 @@ export default function RegisterPage() {
         fbUser = userCred.user;
         setCreatedFirebaseUser(fbUser);
 
-        // 2. Send Firebase verification email link
-        await sendEmailVerification(fbUser);
+        // 2. Send Firebase verification email link with our custom branded action page
+        const actionCodeSettings = {
+          url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
+          handleCodeInApp: true,
+        };
+        await sendEmailVerification(fbUser, actionCodeSettings);
       } catch (fbErr) {
         if (fbErr.code === 'auth/email-already-in-use') {
           setErr('This email is already registered. Please sign in instead.');
@@ -139,7 +143,11 @@ export default function RegisterPage() {
     if (resendCd > 0 || !createdFirebaseUser) return;
     setErr(''); setInfo('');
     try {
-      await sendEmailVerification(createdFirebaseUser);
+      const actionCodeSettings = {
+        url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
+        handleCodeInApp: true,
+      };
+      await sendEmailVerification(createdFirebaseUser, actionCodeSettings);
       setInfo(`Verification link resent to ${form.email}! Please check inbox & spam.`);
       startResendCooldown();
     } catch (e) {

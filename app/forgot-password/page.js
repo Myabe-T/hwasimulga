@@ -14,8 +14,12 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setErr(''); setLoading(true);
     try {
-      // Send password reset link directly via Firebase Auth
-      await sendPasswordResetEmail(auth, email.trim());
+      const actionCodeSettings = {
+        url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
+        handleCodeInApp: true,
+      };
+      // Send password reset link directly via Firebase Auth to our custom branded page
+      await sendPasswordResetEmail(auth, email.trim(), actionCodeSettings);
       setDone(true);
     } catch (fbErr) {
       if (fbErr.code === 'auth/invalid-email') {

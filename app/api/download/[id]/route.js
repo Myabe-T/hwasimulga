@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { signVideoId } from '@/lib/sign';
 import { getPremium } from '@/lib/redis';
+import { decodeVideoId } from '@/lib/videoToken';
 
 // GET /api/download/[id] — returns signed redirect to CDN for download (Premium only)
 // Never proxies the file through Cloudflare (avoids bandwidth limits)
@@ -20,7 +21,8 @@ export async function GET(req, { params }) {
   }
 
   const { id } = await params;
-  const token = await signVideoId(id);
+  const rawId = decodeVideoId(id) || id;
+  const token = await signVideoId(rawId);
   // Redirect to our signed token endpoint with ?dl=1 flag for download headers
   return NextResponse.redirect(new URL(`/api/v/${token}?dl=1`, req.url), 302);
 }

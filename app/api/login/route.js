@@ -81,6 +81,17 @@ export async function POST(req) {
       }), { status: 403 });
     }
 
+    // ── 4b. Check if email is verified (registered accounts only, exempting admin & advisor) ──
+    if (user.role !== 'admin' && user.role !== 'advisor') {
+      if (user.emailVerified === false) {
+        return NextResponse.json(await encryptPayload({
+          error: `Please verify your email before logging in. A verification link was sent to ${user.email}. Check your inbox and spam folder.`,
+          code: 'EMAIL_NOT_VERIFIED',
+          email: user.email,
+        }), { status: 403 });
+      }
+    }
+
     // ── 5. Issue JWT token ──
     const token = await new SignJWT({
       sub: user.id, username: user.username,

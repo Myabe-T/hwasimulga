@@ -1,9 +1,16 @@
 'use client';
 import { secureFetch, encodeVideoSlug, decodeVideoSlug } from '@/lib/crypto';
+import { encodeVideoId } from '@/lib/videoToken';
 import Link from 'next/link';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import styles from './gallery.module.css';
 import CustomVideoPlayer from '@/components/CustomVideoPlayer';
+
+function getPreviewCdnUrl(id) {
+  const num = Number(id);
+  if (num >= 10000) return `https://cdn.hindibf.com.co/${num}.mp4`;
+  return `https://cdn.desimms.com.co/${num}.mp4`;
+}
 
 const PER_PAGE = 24;
 const thumbSrc = (id) => Number(id) >= 10000
@@ -463,7 +470,7 @@ export default function GalleryPage() {
       setGuestAuthModal(true);
       return;
     }
-    window.location.href = '/watch/' + id;
+    window.location.href = '/watch/' + encodeVideoId(id);
   }, [user]);
 
   const legacyOpenModal = useCallback(async (id, fromPopState = false) => {
@@ -1018,6 +1025,16 @@ export default function GalleryPage() {
             My Profile
           </button>
 
+          <button className={`${styles.sidebarItem} ${view === 'support' ? styles.sidebarActive : ''}`}
+            onClick={() => { setView('support'); setSidebarOpen(false); }}>
+            <span className={styles.sidebarIcon} style={{ background:'rgba(168,85,247,.18)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c084fc" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </span>
+            Help &amp; Support
+          </button>
+
           <a href="/terms" className={styles.sidebarItem} style={{ fontSize:12 }}>
             <span className={styles.sidebarIcon} style={{ background:'rgba(107,114,128,.15)' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1296,7 +1313,7 @@ export default function GalleryPage() {
                     try {
                       const res = await fetch(`/api/hwasi/share/${modal.id}`);
                       const d = await res.json();
-                      const shareUrl = `${window.location.origin}/watch?v=${encodeURIComponent(d.token || '')}`;
+                      const shareUrl = `${window.location.origin}/watch/${encodeVideoId(modal.id)}`;
                       if (navigator.share) {
                         navigator.share({ title: videoTitles[String(modal.id)] || `Video #${modal.id}`, url: shareUrl });
                       } else {
@@ -2451,11 +2468,25 @@ function Logo({ size }) {
   );
 }
 
-/* ── VideoCard — TeraViralHub style ── */
+/* ── VideoCard — TeraViralHub style with Fast CDN Hover Preview ── */
 function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete, onCurate }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
   const [showCurateMenu, setShowCurateMenu] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const hoverTimer = useRef(null);
+
+  const handleMouseEnter = () => {
+    hoverTimer.current = setTimeout(() => {
+      setIsHovered(true);
+    }, 380); // 380ms debounce to prevent unneeded requests during fast scrolling
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setIsHovered(false);
+  };
+
   const quality = videoQuality(id);
   const qColor = qualityColor(quality);
   const views = viewCount(id);
@@ -2464,7 +2495,14 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
   return (
     <div className={styles.vcard} style={{ animationDelay: `${Math.min(index, 15) * 20}ms` }}>
       {/* Thumbnail */}
-      <div className={styles.vthumb} onClick={onPlay}>
+      <div
+        className={styles.vthumb}
+        onClick={onPlay}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onTouchStart={handleMouseEnter}
+        onTouchEnd={handleMouseLeave}
+      >
         <div className={styles.vthumbInner}>
           {hasThumb && !err ? (
             <>
@@ -2477,6 +2515,33 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
             <div style={{ position: 'absolute', inset: 0, background: GRADIENT_PLACEHOLDER(id), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Logo size={28} />
             </div>
+          )}
+
+          {/* Fast 3-second preview directly from external CDN (0 Redis bytes, 0 Cloudflare bytes) */}
+          {isHovered && (
+            <video
+              src={getPreviewCdnUrl(id)}
+              autoPlay
+              muted
+              playsInline
+              loop
+              preload="auto"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                zIndex: 4,
+                pointerEvents: 'none',
+                borderRadius: 8,
+              }}
+              onTimeUpdate={(e) => {
+                if (e.currentTarget.currentTime > 5) {
+                  e.currentTarget.currentTime = 1;
+                }
+              }}
+            />
           )}
 
           {/* Quality badge */}
@@ -2543,7 +2608,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
             try {
               const res = await fetch(`/api/hwasi/share/${id}`);
               const d = await res.json();
-              const shareUrl = `${window.location.origin}/watch?v=${encodeURIComponent(d.token || '')}`;
+              const shareUrl = `${window.location.origin}/watch/${encodeVideoId(id)}`;
               if (navigator.share) navigator.share({ title: displayTitle, url: shareUrl });
               else { navigator.clipboard?.writeText(shareUrl); alert('Link copied!'); }
             } catch(err) {}

@@ -88,6 +88,7 @@ export async function POST(req) {
       role: 'viewer',
       avatar: (displayName || username).substring(0, 2).toUpperCase(),
       createdAt: new Date().toISOString(),
+      emailVerified: false,
     };
 
     // Check if admin approval is required
@@ -103,22 +104,17 @@ export async function POST(req) {
       }));
     }
 
-    // Auto-approve: add to active users + auto-login
+    // Add to registered users (must verify email before login)
     regUsers.push(newUser);
     await saveRegUsers(regUsers);
 
-    const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'hwasimulga-super-secret-key-2024');
-    const token = await new SignJWT({
-      sub: newUser.id, username: newUser.username,
-      displayName: newUser.displayName, role: 'viewer', avatar: newUser.avatar,
-    }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('7d').sign(SECRET);
-
-    const res = NextResponse.json(await encryptPayload({ ok: true, pending: false, username: newUser.username }));
-    res.cookies.set('hwasi_token', token, {
-      httpOnly: true, secure: true, sameSite: 'strict',
-      maxAge: 60 * 60 * 24 * 7, path: '/',
-    });
-    return res;
+    return NextResponse.json(await encryptPayload({
+      ok: true,
+      pending: false,
+      emailVerified: false,
+      username: newUser.username,
+      message: 'Registration successful! Please check your email to verify your account.'
+    }));
   } catch (e) {
     return NextResponse.json(await encryptPayload({ error: e.message }), { status: 500 });
   }

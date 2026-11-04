@@ -860,69 +860,8 @@ export default function CustomVideoPlayer({
               </div>
             </div>
 
-            {/* Right Controls: Bookmark, Download, Quality, Speed, Fullscreen (Permanently Anchored) */}
+            {/* Right Controls: Quality, Speed, Fullscreen (Permanently Anchored) */}
             <div className="controls-right" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: 'auto' }}>
-              {/* Bookmark Button */}
-              {onBookmark && (
-                <button
-                  type="button"
-                  className="player-btn bookmark-btn"
-                  onClick={onBookmark}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    background: isBookmarked ? 'rgba(245,158,11,.22)' : 'rgba(255,255,255,.08)',
-                    border: isBookmarked ? '1px solid #f59e0b' : '1px solid rgba(255,255,255,.18)',
-                    color: isBookmarked ? '#f59e0b' : '#e2e8f0',
-                    borderRadius: '7px',
-                    padding: '4px 9px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    flexShrink: 0,
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.04)'}
-                  onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                  title={isBookmarked ? 'Saved in Bookmarks' : 'Save to Bookmarks'}
-                >
-                  <span>{isBookmarked ? '★' : '🔖'}</span>
-                  <span className="btn-text">{isBookmarked ? 'Saved' : 'Save'}</span>
-                </button>
-              )}
-
-              {/* Dedicated Download Button (Gated to Premium) */}
-              {onDownload && (
-                <button
-                  type="button"
-                  className="player-btn download-btn"
-                  onClick={onDownload}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    background: isPremium ? 'linear-gradient(135deg, #7c3aed, #ec4899)' : 'rgba(255,255,255,.08)',
-                    border: isPremium ? 'none' : '1px solid rgba(236,72,153,.35)',
-                    color: '#fff',
-                    borderRadius: '7px',
-                    padding: '4px 9px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'transform 0.15s, opacity 0.15s',
-                    flexShrink: 0,
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.04)'}
-                  onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                  title={isPremium ? 'Download Video (MP4)' : 'Upgrade to Premium to Download'}
-                >
-                  <span>⬇</span>
-                  <span className="btn-text">Download</span>
-                  {!isPremium && <span style={{ fontSize: '10px', color: '#f59e0b' }}>👑</span>}
-                </button>
-              )}
-
               {/* Quality Selector Button */}
               <button
                 type="button"

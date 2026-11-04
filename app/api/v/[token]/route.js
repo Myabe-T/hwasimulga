@@ -54,23 +54,8 @@ export async function GET(req, { params }) {
   const cdnUrl = `${cdnBase}/${cdnVideoId}.mp4`;
   const isDownload = new URL(req.url).searchParams.get('dl') === '1';
 
-  if (isDownload) {
-    // For downloads: stream through worker with Content-Disposition
-    // Downloads are infrequent so bandwidth impact is minimal
-    try {
-      const upstream = await fetch(cdnUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-      if (!upstream.ok) return new NextResponse('Not Found', { status: 404 });
-      const headers = new Headers();
-      headers.set('Content-Type', 'video/mp4');
-      headers.set('Content-Disposition', `attachment; filename="DesiHawas-${id}.mp4"`);
-      const cl = upstream.headers.get('content-length');
-      if (cl) headers.set('Content-Length', cl);
-      return new NextResponse(upstream.body, { status: 200, headers });
-    } catch {
-      return new NextResponse('Upstream error', { status: 502 });
-    }
-  }
-
-  // For playback: 302 redirect — zero Cloudflare bandwidth used
+  // Both downloads and playback issue a clean 302 redirect directly to the external CDN.
+  // This sends ZERO bytes through Cloudflare Workers (avoiding edge runtime timeouts,
+  // 502/524 errors, and Cloudflare ToS bandwidth restrictions).
   return NextResponse.redirect(cdnUrl, 302);
 }

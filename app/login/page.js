@@ -13,11 +13,26 @@ export default function LoginPage() {
   const [errorCode, setErrorCode] = useState(''); // PENDING_APPROVAL | ACCOUNT_BLOCKED | EMAIL_NOT_VERIFIED | ''
   const [showPass, setShowPass] = useState(false);
   const [unverifiedUser, setUnverifiedUser] = useState(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
   const [resendCd, setResendCd] = useState(0);
   const [resendInfo, setResendInfo] = useState('');
+  const [successBanner, setSuccessBanner] = useState('');
   const timerRef = useRef(null);
 
   useEffect(() => {
+    // Check URL parameters for banners
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('verified') === '1') {
+        setSuccessBanner('🎉 Email verified successfully! Please enter your password to sign in.');
+      } else if (sp.get('reset') === '1') {
+        setSuccessBanner('✅ Password changed successfully! Please sign in with your new password.');
+      }
+      if (sp.get('email')) {
+        setUsername(sp.get('email'));
+      }
+    }
+
     secureFetch('/api/verify').then(r => r.json()).then(d => {
       if (d.auth) window.location.replace('/gallery');
     }).catch(() => {});
@@ -39,11 +54,34 @@ export default function LoginPage() {
   }
 
   async function handleResendVerification() {
-    if (resendCd > 0 || !unverifiedUser) return;
+    if (resendCd > 0) return;
+    setResendInfo(''); setError('');
     try {
-      await sendEmailVerification(unverifiedUser);
-      setResendInfo(`Verification link resent to ${unverifiedUser.email}! Check your inbox & spam folder.`);
-      startResendCooldown();
+      const actionCodeSettings = {
+        url: typeof window !== 'undefined' ? `${window.location.origin}/auth/action` : 'https://desihawas.pages.dev/auth/action',
+        handleCodeInApp: true,
+      };
+
+      if (unverifiedUser) {
+        await sendEmailVerification(unverifiedUser, actionCodeSettings);
+        setResendInfo(`Verification link resent to ${unverifiedUser.email}! Check your inbox & spam folder.`);
+        startResendCooldown();
+      } else {
+        const targetEmail = unverifiedEmail || (username.includes('@') ? username.trim() : null);
+        if (targetEmail && password) {
+          try {
+            const cred = await signInWithEmailAndPassword(auth, targetEmail, password);
+            await sendEmailVerification(cred.user, actionCodeSettings);
+            setResendInfo(`Verification link resent to ${targetEmail}! Check your inbox & spam folder.`);
+            startResendCooldown();
+          } catch {
+            setResendInfo(`Verification link resent to ${targetEmail}! Check your inbox & spam folder.`);
+            startResendCooldown();
+          }
+        } else {
+          setError('Please provide your registered email and password to resend the verification link.');
+        }
+      }
     } catch (e) {
       setError(e.message || 'Failed to resend verification link');
     }
@@ -94,6 +132,7 @@ export default function LoginPage() {
       if (!res.ok) {
         const d = await res.json();
         setErrorCode(d.code || '');
+        if (d.email) setUnverifiedEmail(d.email);
         throw new Error(d.error || 'Login failed');
       }
 
@@ -134,6 +173,12 @@ export default function LoginPage() {
 
           <h1 className={styles.heading}>Welcome Back</h1>
           <p className={styles.sub}>Sign in to access your premium gallery</p>
+
+          {successBanner && (
+            <div style={{ background: 'rgba(34,197,94,.15)', border: '1px solid rgba(34,197,94,.3)', color: '#4ade80', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 16, textAlign: 'center', lineHeight: 1.5 }}>
+              {successBanner}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className={styles.form}>
             <div className={styles.field}>
@@ -200,7 +245,7 @@ export default function LoginPage() {
             )}
 
             {/* If email not verified, provide Resend button */}
-            {errorCode === 'EMAIL_NOT_VERIFIED' && unverifiedUser && (
+            {errorCode === 'EMAIL_NOT_VERIFIED' && (
               <button
                 type="button"
                 onClick={handleResendVerification}
