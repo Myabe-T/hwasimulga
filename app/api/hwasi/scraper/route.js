@@ -34,6 +34,21 @@ const SITE_CONFIG = {
   },
 };
 
+function cleanTitle(str) {
+  if (!str) return '';
+  return str
+    .replace(/&#038;|&amp;/g, '&')
+    .replace(/&#8217;|&#8216;/g, "'")
+    .replace(/&#8220;|&#8221;/g, '"')
+    .replace(/&#8211;/g, '-')
+    .replace(/&#8212;/g, '--')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+}
+
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 function bufferToBase64(buffer) {
@@ -84,17 +99,13 @@ export async function GET(req) {
       for (const k of cdnHashKeys || []) knownSystemIds.add(String(k));
     }
 
-    // Also populate known IDs from settings range to ensure we don't duplicate
+    // For primary CDN, populate known sequential IDs
     if (!cfg.isExtra) {
       const sStart = settings.start || 1;
       const sEnd = settings.end || 0;
       for (let i = sStart; i <= sEnd; i++) knownSystemIds.add(String(i));
-    } else {
-      const hRange = (settings.extraRanges || []).find(r => r.cdnId === 'hindibf' || r.start >= 10000);
-      if (hRange) {
-        for (let i = hRange.start; i <= hRange.end; i++) knownSystemIds.add(String(i));
-      }
     }
+    // For extra CDN (HindiBF), only mark as known if actually present in titlesMap or cdnHashKeys
 
     const newVideos = [];
     let knownCount = 0;
@@ -146,7 +157,7 @@ export async function GET(req) {
     // 3. Inspect posts in parallel with individual 3.5s timeouts (prevents Cloudflare 524 timeouts)
     const postResults = await Promise.allSettled(
       posts.map(async (p) => {
-        const rawTitle = (p.title?.rendered || '').replace(/<[^>]+>/g, '').trim();
+        const rawTitle = cleanTitle(p.title?.rendered || '');
         const postLink = p.link || '';
         let thumbUrl = p.yoast_head_json?.og_image?.[0]?.url || '';
 
@@ -288,7 +299,7 @@ export async function POST(req) {
       const cfg = SITE_CONFIG[siteKey] || SITE_CONFIG.desimms;
       const cdnId = parseInt(item.cdnId, 10);
       const systemId = item.systemId ? parseInt(item.systemId, 10) : (cfg.isExtra ? cfg.offset + cdnId : cdnId);
-      const title = (item.title || `Video #${systemId}`).trim();
+      const title = cleanTitle(item.title) || `Video #${systemId}`;
 
       let dataUrl = item.dataUrl || '';
 

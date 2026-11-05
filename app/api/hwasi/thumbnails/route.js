@@ -8,8 +8,8 @@ export async function GET() {
   const ids = await getThumbnailIds();
   return NextResponse.json({ ids: ids.map(Number) }, {
     headers: {
-      'Cache-Control': 'public, max-age=60, s-maxage=120, stale-while-revalidate=300',
-      'CDN-Cache-Control': 'public, max-age=120',
+      'Cache-Control': 'public, max-age=15, s-maxage=20, stale-while-revalidate=60',
+      'CDN-Cache-Control': 'public, max-age=20',
     }
   });
 }

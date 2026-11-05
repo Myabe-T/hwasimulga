@@ -677,7 +677,9 @@ export default function AdminPage() {
     const start = s.start || 1; const end = s.end || 775;
     const primaryAll = Array.from({ length: end - start + 1 }, (_, i) => i + start);
     const extraAll = (s.extraRanges || []).flatMap(r =>
-      Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
+      r.start >= 10000
+        ? Object.keys(videoTitles).map(Number).filter(id => id >= 10000 && (!r.end || id <= r.end))
+        : Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
     );
     const all = [...new Set([...primaryAll, ...extraAll])];
     // Full Collection: 100 videos with 60% bias toward latest (highest IDs = newest)
@@ -936,7 +938,7 @@ export default function AdminPage() {
 
   // Stats for dashboard
   const deletedCount = (settings.deletedIds || []).length;
-  const extraRangesCount = (settings.extraRanges || []).reduce((sum, r) => sum + Math.max(0, r.end - r.start + 1), 0);
+  const extraRangesCount = Object.keys(videoTitles).filter(id => Number(id) >= 10000).length;
   const totalVideos = Math.max(0, (settings.end - settings.start + 1) + extraRangesCount - deletedCount);
   const totalWatched = history.length;
   const now = Date.now();
@@ -1542,7 +1544,9 @@ export default function AdminPage() {
                       {(() => {
                         const primary = Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start);
                         const extra = (settings.extraRanges || []).flatMap(r =>
-                          Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
+                          r.start >= 10000
+                            ? Object.keys(videoTitles).map(Number).filter(id => id >= 10000 && (!r.end || id <= r.end))
+                            : Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
                         );
                         const allReview = reviewFilter.trim()
                           ? [...primary, ...extra].filter(id => String(id).includes(reviewFilter.trim()))
@@ -1592,7 +1596,9 @@ export default function AdminPage() {
                       {(() => {
                         const primary = Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start);
                         const extra = (settings.extraRanges || []).flatMap(r =>
-                          Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
+                          r.start >= 10000
+                            ? Object.keys(videoTitles).map(Number).filter(id => id >= 10000 && (!r.end || id <= r.end))
+                            : Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => i + r.start)
                         );
                         const allReview = reviewFilter.trim()
                           ? [...primary, ...extra].filter(id => String(id).includes(reviewFilter.trim()))

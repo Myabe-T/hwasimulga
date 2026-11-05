@@ -277,20 +277,35 @@ export default function GalleryPage() {
       // ── PHASE 1: load settings + thumbnails + titles immediately ──
       const [s, t, tr] = await Promise.all([
         secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:1, end:730 })),
-        fetch('/api/hwasi/thumbnails').then(x => x.json()).catch(() => ({})),
-        fetch('/api/hwasi/titles').then(x => x.json()).catch(() => ({ titles: {} })),
+        fetch('/api/hwasi/thumbnails?t=' + Math.floor(Date.now() / 30000)).then(x => x.json()).catch(() => ({})),
+        fetch('/api/hwasi/titles?t=' + Math.floor(Date.now() / 30000)).then(x => x.json()).catch(() => ({ titles: {} })),
       ]);
       const st = s.error ? { start:1, end:730, deletedIds:[], extraRanges:[] } : s;
       const delSet = new Set(st.deletedIds || []);
       setSettings(st);
-      // Build video ID lists: newest first (descending)
+
+      const titlesObj = tr.titles || {};
+      const regularThumbIds = new Set((t.ids || []).map(Number));
+
+      // 1. Primary DesiMMS IDs: sequential 1..st.end
       const primaryIds = Array.from({ length: Math.max(0, st.end - st.start + 1) }, (_, i) => st.end - i).filter(id => !delSet.has(id));
-      const hindiRange = (st.extraRanges || []).find(r => r.start >= 10000);
-      const hindiIds = hindiRange
-        ? Array.from({ length: Math.max(0, hindiRange.end - hindiRange.start + 1) }, (_, i) => hindiRange.end - i).filter(id => !delSet.has(id))
-        : [];
-      const otherExtraIds = (st.extraRanges || []).filter(r => r !== hindiRange).flatMap(r =>
-        Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => r.end - i).filter(id => !delSet.has(id))
+
+      // 2. Extra CDN IDs (HindiBF, >= 10000):
+      // CRITICAL: Only include IDs that actually exist in Redis (have a title or thumbnail saved).
+      // Remote CDNs do not have strictly sequential IDs (can jump from 803 to 818).
+      // Generating sequential numbers creates phantom ghost cards (10804..10817) with no thumbnail/title.
+      const validExtraIds = new Set([
+        ...Object.keys(titlesObj).map(Number).filter(id => id >= 10000),
+        ...Array.from(regularThumbIds).filter(id => id >= 10000),
+      ]);
+      const hindiIds = Array.from(validExtraIds)
+        .filter(id => !delSet.has(id))
+        .sort((a, b) => b - a);
+
+      // 3. Other extra ranges (if any, < 10000): only include existing IDs
+      const otherExtraIds = (st.extraRanges || []).filter(r => r.start < 10000).flatMap(r =>
+        Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => r.end - i)
+          .filter(id => !delSet.has(id) && (titlesObj[String(id)] || regularThumbIds.has(id)))
       );
 
       // Interleave Desi (primary) and Hindi so newest videos from both CDNs always appear first
@@ -305,15 +320,8 @@ export default function GalleryPage() {
       }
       const allVideoIds = interleavedAll;
 
-      // Regular thumb IDs + only actual extra-CDN IDs that have titles stored (= have thumbnails)
-      const regularThumbIds = new Set((t.ids || []).map(Number));
-      // For extra CDN (hindibf), only mark as having thumb if it actually has a title
-      // (IDs that have titles are the same IDs that have thumbnails — imported together)
-      const titlesObj = tr.titles || {};
-      const extraCdnThumbIds = new Set(
-        allVideoIds.filter(id => id >= 10000 && titlesObj[String(id)])
-      );
-      setThumbIds(new Set([...regularThumbIds, ...extraCdnThumbIds]));
+      // Regular thumb IDs + all valid extra IDs
+      setThumbIds(new Set([...regularThumbIds, ...validExtraIds]));
       setVideoTitles(titlesObj);
       setAllIds(allVideoIds);
 
