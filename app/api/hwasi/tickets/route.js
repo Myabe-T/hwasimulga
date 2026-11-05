@@ -39,7 +39,10 @@ export async function GET(req) {
       total: allTickets.length,
       open: allTickets.filter(t => t.status === 'open' || !t.status).length,
       replied: allTickets.filter(t => t.status === 'replied').length,
-      resolved: allTickets.filter(t => t.status === 'resolved').length,
+      resolved: allTickets.filter(t => t.status === 'resolved' || t.status === 'closed').length,
+      spammed: allTickets.filter(t => t.status === 'spammed').length,
+      memberCount: allTickets.filter(t => !t.isGuest).length,
+      guestCount: allTickets.filter(t => t.isGuest).length,
     };
     return NextResponse.json({ ok: true, tickets: allTickets, stats });
   }
@@ -60,12 +63,10 @@ export async function GET(req) {
 }
 
 // POST /api/hwasi/tickets
-// Creates a new support ticket
+// Creates a new support ticket (Supported for both logged-in users AND guest visitors)
 export async function POST(req) {
   const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ ok: false, error: 'Please log in to submit a ticket.' }, { status: 401 });
-  }
+  const isGuest = !session;
 
   let body = {};
   try {
@@ -77,6 +78,8 @@ export async function POST(req) {
   const subject = (body.subject || '').trim();
   const message = (body.message || '').trim();
   const category = (body.category || 'General').trim();
+  const guestName = (body.name || '').trim() || 'Guest Visitor';
+  const guestEmail = (body.email || '').trim();
 
   if (subject.length < 3) {
     return NextResponse.json({ ok: false, error: 'Subject must be at least 3 characters long.' }, { status: 400 });
@@ -87,14 +90,16 @@ export async function POST(req) {
 
   const ticket = {
     id: generateTicketId(),
-    userId: session.sub,
-    username: session.username || 'user',
-    displayName: session.displayName || session.username || 'User',
-    role: session.role || 'viewer',
+    userId: isGuest ? null : session.sub,
+    username: isGuest ? (guestEmail ? guestEmail.split('@')[0] : 'guest') : (session.username || 'user'),
+    displayName: isGuest ? guestName : (session.displayName || session.username || 'User'),
+    guestEmail: isGuest ? guestEmail : null,
+    isGuest: isGuest,
+    role: isGuest ? 'guest' : (session.role || 'viewer'),
     category,
     subject,
     message,
-    status: 'open',
+    status: 'open', // 'open' | 'closed' | 'spammed' | 'replied'
     createdAt: new Date().toISOString(),
     adminReply: null,
     repliedAt: null,
@@ -109,7 +114,7 @@ export async function POST(req) {
 }
 
 // PATCH /api/hwasi/tickets
-// Admin replies to ticket OR User marks ticket read / resolved
+// Admin replies to ticket OR updates status (open / closed / spammed) OR User marks ticket read
 export async function PATCH(req) {
   const session = await getSession();
   if (!session) {
@@ -140,7 +145,7 @@ export async function PATCH(req) {
       if (t.id === ticketId) {
         found = true;
 
-        if (isAdminOrAdvisor && reply !== undefined) {
+        if (isAdminOrAdvisor && reply !== undefined && reply.trim()) {
           // Admin replying to the ticket
           t.adminReply = reply.trim();
           t.repliedAt = new Date().toISOString();
@@ -153,6 +158,7 @@ export async function PATCH(req) {
           t.userUnread = false;
           updatedTicket = t;
         } else if (status) {
+          // Status change: open, closed, spammed, replied
           t.status = status;
           updatedTicket = t;
         }
@@ -175,7 +181,7 @@ export async function PATCH(req) {
   }
 
   // If admin replied, send immediate notification to the user's notification box
-  if (isAdminOrAdvisor && updatedTicket && reply) {
+  if (isAdminOrAdvisor && updatedTicket && reply && updatedTicket.userId) {
     try {
       const notifEntry = JSON.stringify({
         message: `Admin replied to your support ticket #${updatedTicket.id} ("${updatedTicket.subject}"):\n\n"${reply.trim()}"`,

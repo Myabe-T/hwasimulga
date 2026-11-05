@@ -3,9 +3,16 @@ import SecurityGuard from '@/components/SecurityGuard';
 import IdmGuardian from '@/components/IdmGuardian';
 
 export const metadata = {
-  title: 'DesiHawas — Video Gallery',
-  description: 'Premium private video gallery. Fast. Beautiful. Secure.',
-  robots: 'noindex, nofollow',
+  title: 'DesiHawas — Adult Site | Free Desi MMS & Viral Videos',
+  description: 'DesiHawas — Premium Adult Entertainment & Viral MMS Videos. Free HD streaming, fast playback, no ads.',
+  robots: 'index, follow',
+  keywords: 'desihawas, desi mms, viral videos, adult entertainment, desi porn, free hd videos',
+  openGraph: {
+    title: 'DesiHawas — Adult Site | Free Desi MMS & Viral Videos',
+    description: 'Watch free trending desi viral MMS, popular spicy videos and exclusive HD clips online.',
+    type: 'website',
+    siteName: 'DesiHawas',
+  },
 };
 
 // Proper mobile viewport — prevents the "zoomed out" / tiny text issue on phones

@@ -139,6 +139,10 @@ export default function AdminPage() {
   const [editUser, setEditUser] = useState(null);
   const [curInput, setCurInput] = useState({ trending: '', popular: '', instaviral: '', premium: '' });
   const [histFilter, setHistFilter] = useState('');
+  const [topVideosList, setTopVideosList] = useState([]);
+  const [visitorStats, setVisitorStats] = useState({ today: 0, week: 0, month: 0 });
+  const [activityTab, setActivityTab] = useState('members');
+  const [ticketSegment, setTicketSegment] = useState('members');
 
   // Thumbnail generator state
   const [thumbCount, setThumbCount] = useState(0);
@@ -524,7 +528,11 @@ export default function AdminPage() {
     if (s && !s.error) setSettings(s);
     if (c && !c.error) setCurated(c);
     setUsers(Array.isArray(u) ? u : []);
-    setHistory(Array.isArray(h) ? h : []);
+    setHistory(Array.isArray(h) ? h : (h?.history || []));
+    if (h && !Array.isArray(h)) {
+      if (h.topVideos) setTopVideosList(h.topVideos);
+      if (h.visitorStats) setVisitorStats(h.visitorStats);
+    }
     const ids = (t.ids || []).map(Number);
     setThumbCount(ids.length);
     setAllThumbIds(new Set(ids));
@@ -936,11 +944,13 @@ export default function AdminPage() {
   const watchesToday = history.filter(h => new Date(h.watchedAt) >= startOfDay).length;
   const watchesWeek = history.filter(h => now - new Date(h.watchedAt).getTime() < 7 * 24 * 3600 * 1000).length;
   const watchesMonth = history.filter(h => now - new Date(h.watchedAt).getTime() < 30 * 24 * 3600 * 1000).length;
-  const topVideo = history.length ? (() => {
-    const counts = {}; history.forEach(h => { counts[h.videoId] = (counts[h.videoId] || 0) + 1; });
-    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-    return top ? `#${top[0]} (${top[1]}x)` : '—';
-  })() : '—';
+  const topVideo = topVideosList.length
+    ? `#${topVideosList[0].videoId} (${topVideosList[0].views}x)`
+    : history.length ? (() => {
+        const counts = {}; history.forEach(h => { counts[h.videoId] = (counts[h.videoId] || 0) + 1; });
+        const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+        return top ? `#${top[0]} (${top[1]}x)` : '—';
+      })() : '—';
 
   if (!user) return <div className={styles.loading}><div className={styles.spinner} /></div>;
 
@@ -1082,6 +1092,51 @@ export default function AdminPage() {
                 ))}
               </div>
 
+              {/* ── Unique Visitors (IP-Deduplicated Daily/Weekly/Monthly) ── */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginTop: 16, marginBottom: 4 }}>
+                {[
+                  { label: 'Unique Visitors Today', val: visitorStats.today, color: '#10b981', bg: 'rgba(16,185,129,.1)', border: 'rgba(16,185,129,.2)' },
+                  { label: 'Unique Visitors (Week)', val: visitorStats.week, color: '#38bdf8', bg: 'rgba(56,189,248,.1)', border: 'rgba(56,189,248,.2)' },
+                  { label: 'Unique Visitors (Month)', val: visitorStats.month, color: '#f43f5e', bg: 'rgba(244,63,94,.1)', border: 'rgba(244,63,94,.2)' },
+                ].map(({ label, val, color, bg, border }) => (
+                  <div key={label} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 12, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</div>
+                    <div style={{ fontSize: 26, fontWeight: 900, color, fontFamily: "'Space Grotesk',sans-serif" }}>{val.toLocaleString()}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>unique devices</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Top Most Watched Videos Leaderboard ── */}
+              {topVideosList.length > 0 && (
+                <div className={styles.card} style={{ marginTop: 16, marginBottom: 16 }}>
+                  <div className={styles.cardHeader}>
+                    <span style={{ fontSize: 22 }}>🏆</span>
+                    <div>
+                      <h3 className={styles.cardTitle}>Most Watched Videos</h3>
+                      <p className={styles.cardSub}>Top trending videos by live stream playback count</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10 }}>
+                    {topVideosList.slice(0, 8).map((tv, idx) => (
+                      <div key={tv.videoId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)' }}>
+                        <div style={{ width: 26, height: 26, borderRadius: '50%', background: idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : 'rgba(255,255,255,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: idx < 3 ? '#000' : '#fff', flexShrink: 0 }}>
+                          #{idx + 1}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {videoTitles[String(tv.videoId)] || `Video #${tv.videoId}`}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>
+                            ID #{tv.videoId} · <strong style={{ color: '#4ade80' }}>{tv.views}</strong> views
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Quick Watch */}
               <div className={styles.card} style={{ marginTop: 20, marginBottom: 20 }}>
                 <div className={styles.cardHeader}>
@@ -1109,15 +1164,31 @@ export default function AdminPage() {
               <div className={styles.dashRow}>
                 {/* Recent watches */}
                 <div className={styles.dashCard} style={{ flex: 2 }}>
-                  <div className={styles.dashCardHeader}>
-                    <span className={styles.dashCardTitle}>Recent Activity</span>
+                  <div className={styles.dashCardHeader} style={{ flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className={styles.dashCardTitle}>Recent Activity</span>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button
+                          onClick={() => setActivityTab('members')}
+                          style={{ padding: '3px 8px', borderRadius: 6, border: 'none', background: activityTab === 'members' ? 'var(--accent)' : 'rgba(255,255,255,.08)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          👤 Members ({history.filter(h => !h.isGuest && h.username !== 'guest').length})
+                        </button>
+                        <button
+                          onClick={() => setActivityTab('guests')}
+                          style={{ padding: '3px 8px', borderRadius: 6, border: 'none', background: activityTab === 'guests' ? 'var(--accent)' : 'rgba(255,255,255,.08)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          🌐 Guests ({history.filter(h => h.isGuest || h.username === 'guest').length})
+                        </button>
+                      </div>
+                    </div>
                     <button className="btn btn-ghost btn-sm" onClick={() => switchTab('analytics')}>View all</button>
                   </div>
                   {history.length === 0 ? (
                     <div className={styles.emptyState}>No watch activity yet</div>
                   ) : (
                     <div className={styles.actList}>
-                      {history.slice(0, 8).map((h, i) => (
+                      {history.filter(h => activityTab === 'guests' ? (h.isGuest || h.username === 'guest') : (!h.isGuest && h.username !== 'guest')).slice(0, 8).map((h, i) => (
                         <div key={i} className={styles.actRow}>
                           <div className={styles.actAvatar}>{h.displayName?.slice(0, 2) || h.username?.slice(0, 2) || '??'}</div>
                           <div className={styles.actInfo}>
@@ -3031,13 +3102,38 @@ export default function AdminPage() {
                     />
                   </div>
 
+                  {/* Segment: Members vs Guests */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                    <button
+                      onClick={() => setTicketSegment('members')}
+                      style={{
+                        flex: 1, padding: '6px 10px', borderRadius: 8, border: 'none',
+                        background: ticketSegment === 'members' ? 'var(--accent)' : 'rgba(255,255,255,.08)',
+                        color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer'
+                      }}
+                    >
+                      👤 Members ({adminTickets.filter(t => !t.isGuest).length})
+                    </button>
+                    <button
+                      onClick={() => setTicketSegment('guests')}
+                      style={{
+                        flex: 1, padding: '6px 10px', borderRadius: 8, border: 'none',
+                        background: ticketSegment === 'guests' ? 'var(--accent)' : 'rgba(255,255,255,.08)',
+                        color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer'
+                      }}
+                    >
+                      🌐 Guests ({adminTickets.filter(t => t.isGuest).length})
+                    </button>
+                  </div>
+
                   {/* Filter pills */}
                   <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
                     {[
-                      { key: 'all', label: 'All', count: adminTickets.length },
-                      { key: 'open', label: '⏳ Open', count: adminTickets.filter(t => t.status === 'open' || !t.status).length },
-                      { key: 'replied', label: '💬 Replied', count: adminTickets.filter(t => t.status === 'replied').length },
-                      { key: 'resolved', label: '✅ Resolved', count: adminTickets.filter(t => t.status === 'resolved').length },
+                      { key: 'all', label: 'All', count: adminTickets.filter(t => ticketSegment === 'guests' ? t.isGuest : !t.isGuest).length },
+                      { key: 'open', label: '⏳ Open', count: adminTickets.filter(t => (ticketSegment === 'guests' ? t.isGuest : !t.isGuest) && (t.status === 'open' || !t.status)).length },
+                      { key: 'replied', label: '💬 Replied', count: adminTickets.filter(t => (ticketSegment === 'guests' ? t.isGuest : !t.isGuest) && t.status === 'replied').length },
+                      { key: 'resolved', label: '✅ Closed', count: adminTickets.filter(t => (ticketSegment === 'guests' ? t.isGuest : !t.isGuest) && (t.status === 'resolved' || t.status === 'closed')).length },
+                      { key: 'spammed', label: '🚫 Spam', count: adminTickets.filter(t => (ticketSegment === 'guests' ? t.isGuest : !t.isGuest) && t.status === 'spammed').length },
                     ].map(f => (
                       <button
                         key={f.key}
@@ -3061,8 +3157,12 @@ export default function AdminPage() {
                   ) : (() => {
                     const q = ticketSearch.trim().toLowerCase();
                     const filtered = adminTickets.filter(t => {
+                      const matchSegment = ticketSegment === 'guests' ? Boolean(t.isGuest) : !t.isGuest;
+                      if (!matchSegment) return false;
+
                       const matchFilter = adminTicketFilter === 'all' ? true
                         : adminTicketFilter === 'open' ? (t.status === 'open' || !t.status)
+                        : adminTicketFilter === 'resolved' ? (t.status === 'resolved' || t.status === 'closed')
                         : t.status === adminTicketFilter;
 
                       if (!matchFilter) return false;
@@ -3245,8 +3345,10 @@ export default function AdminPage() {
                               className="input input-sm"
                               style={{ fontSize: 12 }}
                             >
-                              <option value="replied">💬 Replied (Open)</option>
-                              <option value="resolved">✅ Resolved (Close Ticket)</option>
+                              <option value="replied">💬 Replied</option>
+                              <option value="closed">✅ Closed / Resolved</option>
+                              <option value="spammed">🚫 Mark Spammed</option>
+                              <option value="open">⏳ Re-open</option>
                             </select>
                           </div>
 

@@ -71,6 +71,9 @@ export default function PremiumPage() {
   const [rzpLoading,   setRzpLoading]   = useState(false);
   const [rzpError,     setRzpError]     = useState('');
   const [rzpPaymentId, setRzpPaymentId] = useState('');
+  const [user, setUser] = useState(null);
+  const [showAuthGate, setShowAuthGate] = useState(false);
+  const [authGateReason, setAuthGateReason] = useState('buy');
   const timer = useTimer();
 
   // Load initial data
@@ -79,7 +82,10 @@ export default function PremiumPage() {
       fetch('/api/hwasi/plans').then(r=>r.json()).catch(()=>({})),
       secureFetch('/api/hwasi/premium?me=1').then(r=>r.json()).catch(()=>({})),
       fetch('/api/hwasi/payment-settings').then(r=>r.json()).catch(()=>({})),
-    ]).then(([pd, sub, ps]) => {
+      fetch('/api/verify').then(r=>r.json()).catch(()=>({ auth: false })),
+    ]).then(([pd, sub, ps, authData]) => {
+      if (authData && authData.auth) setUser(authData.user || authData);
+
       setPlans(pd.plans || null);
       setStatus(sub.premium || null);
       if (ps.settings) setPaySettings(ps.settings);
@@ -107,6 +113,11 @@ export default function PremiumPage() {
 
   // ── Access Key verify & redeem ──
   async function redeemKey(codeToUse) {
+    if (!user) {
+      setAuthGateReason('redeem');
+      setShowAuthGate(true);
+      return;
+    }
     let raw = (codeToUse || keyCode || '').trim().toUpperCase();
     if (!raw) {
       setKeyError('Please enter an access key.');
@@ -327,6 +338,43 @@ export default function PremiumPage() {
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
       `}</style>
 
+      {/* ── Auth Gate Modal for Guests ── */}
+      {showAuthGate && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#0e0e14', border: '1px solid rgba(236,72,153,0.3)', borderRadius: 20, padding: '28px 24px', maxWidth: 420, width: '100%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.9)' }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>👑</div>
+            <h3 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8, color: '#fff' }}>
+              {authGateReason === 'redeem' ? 'Login to Redeem Key' : 'Login to Activate VIP'}
+            </h3>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.6, marginBottom: 24 }}>
+              {authGateReason === 'redeem'
+                ? 'Please login or create an account first so your VIP Premium access code can be linked to your account.'
+                : 'Please login or create an account first so your VIP Premium membership is attached to your account.'}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <a
+                href="/login?redirect=/premium"
+                style={{ padding: '12px', borderRadius: 12, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', color: '#fff', textDecoration: 'none', fontWeight: 800, fontSize: 14 }}
+              >
+                🔑 Login to My Account
+              </a>
+              <a
+                href="/register?redirect=/premium"
+                style={{ padding: '12px', borderRadius: 12, background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', color: '#fff', textDecoration: 'none', fontWeight: 800, fontSize: 14, boxShadow: '0 4px 18px rgba(236,72,153,0.4)' }}
+              >
+                🚀 Register Free in 5 Seconds
+              </a>
+              <button
+                onClick={() => setShowAuthGate(false)}
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 8, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Fixed ambient orbs ── */}
       <div style={{position:'fixed',top:'-20%',left:'-10%',width:'50vw',height:'50vw',borderRadius:'50%',background:'radial-gradient(circle,rgba(124,58,237,.18),transparent 65%)',pointerEvents:'none',zIndex:0}} />
       <div style={{position:'fixed',bottom:'-20%',right:'-10%',width:'45vw',height:'45vw',borderRadius:'50%',background:'radial-gradient(circle,rgba(236,72,153,.14),transparent 65%)',pointerEvents:'none',zIndex:0}} />
@@ -399,7 +447,19 @@ export default function PremiumPage() {
               const save = (plan.originalPrice||0) - (plan.price||0);
               return (
                 <div key={plan.id}
-                  onClick={() => { setSelected({...plan,...meta}); setStep('pay'); setKeyError(''); setKeyUsedAt(null); setRzpError(''); }}
+                  onClick={() => {
+                    if (!user) {
+                      setSelected({...plan,...meta});
+                      setAuthGateReason('buy');
+                      setShowAuthGate(true);
+                      return;
+                    }
+                    setSelected({...plan,...meta});
+                    setStep('pay');
+                    setKeyError('');
+                    setKeyUsedAt(null);
+                    setRzpError('');
+                  }}
                   style={{
                     position:'relative',cursor:'pointer',borderRadius:20,
                     border:`1px solid ${meta.popular?meta.color:'rgba(255,255,255,.1)'}`,

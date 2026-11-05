@@ -1,45 +1,50 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent !important;
+}
 
-/* ── Gallery dark tokens (default, no data-theme attr) ── */
+/* ── Gallery dark tokens — Modern Tube Aesthetic (Dark XVideos/Pornhub style) ── */
 :root {
   /* Legacy page vars */
-  --bg2: #07070f;
-  --border2: rgba(255,255,255,0.12);
-  --accent2: #a78bfa;
-  --accent3: #c4b5fd;
+  --bg2: #09090c;
+  --border2: rgba(255,255,255,0.1);
+  --accent2: #f43f5e;
+  --accent3: #fb7185;
   --pink: #ec4899;
-  --text: #f1f0ff;
-  --text2-old: #a09ab8;
-  --text3-old: #5a5470;
+  --text: #ffffff;
+  --text2-old: #a1a1aa;
+  --text3-old: #71717a;
   --danger: #ef4444;
   --success: #22c55e;
-  --r: 12px;
+  --r: 10px;
   --r2: 8px;
-  --shadow: 0 8px 32px rgba(0,0,0,0.6);
-  --glow: 0 0 30px rgba(124,58,237,0.25);
+  --shadow: 0 8px 32px rgba(0,0,0,0.8);
+  --glow: 0 0 25px rgba(244,63,94,0.2);
 
-  /* Gallery design tokens — DARK (default) */
-  --bg:        #0d0d15;
-  --surface:   #13131f;
-  --surface2:  #1a1a2e;
+  /* Gallery design tokens — DEEP SLEEK DARK */
+  --bg:        #08080a;
+  --surface:   #101014;
+  --surface2:  #16161c;
   --border:    rgba(255,255,255,.08);
-  --text1:     #f1f5f9;
-  --text2:     #94a3b8;
-  --text3:     #64748b;
-  --accent:    #7c3aed;
-  --accent-s:  rgba(124,58,237,.15);
-  --hdr:       rgba(13,13,21,.95);
-  --sidebar:   #13131f;
-  --card:      #1a1a2e;
-  --card-sh:   0 2px 8px rgba(0,0,0,.4);
-  --card-hov:  0 8px 24px rgba(0,0,0,.6);
-  --inp:       rgba(255,255,255,.07);
+  --text1:     #ffffff;
+  --text2:     #a1a1aa;
+  --text3:     #71717a;
+  --accent:    #ec4899;
+  --accent-s:  rgba(236,72,153,.15);
+  --hdr:       rgba(8,8,10,.96);
+  --sidebar:   #0f0f13;
+  --card:      #121217;
+  --card-sh:   0 2px 10px rgba(0,0,0,.5);
+  --card-hov:  0 8px 24px rgba(0,0,0,.8);
+  --inp:       rgba(255,255,255,.06);
   --inp-brd:   rgba(255,255,255,.12);
-  --shi:       rgba(255,255,255,.05);
-  --shia:      rgba(124,58,237,.18);
-  --tab-bg:    rgba(255,255,255,.06);
+  --shi:       rgba(255,255,255,.04);
+  --shia:      rgba(236,72,153,.15);
+  --tab-bg:    rgba(255,255,255,.05);
 }
 
 /* ── Light mode ── */

@@ -181,6 +181,11 @@ export default function WatchPage() {
         if (vData.token) {
           setSrc('/api/v/' + vData.token);
           setState('playing');
+          fetch('/api/hwasi/history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoId: Number(rawVideoId) }),
+          }).catch(() => {});
         } else {
           setState('auth');
         }
@@ -531,7 +536,7 @@ export default function WatchPage() {
               <span>My Profile</span>
             </Link>
           )}
-          <Link href="/gallery?view=support" className="drawer-nav-item" onClick={() => setDrawerOpen(false)}>
+          <Link href="/support" className="drawer-nav-item" onClick={() => setDrawerOpen(false)}>
             <span className="drawer-nav-icon">💬</span>
             <span>Help &amp; Support</span>
           </Link>
@@ -2148,10 +2153,35 @@ export default function WatchPage() {
           .video-action-bar {
             flex-direction: column;
             align-items: stretch;
+            padding: 8px 10px;
+            gap: 8px;
           }
-          .action-bar-left, .action-bar-right {
+          .action-bar-left {
+            display: flex;
+            align-items: center;
             justify-content: space-between;
             width: 100%;
+          }
+          .action-bar-right {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            width: 100%;
+            overflow-x: auto;
+            flex-wrap: nowrap;
+            padding: 2px 0 4px;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+          }
+          .action-bar-right::-webkit-scrollbar {
+            display: none;
+          }
+          .action-btn {
+            padding: 6px 12px;
+            font-size: 11px;
+            flex-shrink: 0;
+            white-space: nowrap;
           }
           .related-grid {
             grid-template-columns: repeat(2, 1fr);
@@ -2270,7 +2300,11 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen, activePreviewI
 
     const v = document.createElement('video');
     v.muted = true;
+    v.defaultMuted = true;
     v.playsInline = true;
+    v.setAttribute('playsinline', '');
+    v.setAttribute('webkit-playsinline', '');
+    v.setAttribute('muted', '');
     v.loop = true;
     v.preload = 'auto';
     v.src = `/api/hwasi/preview/${relId}`;

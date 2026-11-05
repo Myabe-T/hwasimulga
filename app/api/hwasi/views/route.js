@@ -1,7 +1,7 @@
 export const runtime = 'edge';
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
-import { getPremium, getViewCount, incrementViewCount, redis, getVideoCdn, getCurated } from '@/lib/redis';
+import { getPremium, redis, getVideoCdn, getCurated, recordVideoView, recordDailyVisitor } from '@/lib/redis';
 import { signVideoId } from '@/lib/sign';
 import { encryptPayload } from '@/lib/crypto';
 
@@ -33,6 +33,9 @@ export async function POST(req) {
     return NextResponse.json(await encryptPayload({ error: 'Missing videoId' }), { status: 400 });
   }
 
+  const ip = req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || '127.0.0.1';
+  const ua = req.headers.get('user-agent') || '';
+
   // Check if video is marked as Premium (Insta Viral or curated Premium)
   const curatedData = await getCurated();
   const instaviralIds = (curatedData?.instaviral || []).map(Number);
@@ -52,6 +55,8 @@ export async function POST(req) {
     if (sub) {
       const cdnInfo = await getVideoCdn(videoId);
       const token = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
+      recordVideoView(videoId).catch(() => {});
+      recordDailyVisitor(ip, ua).catch(() => {});
       return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt, token }));
     }
   }
@@ -69,6 +74,8 @@ export async function POST(req) {
   // 4. Free Video Playback (Tube site model: guests & free members watch all normal videos freely!)
   const cdnInfo = await getVideoCdn(videoId);
   const token = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
+  recordVideoView(videoId).catch(() => {});
+  recordDailyVisitor(ip, ua).catch(() => {});
 
   return NextResponse.json(await encryptPayload({
     allowed: true,

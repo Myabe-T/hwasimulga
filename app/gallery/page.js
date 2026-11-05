@@ -1034,15 +1034,14 @@ export default function GalleryPage() {
             </button>
           )}
 
-          <button className={`${styles.sidebarItem} ${view === 'support' ? styles.sidebarActive : ''}`}
-            onClick={() => { setView('support'); setSidebarOpen(false); }}>
+          <a href="/support" className={styles.sidebarItem}>
             <span className={styles.sidebarIcon} style={{ background:'rgba(168,85,247,.18)' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c084fc" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
             </span>
             Help &amp; Support
-          </button>
+          </a>
 
           <a href="/terms" className={styles.sidebarItem} style={{ fontSize:12 }}>
             <span className={styles.sidebarIcon} style={{ background:'rgba(107,114,128,.15)' }}>
@@ -1182,11 +1181,11 @@ export default function GalleryPage() {
                 )}
               </div>
             ) : (
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <a href="/login" style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,.18)', background: 'rgba(255,255,255,.06)', color: 'var(--text1)', textDecoration: 'none', fontSize: 13, fontWeight: 700 }}>
-                  🔑 Login
+              <div className={styles.guestAuthRow}>
+                <a href="/login" className={styles.guestLoginBtn}>
+                  Login
                 </a>
-                <a href="/register" style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 800 }}>
+                <a href="/register" className={styles.guestRegisterBtn}>
                   Register 🚀
                 </a>
               </div>
@@ -2748,32 +2747,22 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
             👁 {views}
           </div>
 
-          {/* Play overlay — hidden while hover preview is active */}
-          {!isHovered && (
-            <div className={styles.vOverlay}>
-              <div className={styles.vPlayBtn}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
-              </div>
-            </div>
-          )}
+
         </div>
       </div>
 
-      {/* Info row */}
+      {/* Info row (Clean Tube Aesthetic: Thumbnail + Bold Title + Subtle Subtitle) */}
       <div className={styles.vinfo}>
-        <div className={styles.vinfoAvatar}><Logo size={18} /></div>
         <div className={styles.vinfoMeta}>
           <p className={styles.vtitle}>{displayTitle}</p>
-          {showHash && (
-            <p className={styles.vsub}>
-              DesiHawas
-              <span style={{ color: 'rgba(255,255,255,.3)', marginLeft: 6 }}>#{id}</span>
-            </p>
-          )}
+          <p className={styles.vsub}>
+            DesiHawas {isAdmin ? <span style={{ color: 'rgba(255,255,255,.4)', marginLeft: 4 }}>· #{id}</span> : <span style={{ color: 'rgba(255,255,255,.4)', marginLeft: 4 }}>· Exclusive HD</span>}
+          </p>
         </div>
       </div>
 
-      {/* Action buttons — large colored SVG icons like TeraViralHub */}
+      {/* Action buttons (Admin & Advisor only — guest and regular users get clean card) */}
+      {isAdmin && (
       <div className={styles.vactions}>
 
         {/* Bookmark */}
@@ -2885,6 +2874,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

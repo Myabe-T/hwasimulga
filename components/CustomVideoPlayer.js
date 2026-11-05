@@ -425,9 +425,40 @@ export default function CustomVideoPlayer({
         justifyContent: 'center',
         overflow: 'hidden',
         userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTapHighlightColor: 'transparent',
+        touchAction: 'manipulation',
         outline: 'none',
       }}
     >
+      {/* ── Brand Watermark (Subtle Tube Logo) ── */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '14px',
+          right: '16px',
+          zIndex: 18,
+          pointerEvents: 'none',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '5px',
+          fontSize: '12px',
+          fontWeight: 900,
+          letterSpacing: '0.5px',
+          color: 'rgba(255,255,255,0.7)',
+          textShadow: '0 2px 8px rgba(0,0,0,0.95)',
+          background: 'rgba(0,0,0,0.3)',
+          padding: '3px 8px',
+          borderRadius: '6px',
+          backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255,255,255,0.1)',
+        }}
+      >
+        <span style={{ color: '#ff2d78' }}>🔥</span> Desi<span style={{ color: '#ec4899' }}>Hawas</span>
+      </div>
+
       {/* ── Native video element (hidden native controls, never exposes CDN) ── */}
       {src && !loading ? (
         <video
@@ -480,6 +511,9 @@ export default function CustomVideoPlayer({
             objectFit: 'contain',
             display: 'block',
             background: '#000',
+            WebkitTapHighlightColor: 'transparent',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
           }}
         />
       ) : (
@@ -511,6 +545,10 @@ export default function CustomVideoPlayer({
             zIndex: 15,
             cursor: isPlaying && !showControls ? 'none' : 'pointer',
             touchAction: 'manipulation',
+            WebkitTapHighlightColor: 'transparent',
+            outline: 'none',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
           }}
         />
       )}
@@ -1017,6 +1055,13 @@ export default function CustomVideoPlayer({
 
       {/* ── Animations & Responsive Mobile Stylesheet ── */}
       <style>{`
+        * {
+          -webkit-tap-highlight-color: transparent !important;
+        }
+        ::selection {
+          background: transparent !important;
+        }
+
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
