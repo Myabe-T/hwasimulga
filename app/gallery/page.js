@@ -796,6 +796,27 @@ export default function GalleryPage() {
     }
   }
 
+  // ── Toggle VIP Premium status on any video (admin/advisor only) ──
+  async function handleTogglePremium(videoId) {
+    const existing = curated.premium || [];
+    const numId = Number(videoId);
+    const isPrem = existing.includes(numId);
+    const updatedList = isPrem ? existing.filter(x => x !== numId) : [...new Set([...existing, numId])];
+    const updated = { ...curated, premium: updatedList };
+    const r = await fetch('/api/hwasi/curated', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      setCurated(d);
+      setQuickCurateFlash(isPrem ? `🔓 #${videoId} removed from VIP Premium` : `💎 #${videoId} set to VIP Premium (preview only for free users)!`);
+      setTimeout(() => setQuickCurateFlash(''), 2500);
+    } else {
+      setQuickCurateFlash('❌ Failed to update premium status'); setTimeout(() => setQuickCurateFlash(''), 2000);
+    }
+  }
+
   const isAdminOrAdvisor = user?.role === 'admin' || user?.role === 'advisor';
   const isPrivileged = Boolean(isPremium || viewStatus?.isPremium || isAdminOrAdvisor);
 
@@ -878,24 +899,36 @@ export default function GalleryPage() {
                   <p className={styles.searchOverlayHint}>No videos found. Try a different search term.</p>
                 ) : (
                   <div className={`${styles.grid} ${mobileGridCols === 2 ? styles.gridCols2 : ''}`}>
-                    {searchedTabIds().slice(0, 60).map((id, i) => (
-                      <VideoCard key={id} id={id} index={i}
-                        title={videoTitles[String(id)] || null}
-                        hasThumb={thumbIds.has(id)}
-                        isBookmarked={bookmarks.has(id)}
-                        isAdmin={isAdminOrAdvisor}
-                        showHash={isAdminOrAdvisor}
-                        disablePreview={!hoverPreviewEnabled || ((homeTab === 'instaviral' || instaviralIds.includes(Number(id))) && !isPremium)}
-                        onPlay={() => { setSearchOpen(false); openModal(id); }}
-                        onDownload={null}
-                        onBookmark={e => toggleBookmark(e, id)}
-                        onReport={e => { e.stopPropagation(); setReportModal(id); }}
-                        onDelete={null}
-                        onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
-                        activePreviewId={activePreviewId}
-                        setActivePreviewId={setActivePreviewId}
-                      />
-                    ))}
+                    {searchedTabIds().slice(0, 60).map((id, i) => {
+                      const isVideoPrem = (homeTab === 'instaviral' || instaviralIds.includes(Number(id)) || premiumVideoIds.includes(Number(id)));
+                      return (
+                        <VideoCard key={id} id={id} index={i}
+                          title={videoTitles[String(id)] || null}
+                          hasThumb={thumbIds.has(id)}
+                          isBookmarked={bookmarks.has(id)}
+                          isAdmin={isAdminOrAdvisor}
+                          showHash={isAdminOrAdvisor}
+                          disablePreview={!hoverPreviewEnabled}
+                          isPremiumVideo={isVideoPrem}
+                          onTogglePremium={isAdminOrAdvisor ? () => handleTogglePremium(id) : null}
+                          onPlay={() => {
+                            setSearchOpen(false);
+                            if (isVideoPrem && !isPrivileged) {
+                              setInstaViralBlock(true);
+                            } else {
+                              openModal(id);
+                            }
+                          }}
+                          onDownload={null}
+                          onBookmark={e => toggleBookmark(e, id)}
+                          onReport={e => { e.stopPropagation(); setReportModal(id); }}
+                          onDelete={null}
+                          onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
+                          activePreviewId={activePreviewId}
+                          setActivePreviewId={setActivePreviewId}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1234,25 +1267,24 @@ export default function GalleryPage() {
               <div className={`${styles.grid} ${mobileGridCols === 2 ? styles.gridCols2 : ''}`}>
                 {searchedTabIds().map((id, i) => {
                   const isVideoPrem = (homeTab === 'instaviral' || instaviralIds.includes(Number(id)) || premiumVideoIds.includes(Number(id)));
-                  const showPremOverlay = isVideoPrem && !isPrivileged;
                   return (
                     <div key={id} style={{ position: 'relative' }}>
-                      {showPremOverlay && (
-                        <div style={{ position:'absolute',inset:0,zIndex:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.65)',borderRadius:12,cursor:'pointer' }}
-                          onClick={e => { e.stopPropagation(); setInstaViralBlock(true); }}>
-                          <div style={{ fontSize:32 }}>💎</div>
-                          <div style={{ fontSize:11, fontWeight:900, color:'#f59e0b', letterSpacing:1, textTransform:'uppercase', marginTop:4 }}>VIP Premium</div>
-                          <div style={{ fontSize:10, color:'rgba(255,255,255,.7)', marginTop:2 }}>Tap to Unlock</div>
-                        </div>
-                      )}
                       <VideoCard id={id} index={i}
                         title={videoTitles[String(id)] || null}
                         hasThumb={thumbIds.has(id)}
                         isBookmarked={bookmarks.has(id)}
                         isAdmin={isAdminOrAdvisor}
                         showHash={isAdminOrAdvisor}
-                        disablePreview={!hoverPreviewEnabled || (isVideoPrem && !isPrivileged)}
-                        onPlay={() => openModal(id)}
+                        disablePreview={!hoverPreviewEnabled}
+                        isPremiumVideo={isVideoPrem}
+                        onTogglePremium={isAdminOrAdvisor ? () => handleTogglePremium(id) : null}
+                        onPlay={() => {
+                          if (isVideoPrem && !isPrivileged) {
+                            setInstaViralBlock(true);
+                          } else {
+                            openModal(id);
+                          }
+                        }}
                         onDownload={e => handleDownload(e, id)}
                         onBookmark={e => toggleBookmark(e, id)}
                         onReport={e => { e.stopPropagation(); setReportModal(id); }}
@@ -1298,22 +1330,33 @@ export default function GalleryPage() {
               </div>
             ) : (
               <div className={styles.grid}>
-                {bookmarkIds.map((id, i) => (
-                  <VideoCard key={id} id={id} index={i}
-                    title={videoTitles[String(id)] || null}
-                    hasThumb={thumbIds.has(id)} isBookmarked={true}
-                    isAdmin={isAdminOrAdvisor} showHash={isAdminOrAdvisor}
-                    disablePreview={!hoverPreviewEnabled || ((homeTab === 'instaviral' || instaviralIds.includes(Number(id))) && !isPremium)}
-                    onPlay={() => openModal(id)}
-                    onDownload={instaviralIds.includes(Number(id)) ? null : e => handleDownload(e, id)}
-                    onBookmark={e => toggleBookmark(e, id)}
-                    onReport={e => { e.stopPropagation(); setReportModal(id); }}
-                    onDelete={isAdminOrAdvisor ? e => { e.stopPropagation(); setDeleteModal({ id }); } : null}
-                    onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
-                    activePreviewId={activePreviewId}
-                    setActivePreviewId={setActivePreviewId}
-                  />
-                ))}
+                {bookmarkIds.map((id, i) => {
+                  const isVideoPrem = (homeTab === 'instaviral' || instaviralIds.includes(Number(id)) || premiumVideoIds.includes(Number(id)));
+                  return (
+                    <VideoCard key={id} id={id} index={i}
+                      title={videoTitles[String(id)] || null}
+                      hasThumb={thumbIds.has(id)} isBookmarked={true}
+                      isAdmin={isAdminOrAdvisor} showHash={isAdminOrAdvisor}
+                      disablePreview={!hoverPreviewEnabled}
+                      isPremiumVideo={isVideoPrem}
+                      onTogglePremium={isAdminOrAdvisor ? () => handleTogglePremium(id) : null}
+                      onPlay={() => {
+                        if (isVideoPrem && !isPrivileged) {
+                          setInstaViralBlock(true);
+                        } else {
+                          openModal(id);
+                        }
+                      }}
+                      onDownload={instaviralIds.includes(Number(id)) ? null : e => handleDownload(e, id)}
+                      onBookmark={e => toggleBookmark(e, id)}
+                      onReport={e => { e.stopPropagation(); setReportModal(id); }}
+                      onDelete={isAdminOrAdvisor ? e => { e.stopPropagation(); setDeleteModal({ id }); } : null}
+                      onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
+                      activePreviewId={activePreviewId}
+                      setActivePreviewId={setActivePreviewId}
+                    />
+                  );
+                })}
               </div>
             )}
           </main>
@@ -2533,7 +2576,7 @@ function Logo({ size }) {
 }
 
 /* ── VideoCard — TeraViralHub style with Canvas Hover Preview (Blocks IDM Video Capture) ── */
-function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete, onCurate, disablePreview, activePreviewId, setActivePreviewId }) {
+function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete, onCurate, onTogglePremium, isPremiumVideo, disablePreview, activePreviewId, setActivePreviewId }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
   const [showCurateMenu, setShowCurateMenu] = useState(false);
@@ -2733,6 +2776,30 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
           {/* Quality badge */}
           <div className={styles.qualityBadge} style={{ background: qColor, zIndex: 5 }}>{quality}</div>
 
+          {/* VIP Premium Badge on Thumbnail */}
+          {isPremiumVideo && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 6,
+                left: 6,
+                zIndex: 6,
+                background: 'linear-gradient(135deg, rgba(236,72,153,0.95), rgba(139,92,246,0.95))',
+                color: '#fff',
+                fontSize: 10,
+                fontWeight: 900,
+                padding: '2px 8px',
+                borderRadius: 6,
+                letterSpacing: '0.5px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.6)',
+                textTransform: 'uppercase',
+                pointerEvents: 'none',
+              }}
+            >
+              💎 VIP Only
+            </div>
+          )}
+
           {/* Views — tap to toggle preview on mobile */}
           <div
             className={styles.viewsBadge}
@@ -2756,7 +2823,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
         <div className={styles.vinfoMeta}>
           <p className={styles.vtitle}>{displayTitle}</p>
           <p className={styles.vsub}>
-            DesiHawas {isAdmin ? <span style={{ color: 'rgba(255,255,255,.4)', marginLeft: 4 }}>· #{id}</span> : <span style={{ color: 'rgba(255,255,255,.4)', marginLeft: 4 }}>· Exclusive HD</span>}
+            DesiHawas {isPremiumVideo ? <span style={{ color: '#f472b6', fontWeight: 800, marginLeft: 4 }}>· 💎 VIP Premium Only</span> : (isAdmin ? <span style={{ color: 'rgba(255,255,255,.4)', marginLeft: 4 }}>· #{id}</span> : <span style={{ color: 'rgba(255,255,255,.4)', marginLeft: 4 }}>· Exclusive HD</span>)}
           </p>
         </div>
       </div>
@@ -2857,6 +2924,26 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
               </div>
             )}
           </div>
+        )}
+
+        {/* Set Premium (Admin only — Image 2) */}
+        {isAdmin && onTogglePremium && (
+          <button
+            className={styles.actionBtn}
+            style={{
+              background: isPremiumVideo ? 'rgba(236,72,153,.25)' : 'rgba(255,255,255,.06)',
+              border: isPremiumVideo ? '1px solid rgba(236,72,153,.55)' : 'none',
+            }}
+            onClick={e => { e.stopPropagation(); onTogglePremium(); }}
+            title={isPremiumVideo ? "Remove from VIP Premium" : "Set as VIP Premium (free users see preview only)"}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill={isPremiumVideo ? '#ec4899' : 'none'} stroke={isPremiumVideo ? '#ec4899' : '#e2e8f0'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            <span className={styles.actionBtnLabel} style={{ color: isPremiumVideo ? '#f472b6' : '#ec4899', fontWeight: 800 }}>
+              {isPremiumVideo ? 'Premium ✓' : 'Set Prem'}
+            </span>
+          </button>
         )}
 
         {/* Delete (admin only) */}

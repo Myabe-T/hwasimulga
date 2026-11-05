@@ -94,6 +94,7 @@ export default function WatchPage() {
   // Video Aspect Ratio / Portrait Mode (removes black bars for vertical videos)
   const [isPortrait, setIsPortrait] = useState(false);
   const [activeRelatedPreviewId, setActiveRelatedPreviewId] = useState(null);
+  const [premiumVideoIds, setPremiumVideoIds] = useState(new Set());
 
   // Interactive Video Tags State (Image 3)
   const [tags, setTags] = useState([]);
@@ -126,11 +127,12 @@ export default function WatchPage() {
         const authRes = await secureFetch('/api/verify').then(r => r.json()).catch(() => ({ auth: false }));
         setUser(authRes.auth ? authRes : null);
 
-        // Fetch titles catalogue & thumbnail IDs for related grid
+        // Fetch titles catalogue, thumbnail IDs & curated sets for related grid
         Promise.all([
           fetch('/api/hwasi/titles').then(r => r.json()).catch(() => ({ titles: {} })),
-          fetch('/api/hwasi/thumbnails').then(r => r.json()).catch(() => ({ ids: [] }))
-        ]).then(([td, th]) => {
+          fetch('/api/hwasi/thumbnails').then(r => r.json()).catch(() => ({ ids: [] })),
+          fetch('/api/hwasi/curated').then(r => r.json()).catch(() => ({}))
+        ]).then(([td, th, cd]) => {
           const titles = td.titles || {};
           setAllTitles(titles);
           const curTitle = titles[String(rawVideoId)] || '';
@@ -143,6 +145,12 @@ export default function WatchPage() {
           setThumbIds(tIds);
           const vIds = Object.keys(titles).map(Number).sort((a, b) => b - a);
           setAllVideoIds(vIds.length > 0 ? vIds : Array.from({ length: 1177 }, (_, i) => 1177 - i));
+
+          const allPrem = new Set([
+            ...((cd?.instaviral || []).map(Number)),
+            ...((cd?.premium || []).map(Number)),
+          ]);
+          setPremiumVideoIds(allPrem);
 
           // Load / Initialize Tags with video title
           fetch(`/api/hwasi/tags?videoId=${rawVideoId}&title=${encodeURIComponent(curTitle)}`)
@@ -951,6 +959,7 @@ export default function WatchPage() {
                   title={allTitles[String(relId)] || (user?.role === 'admin' || user?.role === 'advisor' ? `Exclusive Video #${relId}` : 'Exclusive DesiHawas Video')}
                   thumbSrc={thumbSrc}
                   user={user}
+                  isPremiumVideo={premiumVideoIds.has(Number(relId))}
                   activePreviewId={activeRelatedPreviewId}
                   setActivePreviewId={setActiveRelatedPreviewId}
                   onOpen={handleOpenRelated}
@@ -2208,7 +2217,7 @@ export default function WatchPage() {
   );
 }
 
-function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen, activePreviewId, setActivePreviewId }) {
+function RelatedVideoCard({ relId, title, thumbSrc, user, isPremiumVideo, onOpen, activePreviewId, setActivePreviewId }) {
   const isHovered = activePreviewId === relId;
   const [isPlayingFrame, setIsPlayingFrame] = useState(false);
   const hoverTimer = useRef(null);
@@ -2395,11 +2404,35 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen, activePreviewI
           />
         )}
         <span className="related-badge-dur" style={{ zIndex: 4 }}>720p</span>
+        {isPremiumVideo && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 6,
+              left: 6,
+              zIndex: 6,
+              background: 'linear-gradient(135deg, rgba(236,72,153,0.95), rgba(139,92,246,0.95))',
+              color: '#fff',
+              fontSize: 10,
+              fontWeight: 900,
+              padding: '2px 7px',
+              borderRadius: 6,
+              letterSpacing: '0.5px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.6)',
+              textTransform: 'uppercase',
+              pointerEvents: 'none',
+            }}
+          >
+            💎 VIP Only
+          </div>
+        )}
       </div>
       <div className="related-card-info">
         <h3 className="related-card-title">{title}</h3>
         <div className="related-card-meta">
-          {(user?.role === 'admin' || user?.role === 'advisor')
+          {isPremiumVideo ? (
+            <span style={{ color: '#f472b6', fontWeight: 800 }}>DesiHawas · 💎 VIP Premium Only</span>
+          ) : (user?.role === 'admin' || user?.role === 'advisor')
             ? `DesiHawas · #${relId}`
             : 'DesiHawas · Exclusive HD'}
         </div>
