@@ -314,9 +314,12 @@ export default function CustomVideoPlayer({
 
     if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
     singleTapTimerRef.current = setTimeout(() => {
-      // Single tap: toggle play / pause and show controls
-      togglePlay();
-      triggerShowControls();
+      // Single tap on mobile/touch screen: toggle controls visibility (YouTube/Netflix style) without abruptly pausing the video
+      setShowControls((prev) => {
+        const next = !prev;
+        if (next) triggerShowControls();
+        return next;
+      });
       singleTapTimerRef.current = null;
     }, 280);
   };
@@ -413,7 +416,7 @@ export default function CustomVideoPlayer({
         position: 'relative',
         width: '100%',
         height: '100%',
-        minHeight: '260px',
+        minHeight: 0,
         maxHeight: isFullscreen ? '100vh' : (isPortrait ? '75vh' : '70vh'),
         background: '#000',
         display: 'flex',
@@ -671,7 +674,7 @@ export default function CustomVideoPlayer({
             bottom: 0,
             left: 0,
             right: 0,
-            zIndex: 30,
+            zIndex: 50,
             padding: '14px 14px 10px 14px',
             background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 65%, transparent 100%)',
             display: 'flex',

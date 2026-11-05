@@ -80,6 +80,7 @@ export default function GalleryPage() {
     return 0;
   });
   const [modal, setModal] = useState(null);
+  const [activePreviewId, setActivePreviewId] = useState(null); // Single active preview across entire page
   const modalRef = useRef(null);
   const openModalRef = useRef(null);
   useEffect(() => { modalRef.current = modal; }, [modal]);
@@ -246,6 +247,7 @@ export default function GalleryPage() {
     if (window.location.search !== (newQuery || '')) {
       window.history.replaceState(window.history.state, '', newUrl);
     }
+    setActivePreviewId(null);
   }, [page, curatedPage, homeTab]);
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
   function toggleMobileGrid(cols) {
@@ -850,6 +852,8 @@ export default function GalleryPage() {
               onBookmark={() => setGuestAuthModal(true)}
               onReport={() => setGuestAuthModal(true)}
               onDelete={null}
+              activePreviewId={activePreviewId}
+              setActivePreviewId={setActivePreviewId}
             />
           ))}
         </div>
@@ -974,6 +978,8 @@ export default function GalleryPage() {
                         onReport={e => { e.stopPropagation(); setReportModal(id); }}
                         onDelete={null}
                         onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
+                        activePreviewId={activePreviewId}
+                        setActivePreviewId={setActivePreviewId}
                       />
                     ))}
                   </div>
@@ -1292,6 +1298,8 @@ export default function GalleryPage() {
                       onReport={e => { e.stopPropagation(); setReportModal(id); }}
                       onDelete={isAdminOrAdvisor ? e => { e.stopPropagation(); setDeleteModal({ id }); setDeleteReason('duplicate'); } : null}
                       onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
+                      activePreviewId={activePreviewId}
+                      setActivePreviewId={setActivePreviewId}
                     />
                   </div>
                 ))}
@@ -1341,6 +1349,8 @@ export default function GalleryPage() {
                     onReport={e => { e.stopPropagation(); setReportModal(id); }}
                     onDelete={isAdminOrAdvisor ? e => { e.stopPropagation(); setDeleteModal({ id }); } : null}
                     onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
+                    activePreviewId={activePreviewId}
+                    setActivePreviewId={setActivePreviewId}
                   />
                 ))}
               </div>
@@ -2556,11 +2566,11 @@ function Logo({ size }) {
 }
 
 /* ── VideoCard — TeraViralHub style with Canvas Hover Preview (Blocks IDM Video Capture) ── */
-function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete, onCurate, disablePreview }) {
+function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash, onPlay, onDownload, onBookmark, onReport, onDelete, onCurate, disablePreview, activePreviewId, setActivePreviewId }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
   const [showCurateMenu, setShowCurateMenu] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
+  const isHovered = activePreviewId === id;
   const hoverTimer = useRef(null);
   const touchStartTimeRef = useRef(0);
   const touchMovedRef = useRef(false);
@@ -2570,41 +2580,43 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
 
   const handleMouseEnter = () => {
     if (disablePreview) return;
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => {
-      setIsHovered(true);
-    }, 35); // 35ms ultra-fast hover trigger
+      if (setActivePreviewId) setActivePreviewId(id);
+    }, 20); // 20ms ultra-fast response
   };
 
   const handleMouseLeave = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    setIsHovered(false);
+    if (setActivePreviewId && activePreviewId === id) {
+      setActivePreviewId(null);
+    }
   };
 
   const handleTouchStart = () => {
     if (disablePreview) return;
     touchStartTimeRef.current = Date.now();
     touchMovedRef.current = false;
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => {
-      setIsHovered(true);
-    }, 45);
+      if (setActivePreviewId) setActivePreviewId(id);
+    }, 30);
   };
 
   const handleTouchMove = () => {
     touchMovedRef.current = true;
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    setIsHovered(false);
+    if (setActivePreviewId && activePreviewId === id) {
+      setActivePreviewId(null);
+    }
   };
 
   const handleTouchEnd = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    const holdDuration = Date.now() - touchStartTimeRef.current;
-    if (!touchMovedRef.current && holdDuration > 250) {
-      // User held finger down to preview: keep playing preview for 3s
-      setTimeout(() => {
-        setIsHovered(false);
-      }, 3000);
-    } else {
-      setIsHovered(false);
+    if (touchMovedRef.current) {
+      if (setActivePreviewId && activePreviewId === id) {
+        setActivePreviewId(null);
+      }
     }
   };
 

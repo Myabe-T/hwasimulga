@@ -93,6 +93,7 @@ export default function WatchPage() {
 
   // Video Aspect Ratio / Portrait Mode (removes black bars for vertical videos)
   const [isPortrait, setIsPortrait] = useState(false);
+  const [activeRelatedPreviewId, setActiveRelatedPreviewId] = useState(null);
 
   // Interactive Video Tags State (Image 3)
   const [tags, setTags] = useState([]);
@@ -407,6 +408,7 @@ export default function WatchPage() {
 
   // Navigate to another video smoothly with encrypted URL
   const handleOpenRelated = (id) => {
+    setActiveRelatedPreviewId(null);
     router.push(`/watch/${encodeVideoId(id)}`);
   };
 
@@ -694,7 +696,7 @@ export default function WatchPage() {
           </div>
 
           {/* Custom Video Player (Responsive Cinema Mode) */}
-          <div className="player-viewport">
+          <div className={`player-viewport ${isPortrait ? 'portrait-mode' : 'landscape-mode'}`}>
             <CustomVideoPlayer
               key={src || rawVideoId}
               src={src}
@@ -914,6 +916,8 @@ export default function WatchPage() {
                   title={allTitles[String(relId)] || (user?.role === 'admin' || user?.role === 'advisor' ? `Exclusive Video #${relId}` : 'Exclusive DesiHawas Video')}
                   thumbSrc={thumbSrc}
                   user={user}
+                  activePreviewId={activeRelatedPreviewId}
+                  setActivePreviewId={setActiveRelatedPreviewId}
                   onOpen={handleOpenRelated}
                 />
               ))}
@@ -1508,12 +1512,29 @@ export default function WatchPage() {
         .player-viewport {
           position: relative;
           width: 100%;
-          aspect-ratio: 16/9;
-          max-height: 70vh;
           background: #000;
           border-radius: 14px;
           overflow: hidden;
           box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+        }
+        .player-viewport.landscape-mode {
+          aspect-ratio: 16/9;
+          max-height: 70vh;
+        }
+        .player-viewport.portrait-mode {
+          aspect-ratio: auto;
+          max-height: 75vh;
+          height: 65vh;
+        }
+        @media (max-width: 768px) {
+          .player-viewport.landscape-mode {
+            aspect-ratio: 16/9;
+            max-height: 50vh;
+          }
+          .player-viewport.portrait-mode {
+            max-height: 72vh;
+            height: 62vh;
+          }
         }
 
         /* ── Tag Editor Modal ── */
@@ -2127,8 +2148,8 @@ export default function WatchPage() {
   );
 }
 
-function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
-  const [isHovered, setIsHovered] = useState(false);
+function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen, activePreviewId, setActivePreviewId }) {
+  const isHovered = activePreviewId === relId;
   const [isPlayingFrame, setIsPlayingFrame] = useState(false);
   const hoverTimer = useRef(null);
   const touchStartTimeRef = useRef(0);
@@ -2138,39 +2159,42 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
   const videoObjRef = useRef(null);
 
   const handleMouseEnter = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => {
-      setIsHovered(true);
-    }, 35); // 35ms ultra-fast hover response
+      if (setActivePreviewId) setActivePreviewId(relId);
+    }, 20); // 20ms ultra-fast hover response
   };
 
   const handleMouseLeave = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    setIsHovered(false);
+    if (setActivePreviewId && activePreviewId === relId) {
+      setActivePreviewId(null);
+    }
   };
 
   const handleTouchStart = () => {
     touchStartTimeRef.current = Date.now();
     touchMovedRef.current = false;
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => {
-      setIsHovered(true);
-    }, 45);
+      if (setActivePreviewId) setActivePreviewId(relId);
+    }, 30);
   };
 
   const handleTouchMove = () => {
     touchMovedRef.current = true;
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    setIsHovered(false);
+    if (setActivePreviewId && activePreviewId === relId) {
+      setActivePreviewId(null);
+    }
   };
 
   const handleTouchEnd = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    const holdDuration = Date.now() - touchStartTimeRef.current;
-    if (!touchMovedRef.current && holdDuration > 250) {
-      setTimeout(() => {
-        setIsHovered(false);
-      }, 3000);
-    } else {
-      setIsHovered(false);
+    if (touchMovedRef.current) {
+      if (setActivePreviewId && activePreviewId === relId) {
+        setActivePreviewId(null);
+      }
     }
   };
 
@@ -2181,8 +2205,15 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, onOpen }) {
       return;
     }
     touchStartTimeRef.current = 0;
+    if (setActivePreviewId) setActivePreviewId(null);
     if (onOpen) onOpen(relId);
   };
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isHovered) {
