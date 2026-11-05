@@ -137,7 +137,7 @@ export default function AdminPage() {
   const [savingSet, setSavingSet] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', password: '', displayName: '', role: 'viewer' });
   const [editUser, setEditUser] = useState(null);
-  const [curInput, setCurInput] = useState({ trending: '', latest: '' });
+  const [curInput, setCurInput] = useState({ trending: '', popular: '', instaviral: '', premium: '' });
   const [histFilter, setHistFilter] = useState('');
 
   // Thumbnail generator state
@@ -1278,6 +1278,7 @@ export default function AdminPage() {
                 { key: 'trending',   label: 'Trending',   icon: '🔥' },
                 { key: 'popular',    label: 'Popular',    icon: '📈' },
                 { key: 'instaviral', label: 'Insta Viral', icon: '📸' },
+                { key: 'premium',    label: 'Exclusive VIP Premium Videos', icon: '💎' },
               ].map(({ key: type, label, icon }) => (
                 <div key={type} className={styles.card} style={{ marginBottom: 20 }}>
                   <div className={styles.cardHeader}>
@@ -1287,11 +1288,12 @@ export default function AdminPage() {
                       <p className={styles.cardSub}>
                         {(curated[type] || []).length} videos in this section
                         {type === 'instaviral' && ' · No limit · 👑 Premium only'}
+                        {type === 'premium' && ' · 💎 VIP Only: Guests & Free members must upgrade to watch'}
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-                      {/* Random 50 only for Trending and Popular — NOT Insta Viral */}
-                      {type !== 'instaviral' && (
+                      {/* Random 50 only for Trending and Popular — NOT Insta Viral / Premium */}
+                      {type !== 'instaviral' && type !== 'premium' && (
                         <button className={styles.randomBtn} onClick={() => pickRandom50(type)} title="Replace with 50 random videos from current range">
                           🎲 Random 50
                         </button>
@@ -1306,8 +1308,8 @@ export default function AdminPage() {
                   <div className={styles.chipRow}>
                     {(curated[type] || []).length === 0 && (
                       <span className={styles.emptyHint}>
-                        {type === 'instaviral'
-                          ? 'No videos added yet — enter IDs below (no limit, admin/advisor only)'
+                        {type === 'instaviral' || type === 'premium'
+                          ? 'No videos added yet — enter video IDs below (e.g. 253, 10137, 10222)'
                           : 'No videos added yet — use Random 50 or enter IDs below'}
                       </span>
                     )}

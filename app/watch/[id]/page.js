@@ -170,7 +170,7 @@ export default function WatchPage() {
             setState('auth');
             return;
           }
-          if (vData.code === 'INSTAVIRAL_PREMIUM_ONLY') {
+          if (vData.code === 'INSTAVIRAL_PREMIUM_ONLY' || vData.code === 'PREMIUM_ONLY') {
             setState('blocked');
             return;
           }
@@ -300,6 +300,10 @@ export default function WatchPage() {
 
   // Handle Download (Premium only gate, encrypted token)
   const handleDownload = () => {
+    if (!user) {
+      router.push(`/login?redirect=/watch/${encodedVideoId}`);
+      return;
+    }
     if (viewInfo?.isPremium || user?.role === 'admin' || user?.role === 'advisor') {
       window.location.href = `/api/download/${encodedVideoId}`;
     } else {
@@ -456,11 +460,14 @@ export default function WatchPage() {
   if (state === 'blocked') {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#0a0015,#18002e)', color: '#fff', textAlign: 'center', padding: 24 }}>
-        <div style={{ fontSize: 56, marginBottom: 16 }}>👑</div>
-        <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 10, background: 'linear-gradient(to right,#c4b5fd,#8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Insta Viral — VIP Only</h1>
-        <p style={{ color: 'rgba(255,255,255,.6)', marginBottom: 24, maxWidth: 400 }}>This is an exclusive Insta Viral video and requires an active Premium membership.</p>
+        <div style={{ fontSize: 56, marginBottom: 16 }}>💎</div>
+        <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 10, background: 'linear-gradient(to right,#fbcfe8,#ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Exclusive VIP Video</h1>
+        <p style={{ color: 'rgba(255,255,255,.6)', marginBottom: 24, maxWidth: 400 }}>This is an exclusive VIP video and requires an active Premium membership.</p>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <Link href="/premium" style={{ padding: '12px 26px', background: 'linear-gradient(135deg,#7c3aed,#ec4899)', borderRadius: 12, color: '#fff', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>👑 Get Premium VIP</Link>
+          <Link href="/premium" style={{ padding: '12px 26px', background: 'linear-gradient(135deg,#7c3aed,#ec4899)', borderRadius: 12, color: '#fff', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>💎 Get Premium VIP</Link>
+          {!user && (
+            <Link href={`/login?redirect=/watch/${encodedVideoId}`} style={{ padding: '12px 26px', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 12, color: '#fff', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>🔑 Login</Link>
+          )}
           <Link href="/gallery" style={{ padding: '12px 26px', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 12, color: '#fff', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>Back to Gallery</Link>
         </div>
       </div>
@@ -502,22 +509,28 @@ export default function WatchPage() {
             <span className="drawer-nav-icon">🎬</span>
             <span>Home &amp; Gallery</span>
           </Link>
-          <Link href="/gallery?view=bookmarks" className="drawer-nav-item" onClick={() => setDrawerOpen(false)}>
-            <span className="drawer-nav-icon">🔖</span>
-            <span>My Bookmarks</span>
-          </Link>
-          <Link href="/gallery?view=history" className="drawer-nav-item" onClick={() => setDrawerOpen(false)}>
-            <span className="drawer-nav-icon">🕒</span>
-            <span>Watch History</span>
-          </Link>
+          {user && (
+            <>
+              <Link href="/gallery?view=bookmarks" className="drawer-nav-item" onClick={() => setDrawerOpen(false)}>
+                <span className="drawer-nav-icon">🔖</span>
+                <span>My Bookmarks</span>
+              </Link>
+              <Link href="/gallery?view=history" className="drawer-nav-item" onClick={() => setDrawerOpen(false)}>
+                <span className="drawer-nav-icon">🕒</span>
+                <span>Watch History</span>
+              </Link>
+            </>
+          )}
           <Link href="/premium" className="drawer-nav-item drawer-nav-highlight" onClick={() => setDrawerOpen(false)}>
             <span className="drawer-nav-icon">👑</span>
             <span>{viewInfo?.isPremium ? 'Extend Premium' : 'Buy VIP Premium'}</span>
           </Link>
-          <Link href="/gallery?view=profile" className="drawer-nav-item" onClick={() => setDrawerOpen(false)}>
-            <span className="drawer-nav-icon">👤</span>
-            <span>My Profile</span>
-          </Link>
+          {user && (
+            <Link href="/gallery?view=profile" className="drawer-nav-item" onClick={() => setDrawerOpen(false)}>
+              <span className="drawer-nav-icon">👤</span>
+              <span>My Profile</span>
+            </Link>
+          )}
           <Link href="/gallery?view=support" className="drawer-nav-item" onClick={() => setDrawerOpen(false)}>
             <span className="drawer-nav-icon">💬</span>
             <span>Help &amp; Support</span>
@@ -538,6 +551,18 @@ export default function WatchPage() {
             <span className="drawer-nav-icon">📄</span>
             <span>Terms of Service</span>
           </Link>
+          {!user && (
+            <>
+              <Link href={`/login?redirect=/watch/${encodedVideoId}`} className="drawer-nav-item" onClick={() => setDrawerOpen(false)} style={{ color: '#60a5fa' }}>
+                <span className="drawer-nav-icon">🔑</span>
+                <span>Login</span>
+              </Link>
+              <Link href="/register" className="drawer-nav-item" onClick={() => setDrawerOpen(false)} style={{ color: '#ec4899', fontWeight: 700 }}>
+                <span className="drawer-nav-icon">🚀</span>
+                <span>Register Free</span>
+              </Link>
+            </>
+          )}
         </nav>
 
         {user && (
@@ -623,9 +648,14 @@ export default function WatchPage() {
                 </Link>
               </div>
             ) : (
-              <Link href={`/login?redirect=/watch/${encodedVideoId}`} className="vip-btn">
-                Sign In
-              </Link>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Link href={`/login?redirect=/watch/${encodedVideoId}`} className="vip-btn" style={{ padding: '6px 12px', fontSize: 12 }}>
+                  Login
+                </Link>
+                <Link href="/register" className="vip-btn" style={{ background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', padding: '6px 12px', fontSize: 12, border: 'none' }}>
+                  Register 🚀
+                </Link>
+              </div>
             )}
           </div>
         </div>

@@ -1,2 +1,2 @@
-// Root → show landing page. Middleware redirects authed users to /gallery.
-export { default } from './landing/page';
+// Root → directly load the full video gallery (tube style: XNXX / xHamster)
+export { default } from './gallery/page';

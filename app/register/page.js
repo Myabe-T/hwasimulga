@@ -172,7 +172,7 @@ export default function RegisterPage() {
           password: form.password,
           displayName: form.displayName || form.username,
           firebaseUid: fbUser?.uid || null,
-          emailVerified: false,
+          emailVerified: true,
         }),
       });
       const rd = await rr.json();
@@ -183,10 +183,24 @@ export default function RegisterPage() {
         return;
       }
 
-      // 4. Switch to Verification screen
-      setStep(2);
-      setInfo(`We have sent an activation link to ${form.email}. Please click the link to verify your email.`);
-      startResendCooldown();
+      // 4. Auto-login and redirect immediately to Gallery
+      try {
+        const loginRes = await secureFetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: form.username.trim(),
+            password: form.password,
+          }),
+        });
+        const loginData = await loginRes.json();
+        if (loginRes.ok && loginData.ok) {
+          window.location.href = '/gallery';
+          return;
+        }
+      } catch (_) {}
+
+      window.location.href = '/login?registered=1';
     } catch (err) {
       setErr(err.message || 'Network error. Please try again.');
     } finally {

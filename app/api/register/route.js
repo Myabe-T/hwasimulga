@@ -89,7 +89,7 @@ export async function POST(req) {
       role: 'viewer',
       avatar: (displayName || username).substring(0, 2).toUpperCase(),
       createdAt: new Date().toISOString(),
-      emailVerified: false,
+      emailVerified: true,
     };
 
     // Check if admin approval is required
@@ -112,9 +112,9 @@ export async function POST(req) {
     return NextResponse.json(await encryptPayload({
       ok: true,
       pending: false,
-      emailVerified: false,
+      emailVerified: true,
       username: newUser.username,
-      message: 'Registration successful! Please check your email to verify your account.'
+      message: 'Registration successful! Welcome to DesiHawas.'
     }));
   } catch (e) {
     return NextResponse.json(await encryptPayload({ error: e.message }), { status: 500 });

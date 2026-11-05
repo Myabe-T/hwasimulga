@@ -124,33 +124,8 @@ export async function POST(req) {
       }), { status: 403 });
     }
 
-    // ── 4b. Check if email is verified (registered accounts only, exempting admin & advisor) ──
-    if (user.role !== 'admin' && user.role !== 'advisor') {
-      let isVerified = Boolean(user.emailVerified);
+    // ── 4b. Email verification check removed: instant login for all users ──
 
-      // If not marked verified in Redis, verify in real-time against Firebase Auth
-      if (!isVerified && user.email) {
-        const fbLookup = await adminLookupUserByEmail(user.email).catch(() => null);
-        if (fbLookup?.emailVerified) {
-          isVerified = true;
-          // Auto-sync verified state to Redis
-          const regUsers = await getRegUsers();
-          const uIdx = regUsers.findIndex(u => u.id === user.id);
-          if (uIdx !== -1) {
-            regUsers[uIdx].emailVerified = true;
-            await saveRegUsers(regUsers);
-          }
-        }
-      }
-
-      if (!isVerified) {
-        return NextResponse.json(await encryptPayload({
-          error: `Please verify your email address before logging in. A verification link was sent to ${user.email}. Check your inbox and spam folder.`,
-          code: 'EMAIL_NOT_VERIFIED',
-          email: user.email,
-        }), { status: 403 });
-      }
-    }
 
     // ── 5. Issue JWT token ──
     const token = await new SignJWT({

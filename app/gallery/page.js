@@ -317,8 +317,17 @@ export default function GalleryPage() {
       setVideoTitles(titlesObj);
       setAllIds(allVideoIds);
 
-      // Guest mode stops here — no auth-gated data
-      if (!d.auth) return;
+      // Fetch plans and curated sections for all visitors (guests and members alike)
+      fetch('/api/hwasi/plans').then(x=>x.json()).then(d=>setPlans(d.plans||null)).catch(()=>{});
+      fetch('/api/hwasi/curated').then(x=>x.json()).then(c => {
+        setCurated(c.error ? { trending:[], popular:[], instaviral:[], premium:[], fullCollection:[] } : c);
+        setCuratedLoading(false);
+      }).catch(()=>{ setCuratedLoading(false); });
+
+      if (!d.auth) {
+        setUser(null);
+        return;
+      }
 
       setUser(d);
 
@@ -332,22 +341,16 @@ export default function GalleryPage() {
         }
       }
 
-      // ── PHASE 2: load auth-gated data in background (don't block grid) ──
-      fetch('/api/hwasi/plans').then(x=>x.json()).then(d=>setPlans(d.plans||null)).catch(()=>{});
-
+      // ── PHASE 2: load auth-gated data in background for member ──
       Promise.all([
-        fetch('/api/hwasi/curated').then(x=>x.json()).catch(()=>({ trending:[], latest:[] })),
         fetch('/api/hwasi/history/me').then(x=>x.json()).catch(()=>[]),
         secureFetch('/api/hwasi/views').then(x=>x.json()).catch(()=>({ allowed:true })),
         fetch('/api/hwasi/bookmarks').then(x=>x.json()).catch(()=>({ ids:[] })),
-      ]).then(([c, h, vs, bm]) => {
-        setCurated(c.error ? { trending:[], popular:[], instaviral:[], fullCollection:[] } : c);
-        setCuratedLoading(false);
+      ]).then(([h, vs, bm]) => {
         setMyHistory(Array.isArray(h) ? h : []);
         setViewStatus(vs);
         if (vs?.isPremium || ['admin','advisor'].includes(d.role)) setIsPremium(true);
         setBookmarks(new Set((bm.ids || []).map(Number)));
-        // Premium welcome popup — show ONCE per account lifetime (localStorage, not sessionStorage)
         if (vs?.isPremium) {
           const KEY = `dh_premwelcome_${d.sub}`;
           if (!localStorage.getItem(KEY)) {
@@ -355,7 +358,6 @@ export default function GalleryPage() {
             setPremiumWelcomePopup(true);
           }
         }
-        // Admin warning message
         fetch('/api/hwasi/device-message').then(r=>r.json()).then(m=>{ if(m.message) setAdminMessage(m.message); }).catch(()=>{});
         fetch('/api/hwasi/tickets').then(r=>r.json()).then(tk=>{ if(tk.unreadReplies > 0) setHasTicketNotification(true); }).catch(()=>{});
       });
@@ -485,6 +487,7 @@ export default function GalleryPage() {
 
   const trendingIds = (curated.trending || []).map(Number).filter(Boolean);
   const instaviralIds = (curated.instaviral || []).map(Number).filter(Boolean);
+  const premiumVideoIds = (curated.premium || []).map(Number).filter(Boolean);
   const popularCuratedIds = (curated.popular || curated.latest || []).map(Number).filter(Boolean);
   const historyIds = [...new Set(myHistory.map(h => +h.videoId))].slice(0, 48);
   const bookmarkIds = [...bookmarks].slice(0, 48);
@@ -532,12 +535,17 @@ export default function GalleryPage() {
   }
 
   const openModal = useCallback((id) => {
-    if (!user) {
-      setGuestAuthModal(true);
+    const isInstaViral = instaviralIds.includes(Number(id));
+    const isPremVid = (curated?.premium || []).includes(Number(id));
+    const isPriv = isPremium || viewStatus?.isPremium || user?.role === 'admin' || user?.role === 'advisor';
+
+    if ((isInstaViral || isPremVid) && !isPriv) {
+      setInstaViralBlock(true);
       return;
     }
+    // Normal videos play freely for both guests and members!
     window.location.href = '/watch/' + encodeVideoId(id);
-  }, [user]);
+  }, [user, instaviralIds, curated, isPremium, viewStatus]);
 
   const legacyOpenModal = useCallback(async (id, fromPopState = false) => {
     // Keep ref in sync
@@ -696,6 +704,10 @@ export default function GalleryPage() {
 
   async function handleDownload(e, id) {
     e && e.stopPropagation();
+    if (!user) {
+      setGuestAuthModal(true);
+      return;
+    }
     // Gate: only premium, admin, advisor can download
     const isPrivileged = isPremium || viewStatus?.isPremium || user?.role === 'admin' || user?.role === 'advisor';
     if (!isPrivileged) {
@@ -721,6 +733,10 @@ export default function GalleryPage() {
 
   async function toggleBookmark(e, id) {
     e && e.stopPropagation();
+    if (!user) {
+      setGuestAuthModal(true);
+      return;
+    }
     const isBookmarked = bookmarks.has(id);
     // Gate: free users limited to 8 bookmarks
     if (!isBookmarked && !viewStatus?.isPremium && user?.role === 'viewer') {
@@ -772,7 +788,7 @@ export default function GalleryPage() {
     if (r.ok) {
       const d = await r.json();
       setCurated(d);
-      const sectionLabels = { trending: '🔥 Trending', popular: '📈 Popular', instaviral: '📸 Insta Viral' };
+      const sectionLabels = { trending: '🔥 Trending', popular: '📈 Popular', instaviral: '📸 Insta Viral', premium: '💎 VIP Premium' };
       setQuickCurateFlash(alreadyIn ? `ℹ️ #${videoId} already in ${sectionLabels[section]}` : `✅ #${videoId} added to ${sectionLabels[section]}`);
       setTimeout(() => setQuickCurateFlash(''), 2500);
     } else {
@@ -781,6 +797,7 @@ export default function GalleryPage() {
   }
 
   const isAdminOrAdvisor = user?.role === 'admin' || user?.role === 'advisor';
+  const isPrivileged = Boolean(isPremium || viewStatus?.isPremium || isAdminOrAdvisor);
 
   // Show spinner only while loading (allIds empty AND no user yet determined)
   if (allIds.length === 0 && user === null) return (
@@ -789,111 +806,6 @@ export default function GalleryPage() {
       <div className={styles.splashSpinner} />
     </div>
   );
-
-  // GUEST view
-  if (!user) return (
-    <div className={styles.page}>
-      {/* Age gate */}
-      {!ageVerified && (
-        <div className={styles.ageGate}>
-          <div style={{ textAlign:'center', maxWidth:440, padding:'40px 28px', background:'linear-gradient(145deg,#0f0518,#1a0533)', border:'1px solid rgba(124,58,237,.35)', borderRadius:24, boxShadow:'0 40px 100px rgba(0,0,0,.7)' }}>
-            <div style={{ fontSize:60, marginBottom:12 }}>🔞</div>
-            <h2 style={{ fontSize:24, fontWeight:900, color:'#f1f5f9', marginBottom:8 }}>Adult Content Warning</h2>
-            <p style={{ fontSize:14, color:'rgba(255,255,255,.6)', lineHeight:1.7, marginBottom:24 }}>
-              This website contains content intended for <strong style={{ color:'#f59e0b' }}>adults only</strong>. You must be at least <strong>18 years old</strong> to proceed.
-            </p>
-            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:16 }}>
-              <button onClick={acceptAge} style={{ padding:'15px', borderRadius:14, border:'none', cursor:'pointer', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'#fff', fontWeight:800, fontSize:16 }}>✅ I am 18+ — Enter</button>
-              <a href="https://google.com" style={{ padding:'12px', borderRadius:12, border:'1px solid rgba(255,255,255,.15)', color:'rgba(255,255,255,.5)', textDecoration:'none', fontSize:13, fontWeight:600, display:'block' }}>🚫 I am Under 18 — Exit</a>
-            </div>
-            <p style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>By entering, you agree to our <a href="/terms" style={{ color:'#a78bfa', textDecoration:'none' }}>Terms of Service</a>.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Guest header */}
-      <header className={styles.header}>
-        <div className={styles.headerInner}>
-          <div className={styles.brand}>
-            <img src="/logo.png" alt="" className={styles.brandLogo} />
-            <span className={styles.brandName}>DesiHawas</span>
-          </div>
-          <nav className={styles.desktopNav}>
-            <span className={styles.navBtn} style={{ cursor:'default' }}>🎬 Gallery</span>
-          </nav>
-          <div className={styles.headerRight}>
-            <a href="/login" className={styles.guestLoginBtn}>Login</a>
-            <a href="/register" className={styles.guestRegBtn}>Register Free 🚀</a>
-          </div>
-        </div>
-        <div className={styles.guestSaleBanner}>
-          🔥 Flash Sale —
-          <span style={{ fontFamily:'Courier New', fontWeight:900, color:'#f59e0b', margin:'0 6px' }}>{globalTimer}</span>
-          left · <s style={{ opacity:.4 }}>₹{plans?.basic?.originalPrice || 200}/₹{plans?.plus?.originalPrice || 500}/₹{plans?.pro?.originalPrice || 999}</s> → <strong style={{ color:'#34d399' }}>₹{plans?.basic?.price || 100}/₹{plans?.plus?.price || 300}/₹{plans?.pro?.price || 599}</strong>
-          <a href="/register" style={{ marginLeft:10, color:'#f59e0b', fontWeight:700, textDecoration:'none' }}>Unlock →</a>
-        </div>
-      </header>
-
-      {/* Guest video grid */}
-      <main className={styles.main}>
-        <div className={styles.sectionHead}>
-          <div className={styles.sectionAccent} />
-          <h2 className={styles.sectionTitle}>Browse All Videos</h2>
-        </div>
-        <div className={`${styles.grid} ${mobileGridCols === 2 ? styles.gridCols2 : ''}`}>
-          {pageIds.map((id, i) => (
-            <VideoCard key={id} id={id} index={i}
-              title={videoTitles[String(id)] || null}
-              hasThumb={thumbIds.has(id)}
-              isBookmarked={false} isAdmin={false} showHash={false}
-              disablePreview={!hoverPreviewEnabled || instaviralIds.includes(Number(id))}
-              onPlay={() => setGuestAuthModal(true)}
-              onDownload={null}
-              onBookmark={() => setGuestAuthModal(true)}
-              onReport={() => setGuestAuthModal(true)}
-              onDelete={null}
-              activePreviewId={activePreviewId}
-              setActivePreviewId={setActivePreviewId}
-            />
-          ))}
-        </div>
-        {totalPages > 1 && (
-          <div className={styles.pagination}>
-            <button className={styles.pgBtn} disabled={page === 0} onClick={() => goPage(page - 1)}>← Prev</button>
-            <button className={styles.pgBtn} disabled={page >= totalPages - 1} onClick={() => goPage(page + 1)}>Next →</button>
-          </div>
-        )}
-      </main>
-
-      {/* Guest auth modal */}
-      {guestAuthModal && (
-        <div className={styles.modalBg} onClick={e => { if (e.target === e.currentTarget) setGuestAuthModal(false); }}>
-          <div className={styles.smallModal} style={{ textAlign:'center' }}>
-            <img src="/logo.png" alt="" style={{ width:50, height:50, borderRadius:10, marginBottom:12 }} />
-            <h3 style={{ fontWeight:800, fontSize:18, marginBottom:6, color:'var(--text1)' }}>🔒 Login to Watch</h3>
-            <p style={{ fontSize:13, color:'var(--text3)', marginBottom:14, lineHeight:1.5 }}>Create a free account to watch videos.<br />Get premium for unlimited access!</p>
-            <div style={{ padding:'10px 14px', background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.25)', borderRadius:12, marginBottom:16, fontSize:13 }}>
-              🔥 Sale ends in <strong style={{ fontFamily:'Courier New', color:'#f59e0b' }}>{globalTimer}</strong>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:16 }}>
-              <a href="/login" style={{ padding:'12px', borderRadius:12, background:'var(--inp)', border:'1px solid var(--inp-brd)', color:'var(--text1)', textDecoration:'none', fontSize:14, fontWeight:700, display:'block' }}>🔑 Login</a>
-              <a href="/register" style={{ padding:'12px', borderRadius:12, background:'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'#fff', textDecoration:'none', fontSize:14, fontWeight:700, display:'block' }}>🚀 Register</a>
-            </div>
-            <button className={styles.cancelBtn} onClick={() => setGuestAuthModal(false)}>Close</button>
-          </div>
-        </div>
-      )}
-
-      {/* Cookie consent */}
-      {!cookieConsent && (
-        <div className={styles.cookieBanner}>
-          <p style={{ fontSize:13, color:'var(--text2)', margin:0, flex:1 }}>🍪 We use cookies to enhance your experience. <a href="/terms" style={{ color:'var(--accent)' }}>Learn more</a></p>
-          <button onClick={acceptCookie} style={{ padding:'8px 20px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', whiteSpace:'nowrap' }}>Accept</button>
-        </div>
-      )}
-    </div>
-  );
-
 
   // ── Search filter ── searches ALL videos by title, not just current page
   const searchedTabIds = () => {
@@ -907,12 +819,14 @@ export default function GalleryPage() {
   };
 
 
-  const initials = (user.avatar || user.username?.slice(0, 2) || 'U').toUpperCase();
+  const initials = (user?.avatar || user?.username?.slice(0, 2) || 'DH').toUpperCase();
   const freeCount = (viewStatus?.viewsToday ?? viewStatus?.count) ?? 0;
   const freeLimit = viewStatus?.limit ?? 5;
   const planLabel = viewStatus?.isPremium
     ? (viewStatus?.plan ? viewStatus.plan.toUpperCase() : 'PREMIUM')
-    : (user.role === 'admin' ? 'ADMIN' : user.role === 'advisor' ? 'ADVISOR' : `FREE (${freeCount}/${freeLimit})`);
+    : user
+    ? (user.role === 'admin' ? 'ADMIN' : user.role === 'advisor' ? 'ADVISOR' : 'MEMBER')
+    : 'GUEST';
   const isPrem = viewStatus?.isPremium || false;
 
   // ── LOGGED IN VIEW ──
@@ -1048,26 +962,30 @@ export default function GalleryPage() {
             Home
           </button>
 
-          <button className={`${styles.sidebarItem} ${view === 'bookmarks' ? styles.sidebarActive : ''}`}
-            onClick={() => { setView('bookmarks'); setSidebarOpen(false); }}>
-            <span className={styles.sidebarIcon} style={{ background:'rgba(245,158,11,.18)' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
-              </svg>
-            </span>
-            Bookmarks
-          </button>
+          {user && (
+            <>
+              <button className={`${styles.sidebarItem} ${view === 'bookmarks' ? styles.sidebarActive : ''}`}
+                onClick={() => { setView('bookmarks'); setSidebarOpen(false); }}>
+                <span className={styles.sidebarIcon} style={{ background:'rgba(245,158,11,.18)' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </span>
+                Bookmarks
+              </button>
 
-          <button className={`${styles.sidebarItem}`}
-            onClick={() => { setView('gallery'); setHomeTab('recent'); setSidebarOpen(false); }}>
-            <span className={styles.sidebarIcon} style={{ background:'rgba(16,185,129,.18)' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
-            </span>
-            History
-          </button>
+              <button className={`${styles.sidebarItem}`}
+                onClick={() => { setView('gallery'); setHomeTab('recent'); setSidebarOpen(false); }}>
+                <span className={styles.sidebarIcon} style={{ background:'rgba(16,185,129,.18)' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                </span>
+                History
+              </button>
+            </>
+          )}
 
           {isAdminOrAdvisor && (
             <a href={user.role === 'advisor' ? '/advisor' : '/admin'} className={styles.sidebarItem}>
@@ -1103,16 +1021,18 @@ export default function GalleryPage() {
             </a>
           )}
 
-          <button className={`${styles.sidebarItem} ${view === 'profile' ? styles.sidebarActive : ''}`}
-            onClick={() => { openProfile('account'); setSidebarOpen(false); }}>
-            <span className={styles.sidebarIcon} style={{ background:'rgba(236,72,153,.18)' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f472b6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-            </span>
-            My Profile
-          </button>
+          {user && (
+            <button className={`${styles.sidebarItem} ${view === 'profile' ? styles.sidebarActive : ''}`}
+              onClick={() => { openProfile('account'); setSidebarOpen(false); }}>
+              <span className={styles.sidebarIcon} style={{ background:'rgba(236,72,153,.18)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f472b6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              </span>
+              My Profile
+            </button>
+          )}
 
           <button className={`${styles.sidebarItem} ${view === 'support' ? styles.sidebarActive : ''}`}
             onClick={() => { setView('support'); setSidebarOpen(false); }}>
@@ -1133,20 +1053,46 @@ export default function GalleryPage() {
             </span>
             Terms of Service
           </a>
+
+          {!user && (
+            <>
+              <div className={styles.sidebarDivider} />
+              <a href="/login" className={styles.sidebarItem} style={{ color: '#60a5fa', fontWeight: 700 }}>
+                <span className={styles.sidebarIcon} style={{ background: 'rgba(59,130,246,.2)' }}>🔑</span>
+                Login
+              </a>
+              <a href="/register" className={styles.sidebarItem} style={{ color: '#ec4899', fontWeight: 800 }}>
+                <span className={styles.sidebarIcon} style={{ background: 'rgba(236,72,153,.2)' }}>🚀</span>
+                Register Free
+              </a>
+            </>
+          )}
         </nav>
 
-        {/* Footer with logout text */}
-        <div className={styles.sidebarFooter}>
-          <div className={styles.sidebarAvatar}>{initials}</div>
-          <div className={styles.sidebarUserInfo}>
-            <div className={styles.sidebarUserName}>{user.displayName || user.username}</div>
-            <div className={styles.sidebarUserPlan}>{planLabel}</div>
+        {/* Footer */}
+        {user ? (
+          <div className={styles.sidebarFooter}>
+            <div className={styles.sidebarAvatar}>{initials}</div>
+            <div className={styles.sidebarUserInfo}>
+              <div className={styles.sidebarUserName}>{user.displayName || user.username}</div>
+              <div className={styles.sidebarUserPlan}>{planLabel}</div>
+            </div>
+            <button className={styles.sidebarLogoutBtn} onClick={logout} title="Logout">
+              ⏏ Logout
+            </button>
           </div>
-          <button className={styles.sidebarLogoutBtn} onClick={logout} title="Logout">
-            ⏏ Logout
-
-          </button>
-        </div>
+        ) : (
+          <div className={styles.sidebarFooter}>
+            <div className={styles.sidebarAvatar}>DH</div>
+            <div className={styles.sidebarUserInfo}>
+              <div className={styles.sidebarUserName}>Guest Visitor</div>
+              <div className={styles.sidebarUserPlan}>Free Video Mode</div>
+            </div>
+            <a href="/login" className={styles.sidebarLogoutBtn} style={{ textDecoration: 'none', textAlign: 'center', lineHeight: '28px' }}>
+              Login
+            </a>
+          </div>
+        )}
       </aside>
 
       {/* Sidebar overlay — click to close */}
@@ -1192,48 +1138,59 @@ export default function GalleryPage() {
               {theme === 'dark' ? '☀️' : '🌙'}
             </button>
 
-            {/* User chip */}
-            <div className={styles.userChipWrap} data-usermenu="true">
-              <div className={styles.userChip} onClick={() => setUserMenuOpen(o => !o)} data-usermenu="true">
-                <div className={styles.avatar}>{initials}</div>
-                <span className={styles.userName}>{user.displayName || user.username}</span>
-                <span className={`${styles.userPlanBadge} ${isPrem ? styles.userPlanBadgePrem : ''}`}>{planLabel}</span>
-                <span style={{ fontSize:10, color:'var(--text3)', marginLeft:2 }}>▾</span>
-              </div>
+            {/* User chip OR Guest Login/Register */}
+            {user ? (
+              <div className={styles.userChipWrap} data-usermenu="true">
+                <div className={styles.userChip} onClick={() => setUserMenuOpen(o => !o)} data-usermenu="true">
+                  <div className={styles.avatar}>{initials}</div>
+                  <span className={styles.userName}>{user.displayName || user.username}</span>
+                  <span className={`${styles.userPlanBadge} ${isPrem ? styles.userPlanBadgePrem : ''}`}>{planLabel}</span>
+                  <span style={{ fontSize:10, color:'var(--text3)', marginLeft:2 }}>▾</span>
+                </div>
 
-              {userMenuOpen && (
-                <div className={styles.userDropdown} data-usermenu="true">
-                  <div className={styles.udHeader}>
-                    <div className={styles.udAvatar}>{initials}</div>
-                    <div>
-                      <div className={styles.udName}>{user.displayName || user.username}</div>
-                      <div className={styles.udPlan}>{planLabel}</div>
+                {userMenuOpen && (
+                  <div className={styles.userDropdown} data-usermenu="true">
+                    <div className={styles.udHeader}>
+                      <div className={styles.udAvatar}>{initials}</div>
+                      <div>
+                        <div className={styles.udName}>{user.displayName || user.username}</div>
+                        <div className={styles.udPlan}>{planLabel}</div>
+                      </div>
                     </div>
-                  </div>
-                  <div className={styles.udAppRow}>
-                    APPEARANCE
-                    <button className={styles.themeToggle} onClick={toggleTheme}>
-                      {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+                    <div className={styles.udAppRow}>
+                      APPEARANCE
+                      <button className={styles.themeToggle} onClick={toggleTheme}>
+                        {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+                      </button>
+                    </div>
+                    <button className={styles.udItem} onClick={() => { openProfile('account'); setUserMenuOpen(false); }}>
+                      👤 My Profile
+                    </button>
+                    <button className={styles.udItem} onClick={() => { setView('bookmarks'); setUserMenuOpen(false); }}>
+                      🔖 My Bookmarks
+                    </button>
+                    {!isPrem && user.role === 'viewer' && (
+                      <a href="/premium" className={styles.udItem} style={{ color:'#f59e0b' }}>
+                        👑 Buy Premium
+                      </a>
+                    )}
+                    <div className={styles.udDivider} />
+                    <button className={`${styles.udItem} ${styles.udItemDanger}`} onClick={logout}>
+                      🚪 Sign Out
                     </button>
                   </div>
-                  <button className={styles.udItem} onClick={() => { openProfile('account'); setUserMenuOpen(false); }}>
-                    👤 My Profile
-                  </button>
-                  <button className={styles.udItem} onClick={() => { setView('bookmarks'); setUserMenuOpen(false); }}>
-                    🔖 My Bookmarks
-                  </button>
-                  {!isPrem && user.role === 'viewer' && (
-                    <a href="/premium" className={styles.udItem} style={{ color:'#f59e0b' }}>
-                      👑 Buy Premium
-                    </a>
-                  )}
-                  <div className={styles.udDivider} />
-                  <button className={`${styles.udItem} ${styles.udItemDanger}`} onClick={logout}>
-                    🚪 Sign Out
-                  </button>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <a href="/login" style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,.18)', background: 'rgba(255,255,255,.06)', color: 'var(--text1)', textDecoration: 'none', fontSize: 13, fontWeight: 700 }}>
+                  🔑 Login
+                </a>
+                <a href="/register" style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 800 }}>
+                  Register 🚀
+                </a>
+              </div>
+            )}
           </div>
         </header>
 
@@ -1276,33 +1233,38 @@ export default function GalleryPage() {
               </div>
             ) : (
               <div className={`${styles.grid} ${mobileGridCols === 2 ? styles.gridCols2 : ''}`}>
-                {searchedTabIds().map((id, i) => (
-                  <div key={id} style={{ position: 'relative' }}>
-                    {homeTab === 'instaviral' && !isPremium && (
-                      <div style={{ position:'absolute',inset:0,zIndex:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.5)',borderRadius:12,cursor:'pointer' }}
-                        onClick={e => { e.stopPropagation(); setInstaViralBlock(true); }}>
-                        <div style={{ fontSize:30 }}>💎</div>
-                        <div style={{ fontSize:10, fontWeight:800, color:'#f59e0b', letterSpacing:1, textTransform:'uppercase', marginTop:4 }}>Premium Only</div>
-                      </div>
-                    )}
-                    <VideoCard id={id} index={i}
-                      title={videoTitles[String(id)] || null}
-                      hasThumb={thumbIds.has(id)}
-                      isBookmarked={bookmarks.has(id)}
-                      isAdmin={isAdminOrAdvisor}
-                      showHash={isAdminOrAdvisor}
-                      disablePreview={!hoverPreviewEnabled || ((homeTab === 'instaviral' || instaviralIds.includes(Number(id))) && !isPremium)}
-                      onPlay={() => openModal(id)}
-                      onDownload={instaviralIds.includes(Number(id)) ? null : e => handleDownload(e, id)}
-                      onBookmark={e => toggleBookmark(e, id)}
-                      onReport={e => { e.stopPropagation(); setReportModal(id); }}
-                      onDelete={isAdminOrAdvisor ? e => { e.stopPropagation(); setDeleteModal({ id }); setDeleteReason('duplicate'); } : null}
-                      onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
-                      activePreviewId={activePreviewId}
-                      setActivePreviewId={setActivePreviewId}
-                    />
-                  </div>
-                ))}
+                {searchedTabIds().map((id, i) => {
+                  const isVideoPrem = (homeTab === 'instaviral' || instaviralIds.includes(Number(id)) || premiumVideoIds.includes(Number(id)));
+                  const showPremOverlay = isVideoPrem && !isPrivileged;
+                  return (
+                    <div key={id} style={{ position: 'relative' }}>
+                      {showPremOverlay && (
+                        <div style={{ position:'absolute',inset:0,zIndex:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.65)',borderRadius:12,cursor:'pointer' }}
+                          onClick={e => { e.stopPropagation(); setInstaViralBlock(true); }}>
+                          <div style={{ fontSize:32 }}>💎</div>
+                          <div style={{ fontSize:11, fontWeight:900, color:'#f59e0b', letterSpacing:1, textTransform:'uppercase', marginTop:4 }}>VIP Premium</div>
+                          <div style={{ fontSize:10, color:'rgba(255,255,255,.7)', marginTop:2 }}>Tap to Unlock</div>
+                        </div>
+                      )}
+                      <VideoCard id={id} index={i}
+                        title={videoTitles[String(id)] || null}
+                        hasThumb={thumbIds.has(id)}
+                        isBookmarked={bookmarks.has(id)}
+                        isAdmin={isAdminOrAdvisor}
+                        showHash={isAdminOrAdvisor}
+                        disablePreview={!hoverPreviewEnabled || (isVideoPrem && !isPrivileged)}
+                        onPlay={() => openModal(id)}
+                        onDownload={e => handleDownload(e, id)}
+                        onBookmark={e => toggleBookmark(e, id)}
+                        onReport={e => { e.stopPropagation(); setReportModal(id); }}
+                        onDelete={isAdminOrAdvisor ? e => { e.stopPropagation(); setDeleteModal({ id }); setDeleteReason('duplicate'); } : null}
+                        onCurate={isAdminOrAdvisor ? section => handleQuickCurate(id, section) : null}
+                        activePreviewId={activePreviewId}
+                        setActivePreviewId={setActivePreviewId}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -1581,9 +1543,15 @@ export default function GalleryPage() {
               Upgrade now to unlock the full collection instantly!
             </p>
             <button onClick={() => window.location.href='/premium'}
-              style={{ width:'100%', padding:'15px 0', borderRadius:12, border:'none', cursor:'pointer', background:'linear-gradient(135deg,#7c3aed,#ec4899)', color:'#fff', fontWeight:800, fontSize:16, marginBottom:12, letterSpacing:.3 }}>
+              style={{ width:'100%', padding:'15px 0', borderRadius:12, border:'none', cursor:'pointer', background:'linear-gradient(135deg,#7c3aed,#ec4899)', color:'#fff', fontWeight:800, fontSize:16, marginBottom:10, letterSpacing:.3 }}>
               🚀 Upgrade to Premium
             </button>
+            {!user && (
+              <a href="/login"
+                style={{ display:'block', width:'100%', padding:'12px 0', borderRadius:12, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.08)', color:'#fff', fontWeight:700, fontSize:13, marginBottom:10, textDecoration:'none' }}>
+                🔑 Already have Premium? Login here
+              </a>
+            )}
             <button onClick={() => setInstaViralBlock(false)}
               style={{ background:'none', border:'1px solid rgba(255,255,255,.12)', color:'rgba(255,255,255,.5)', padding:'10px 0', width:'100%', borderRadius:10, cursor:'pointer', fontSize:13 }}>
               Maybe Later
@@ -2774,7 +2742,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
             onClick={(e) => {
               if (disablePreview) return;
               e.stopPropagation();
-              setIsHovered(p => !p);
+              if (setActivePreviewId) setActivePreviewId(prev => prev === id ? null : id);
             }}
           >
             👁 {views}

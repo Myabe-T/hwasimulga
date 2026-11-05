@@ -13,23 +13,8 @@ async function getUser(req) {
   try { const { payload } = await jwtVerify(cookie.value, SECRET); return payload; } catch { return null; }
 }
 
-async function getWatchLimit() {
-  try {
-    const v = await redis.get('hwasi:watch_limit');
-    return v ? Number(v) : 5;
-  } catch { return 5; }
-}
-
-async function getWatchLimitMsg() {
-  try {
-    const v = await redis.get('hwasi:watch_limit_msg');
-    return v || null;
-  } catch { return null; }
-}
-
 export async function POST(req) {
   const session = await getUser(req);
-  if (!session) return NextResponse.json(await encryptPayload({ error: 'Unauthorized' }), { status: 401 });
 
   // Support both encrypted (from secureFetch) and plain body
   let body = {};
@@ -44,103 +29,72 @@ export async function POST(req) {
   } catch { body = {}; }
 
   const videoId = body.videoId;
-
   if (!videoId) {
     return NextResponse.json(await encryptPayload({ error: 'Missing videoId' }), { status: 400 });
   }
 
-  // Admin + Advisor always allowed
-  if (['admin','advisor'].includes(session.role)) {
+  // Check if video is marked as Premium (Insta Viral or curated Premium)
+  const curatedData = await getCurated();
+  const instaviralIds = (curatedData?.instaviral || []).map(Number);
+  const premiumIds = (curatedData?.premium || []).map(Number);
+  const isPremiumVideo = instaviralIds.includes(Number(videoId)) || premiumIds.includes(Number(videoId));
+
+  // 1. Admin + Advisor always allowed
+  if (session && ['admin','advisor'].includes(session.role)) {
     const cdnInfo = await getVideoCdn(videoId);
     const token = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
     return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, token }));
   }
 
-  // Check premium status
-  const sub = await getPremium(session.sub);
-
-  // Check if video is Insta Viral — only premium can watch (read from correct hwasi:curated key)
-  const curatedData = await getCurated();
-  const instaviralIds = (curatedData?.instaviral || []).map(Number);
-  const isInstaViral = instaviralIds.includes(Number(videoId));
-  if (isInstaViral && !sub && !['admin','advisor'].includes(session.role)) {
-    return NextResponse.json(await encryptPayload({ allowed: false, code: 'INSTAVIRAL_PREMIUM_ONLY', msg: '💎 Insta Viral videos are exclusive to Premium members. Upgrade to unlock!' }));
+  // 2. Active Premium Subscriber
+  if (session) {
+    const sub = await getPremium(session.sub);
+    if (sub) {
+      const cdnInfo = await getVideoCdn(videoId);
+      const token = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
+      return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt, token }));
+    }
   }
 
-  if (sub) {
-    const cdnInfo = await getVideoCdn(videoId);
-    const token = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
-    return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt, token }));
-  }
-
-  const FREE_LIMIT = await getWatchLimit();
-  const limitMsg = await getWatchLimitMsg();
-
-  // Track by USER ID
-  const userId = session.sub || session.username;
-  const userKey = `user:${userId}`;
-  const count = await getViewCount(userKey);
-
-  if (count >= FREE_LIMIT) {
-    const now = new Date();
-    const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-    const hoursLeft = Math.ceil((tomorrow - now) / 3600000);
+  // 3. Premium Video Lock: If video is Premium, non-premium members and guests are blocked
+  if (isPremiumVideo) {
     return NextResponse.json(await encryptPayload({
       allowed: false,
-      count,
-      viewsToday: count,
-      limit: FREE_LIMIT,
-      remaining: 0,
-      hoursLeft,
-      limitMsg
+      code: 'PREMIUM_ONLY',
+      isPremiumOnly: true,
+      msg: '💎 Exclusive VIP Video. Upgrade to Premium to unlock!'
     }));
   }
 
-  await incrementViewCount(userKey);
-  const newCount = count + 1;
+  // 4. Free Video Playback (Tube site model: guests & free members watch all normal videos freely!)
   const cdnInfo = await getVideoCdn(videoId);
   const token = await signVideoId(videoId, cdnInfo?.cdnId, cdnInfo?.cdnVideoId);
-  
+
   return NextResponse.json(await encryptPayload({
     allowed: true,
+    isGuest: !session,
     isPremium: false,
-    count: newCount,
-    viewsToday: newCount,
-    limit: FREE_LIMIT,
-    remaining: Math.max(0, FREE_LIMIT - newCount),
-    limitMsg,
     token
   }));
 }
 
 export async function GET(req) {
   const session = await getUser(req);
-  if (!session) return NextResponse.json(await encryptPayload({ error: 'Unauthorized' }), { status: 401 });
-  if (['admin','advisor'].includes(session.role)) return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true }));
+  if (!session) {
+    return NextResponse.json(await encryptPayload({ allowed: true, isGuest: true, isPremium: false, limit: 9999 }));
+  }
+  if (['admin','advisor'].includes(session.role)) {
+    return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true }));
+  }
 
   const sub = await getPremium(session.sub);
-  if (sub) return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt }));
-
-
-  const FREE_LIMIT = await getWatchLimit();
-  const limitMsg = await getWatchLimitMsg();
-
-  const userId = session.sub || session.username;
-  const userKey = `user:${userId}`;
-  const count = await getViewCount(userKey);
-
-  const now = new Date();
-  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-  const hoursLeft = Math.ceil((tomorrow - now) / 3600000);
+  if (sub) {
+    return NextResponse.json(await encryptPayload({ allowed: true, isPremium: true, plan: sub.plan, expiresAt: sub.expiresAt }));
+  }
 
   return NextResponse.json(await encryptPayload({
-    allowed: count < FREE_LIMIT,
+    allowed: true,
     isPremium: false,
-    count,
-    viewsToday: count,
-    limit: FREE_LIMIT,
-    remaining: Math.max(0, FREE_LIMIT - count),
-    hoursLeft,
-    limitMsg,
+    limit: 9999,
   }));
 }

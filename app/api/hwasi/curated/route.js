@@ -1,12 +1,10 @@
 export const runtime = 'edge';
 
 import { NextResponse } from 'next/server';
-import { requireAuth, getSession } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { getCurated, redis, KEYS } from '@/lib/redis';
 
 export async function GET() {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   return NextResponse.json(await getCurated(), {
     headers: {
       'Cache-Control': 'public, max-age=60, s-maxage=120, stale-while-revalidate=300',
