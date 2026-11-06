@@ -7,13 +7,22 @@ import { encryptPayload } from '@/lib/crypto';
 
 export async function GET() {
   const session = await getSession();
-  const settings = await getSettings();
+  let settings = await getSettings();
+  while (typeof settings === 'string') {
+    try { settings = JSON.parse(settings); } catch { break; }
+  }
   let deletedIds = [];
   if (session && (session.role === 'admin' || session.role === 'advisor')) {
     const rawDeleted = await redis.smembers('hwasi:deleted:index');
     deletedIds = Array.from(rawDeleted || []).map(Number);
   }
-  const payload = await encryptPayload({ ...settings, deletedIds });
+  const payload = await encryptPayload({
+    ...settings,
+    start: Number(settings?.start) || 1,
+    end: Number(settings?.end) || 1177,
+    extraRanges: Array.isArray(settings?.extraRanges) ? settings.extraRanges : [],
+    deletedIds
+  });
   return NextResponse.json({
     ...payload,
     allowAnyEmailDomain: Boolean(settings?.allowAnyEmailDomain),
@@ -37,8 +46,19 @@ export async function PUT(req) {
     }
   } catch { body = {}; }
 
-  const cur = await getSettings();
-  const updated = { ...cur, ...body };
+  let cur = await getSettings();
+  while (typeof cur === 'string') {
+    try { cur = JSON.parse(cur); } catch { break; }
+  }
+  const updated = {
+    ...cur,
+    ...body,
+    start: Number(body.start !== undefined ? body.start : cur.start) || 1,
+    end: Number(body.end !== undefined ? body.end : cur.end) || 1177,
+    extraRanges: Array.isArray(body.extraRanges !== undefined ? body.extraRanges : cur.extraRanges)
+      ? (body.extraRanges !== undefined ? body.extraRanges : cur.extraRanges)
+      : [],
+  };
   await redis.set(KEYS.SETTINGS, JSON.stringify(updated));
   return NextResponse.json(await encryptPayload(updated));
 }

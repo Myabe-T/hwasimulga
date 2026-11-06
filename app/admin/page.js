@@ -127,7 +127,7 @@ export default function AdminPage() {
   const [collapsed, setCollapsed] = useState(false);
 
   // Data
-  const [settings, setSettings] = useState({ start: 51, end: 730, cdnId: 'desimms' });
+  const [settings, setSettings] = useState({ start: 1, end: 1177, cdnId: 'desimms', extraRanges: [{ start: 10001, end: 10818, cdnId: 'hindibf' }] });
   const [curated, setCurated] = useState({ trending: [], latest: [] });
   const [users, setUsers] = useState([]);
   const [history, setHistory] = useState([]);
@@ -556,7 +556,7 @@ export default function AdminPage() {
       secureFetch('/api/hwasi/sub-requests').then(x => x.json()).catch(() => ({ requests: [] })),
     ];
     const [s, c, u, h, t, p, rep, del, pu, ra, sr] = await Promise.all(fetches);
-    if (s && !s.error) setSettings(s);
+    if (s && !s.error) setSettings(prev => ({ ...prev, ...s, start: Number(s.start !== undefined ? s.start : prev.start) || 1, end: Number(s.end !== undefined ? s.end : prev.end) || 1177, extraRanges: Array.isArray(s.extraRanges) ? s.extraRanges : (prev.extraRanges || []) }));
     if (c && !c.error) setCurated(c);
     setUsers(Array.isArray(u) ? u : []);
     setHistory(Array.isArray(h) ? h : (h?.history || []));
@@ -970,7 +970,9 @@ export default function AdminPage() {
   // Stats for dashboard
   const deletedCount = (settings.deletedIds || []).length;
   const extraRangesCount = Object.keys(videoTitles).filter(id => Number(id) >= 10000).length;
-  const totalVideos = Math.max(0, (settings.end - settings.start + 1) + extraRangesCount - deletedCount);
+  const pStart = Number(settings?.start) || 1;
+  const pEnd = Number(settings?.end) || 1177;
+  const totalVideos = Math.max(0, (pEnd - pStart + 1) + extraRangesCount - deletedCount);
   const totalWatched = history.length;
   const now = Date.now();
   const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
@@ -1096,7 +1098,7 @@ export default function AdminPage() {
             <div className={styles.fadeIn}>
               {/* ── Stats Row 1: Videos + Top Video ── */}
               <div className={styles.statsGrid}>
-                <StatCard icon="🎦" label="Total Videos" value={totalVideos.toLocaleString()} sub={`#${settings.start}–#${settings.end}${extraRangesCount ? ` + ${extraRangesCount} extra` : ''}${deletedCount ? ` · ${deletedCount} deleted` : ''}`} color="purple" />
+                <StatCard icon="🎦" label="Total Videos" value={totalVideos.toLocaleString()} sub={`#${pStart}–#${pEnd}${extraRangesCount ? ` + ${extraRangesCount} extra` : ''}${deletedCount ? ` · ${deletedCount} deleted` : ''}`} color="purple" />
                 <StatCard icon="🏆" label="Top Video" value={topVideo} sub="most watched" color="green" />
                 <div
                   style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)', borderRadius: 14, padding: '16px 20px', cursor: 'pointer', transition: 'transform .2s,box-shadow .2s', position: 'relative', overflow: 'hidden' }}
@@ -1473,10 +1475,10 @@ export default function AdminPage() {
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
                   {!genRunning ? (
                     <>
-                      <button className="btn btn-primary" onClick={() => runGenerator(settings.start, settings.end)}>
-                        ⚡ Generate All ({settings.end - settings.start + 1} videos)
+                      <button className="btn btn-primary" onClick={() => runGenerator(pStart, pEnd)}>
+                        ⚡ Generate All ({Math.max(0, pEnd - pStart + 1)} videos)
                       </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => runGenerator(settings.start, Math.min(settings.start + 9, settings.end))}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => runGenerator(pStart, Math.min(pStart + 9, pEnd))}>
                         🧪 Test First 10
                       </button>
                       {thumbCount > 0 && (
@@ -1573,7 +1575,7 @@ export default function AdminPage() {
 
                       {/* Pagination Controls */}
                       {(() => {
-                        const primary = Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start);
+                        const primary = Array.from({ length: Math.max(0, pEnd - pStart + 1) }, (_, i) => i + pStart);
                         const extra = (settings.extraRanges || []).flatMap(r =>
                           r.start >= 10000
                             ? Object.keys(videoTitles).map(Number).filter(id => id >= 10000 && (!r.end || id <= r.end))
@@ -1625,7 +1627,7 @@ export default function AdminPage() {
                     {/* Paginated Grid (80 items per page = instant 60fps, zero lag!) */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(100px,1fr))', gap: 6 }}>
                       {(() => {
-                        const primary = Array.from({ length: Math.max(0, settings.end - settings.start + 1) }, (_, i) => i + settings.start);
+                        const primary = Array.from({ length: Math.max(0, pEnd - pStart + 1) }, (_, i) => i + pStart);
                         const extra = (settings.extraRanges || []).flatMap(r =>
                           r.start >= 10000
                             ? Object.keys(videoTitles).map(Number).filter(id => id >= 10000 && (!r.end || id <= r.end))
@@ -3485,18 +3487,18 @@ export default function AdminPage() {
                   <div className={styles.settingsRow}>
                     <div style={{ flex: 1 }}>
                       <label className={styles.fieldLabel}>Start ID</label>
-                      <input className="input" type="number" min="1" value={settings.start}
+                      <input className="input" type="number" min="1" value={settings.start !== undefined ? settings.start : pStart}
                         onChange={e => setSettings(s => ({ ...s, start: +e.target.value }))} />
                     </div>
                     <div className={styles.settingsDash}>—</div>
                     <div style={{ flex: 1 }}>
                       <label className={styles.fieldLabel}>End ID</label>
-                      <input className="input" type="number" min="1" value={settings.end}
+                      <input className="input" type="number" min="1" value={settings.end !== undefined ? settings.end : pEnd}
                         onChange={e => setSettings(s => ({ ...s, end: +e.target.value }))} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <label className={styles.fieldLabel}>Total Videos</label>
-                      <div className={styles.totalBox}>{(settings.end - settings.start + 1).toLocaleString()} videos</div>
+                      <div className={styles.totalBox}>{(Math.max(0, pEnd - pStart + 1)).toLocaleString()} videos</div>
                     </div>
                   </div>
                 </div>
@@ -3538,9 +3540,9 @@ export default function AdminPage() {
                   {savingSet ? 'Saving…' : 'Save Range'}
                 </button>
                 <div className={styles.infoGrid}>
-                  <InfoRow label="Primary Range" value={`#${settings.start} – #${settings.end}`} />
+                  <InfoRow label="Primary Range" value={`#${pStart} – #${pEnd}`} />
                   <InfoRow label="CDN Source" value={settings.cdnId} />
-                  <InfoRow label="Primary Videos" value={(settings.end - settings.start + 1).toLocaleString()} />
+                  <InfoRow label="Primary Videos" value={(Math.max(0, pEnd - pStart + 1)).toLocaleString()} />
                   {(settings.extraRanges || []).map((r, i) => (
                     <InfoRow key={i} label={`Extra Range #${i+1}`} value={`#${r.start} – #${r.end} (${r.end - r.start + 1} videos)`} />
                   ))}
