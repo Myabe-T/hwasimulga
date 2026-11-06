@@ -57,7 +57,7 @@ const HOME_TABS = [
 
 export default function GalleryPage() {
   const [user, setUser] = useState(null);
-  const [settings, setSettings] = useState({ start: 1, end: 730 });
+  const [settings, setSettings] = useState({ start: 1, end: 1177, extraRanges: [{ start: 2500, end: 2560, cdnId: 'desimms' }, { start: 10001, end: 10818, cdnId: 'hindibf' }] });
   const [curated, setCurated] = useState({ trending: [], popular: [], instaviral: [] });
   const [curatedLoading, setCuratedLoading] = useState(true);
   const [myHistory, setMyHistory] = useState([]);
@@ -276,11 +276,11 @@ export default function GalleryPage() {
 
       // ── PHASE 1: load settings + thumbnails + titles immediately ──
       const [s, t, tr] = await Promise.all([
-        secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:1, end:730 })),
+        secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start: 1, end: 1177, extraRanges: [{ start: 2500, end: 2560, cdnId: 'desimms' }, { start: 10001, end: 10818, cdnId: 'hindibf' }] })),
         fetch('/api/hwasi/thumbnails?t=' + Math.floor(Date.now() / 30000)).then(x => x.json()).catch(() => ({})),
         fetch('/api/hwasi/titles?t=' + Math.floor(Date.now() / 30000)).then(x => x.json()).catch(() => ({ titles: {} })),
       ]);
-      const st = s.error ? { start:1, end:730, deletedIds:[], extraRanges:[] } : s;
+      const st = s.error ? { start: 1, end: 1177, deletedIds: [], extraRanges: [{ start: 2500, end: 2560, cdnId: 'desimms' }, { start: 10001, end: 10818, cdnId: 'hindibf' }] } : s;
       const delSet = new Set(st.deletedIds || []);
       setSettings(st);
 
@@ -305,7 +305,7 @@ export default function GalleryPage() {
       // 3. Other extra ranges (if any, < 10000): only include existing IDs
       const otherExtraIds = (st.extraRanges || []).filter(r => r.start < 10000).flatMap(r =>
         Array.from({ length: Math.max(0, r.end - r.start + 1) }, (_, i) => r.end - i)
-          .filter(id => !delSet.has(id) && (titlesObj[String(id)] || regularThumbIds.has(id)))
+          .filter(id => !delSet.has(id))
       );
 
       // Interleave Desi (primary) and Hindi so newest videos from both CDNs always appear first
@@ -2589,6 +2589,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
   const [err, setErr] = useState(false);
   const [showCurateMenu, setShowCurateMenu] = useState(false);
   const isHovered = activePreviewId === id;
+  const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0));
   const hoverTimer = useRef(null);
   const touchStartTimeRef = useRef(0);
   const touchMovedRef = useRef(false);
@@ -2677,6 +2678,9 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
     const v = document.createElement('video');
     v.muted = true;
     v.playsInline = true;
+    v.setAttribute('playsinline', 'true');
+    v.setAttribute('webkit-playsinline', 'true');
+    v.crossOrigin = 'anonymous';
     v.loop = true;
     v.preload = 'auto';
     v.src = getPreviewCdnUrl(id);
@@ -2762,8 +2766,58 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
             </div>
           )}
 
-          {/* Canvas-rendered preview — IDM cannot see any <video> tag in the DOM */}
-          {isHovered && !disablePreview && (
+          {/* Preview button for quick 1-tap mobile/desktop preview */}
+          {!disablePreview && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (setActivePreviewId) setActivePreviewId(prev => (prev === id ? null : id));
+              }}
+              style={{
+                position: 'absolute',
+                top: 6,
+                left: 6,
+                zIndex: 6,
+                background: isHovered ? '#7c3aed' : 'rgba(0,0,0,0.75)',
+                color: '#fff',
+                fontSize: 10,
+                fontWeight: 700,
+                padding: '2px 7px',
+                borderRadius: 5,
+                border: isHovered ? '1px solid #a78bfa' : '1px solid rgba(255,255,255,0.25)',
+                cursor: 'pointer',
+                backdropFilter: 'blur(4px)',
+                lineHeight: 1.4,
+              }}
+              title={isHovered ? "Stop preview" : "Tap to preview"}
+            >
+              {isHovered ? '⏸ Preview' : '🎬 Preview'}
+            </button>
+          )}
+
+          {/* Preview: native hardware video on touch/mobile, canvas on desktop to block IDM */}
+          {isHovered && !disablePreview && isTouchDevice ? (
+            <video
+              src={getPreviewCdnUrl(id)}
+              autoPlay
+              muted
+              loop
+              playsInline
+              webkit-playsinline="true"
+              preload="auto"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                zIndex: 4,
+                pointerEvents: 'none',
+                borderRadius: 8,
+              }}
+            />
+          ) : isHovered && !disablePreview ? (
             <canvas
               ref={canvasRef}
               style={{
@@ -2779,7 +2833,7 @@ function VideoCard({ id, index, title, hasThumb, isBookmarked, isAdmin, showHash
                 transition: 'opacity .2s ease-in',
               }}
             />
-          )}
+          ) : null}
 
           {/* Quality badge */}
           <div className={styles.qualityBadge} style={{ background: qColor, zIndex: 5 }}>{quality}</div>

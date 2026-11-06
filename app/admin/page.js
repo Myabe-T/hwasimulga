@@ -127,7 +127,7 @@ export default function AdminPage() {
   const [collapsed, setCollapsed] = useState(false);
 
   // Data
-  const [settings, setSettings] = useState({ start: 1, end: 1177, cdnId: 'desimms', extraRanges: [{ start: 10001, end: 10818, cdnId: 'hindibf' }] });
+  const [settings, setSettings] = useState({ start: 1, end: 1177, cdnId: 'desimms', extraRanges: [{ start: 2500, end: 2560, cdnId: 'desimms' }, { start: 10001, end: 10818, cdnId: 'hindibf' }] });
   const [curated, setCurated] = useState({ trending: [], latest: [] });
   const [users, setUsers] = useState([]);
   const [history, setHistory] = useState([]);
@@ -543,7 +543,7 @@ export default function AdminPage() {
 
   async function loadAll(role) {
     const fetches = [
-      secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start:51, end:730, cdnId:'desimms', extraRanges:[] })),
+      secureFetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start: 1, end: 1177, cdnId: 'desimms', extraRanges: [{ start: 2500, end: 2560 }, { start: 10001, end: 10818, cdnId: 'hindibf' }] })),
       fetch('/api/hwasi/curated').then(x => x.json()).catch(() => ({})),
       secureFetch('/api/hwasi/users').then(x => x.json()).catch(() => ([])),
       secureFetch('/api/hwasi/history').then(x => x.json()).catch(() => ([])),
@@ -704,8 +704,8 @@ export default function AdminPage() {
 
   async function pickRandom50(type) {
     // Fetch current settings for ALL ranges (primary + extra CDN sources like hindibf)
-    const s = await fetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start: 1, end: 775 }));
-    const start = s.start || 1; const end = s.end || 775;
+    const s = await fetch('/api/hwasi/settings').then(x => x.json()).catch(() => ({ start: 1, end: 1177 }));
+    const start = s.start || 1; const end = s.end || 1177;
     const primaryAll = Array.from({ length: end - start + 1 }, (_, i) => i + start);
     const extraAll = (s.extraRanges || []).flatMap(r =>
       r.start >= 10000
@@ -969,7 +969,8 @@ export default function AdminPage() {
 
   // Stats for dashboard
   const deletedCount = (settings.deletedIds || []).length;
-  const extraRangesCount = Object.keys(videoTitles).filter(id => Number(id) >= 10000).length;
+  const extraRangesList = Array.isArray(settings?.extraRanges) ? settings.extraRanges : [];
+  const extraRangesCount = extraRangesList.reduce((acc, r) => acc + Math.max(0, (Number(r.end) || 0) - (Number(r.start) || 0) + 1), 0);
   const pStart = Number(settings?.start) || 1;
   const pEnd = Number(settings?.end) || 1177;
   const totalVideos = Math.max(0, (pEnd - pStart + 1) + extraRangesCount - deletedCount);

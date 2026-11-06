@@ -2220,6 +2220,7 @@ export default function WatchPage() {
 function RelatedVideoCard({ relId, title, thumbSrc, user, isPremiumVideo, onOpen, activePreviewId, setActivePreviewId }) {
   const isHovered = activePreviewId === relId;
   const [isPlayingFrame, setIsPlayingFrame] = useState(false);
+  const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0));
   const hoverTimer = useRef(null);
   const touchStartTimeRef = useRef(0);
   const touchMovedRef = useRef(false);
@@ -2314,6 +2315,7 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, isPremiumVideo, onOpen
     v.setAttribute('playsinline', '');
     v.setAttribute('webkit-playsinline', '');
     v.setAttribute('muted', '');
+    v.crossOrigin = 'anonymous';
     v.loop = true;
     v.preload = 'auto';
     v.src = `/api/hwasi/preview/${relId}`;
@@ -2386,7 +2388,57 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, isPremiumVideo, onOpen
           loading="lazy"
           onError={(e) => { e.currentTarget.style.display = 'none'; }}
         />
-        {isHovered && (
+        {/* Preview button for quick 1-tap mobile/desktop preview */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (setActivePreviewId) {
+              setActivePreviewId(prev => (prev === relId ? null : relId));
+            }
+          }}
+          style={{
+            position: 'absolute',
+            top: 6,
+            left: 6,
+            zIndex: 6,
+            background: isHovered ? '#7c3aed' : 'rgba(0,0,0,0.75)',
+            color: '#fff',
+            fontSize: 10,
+            fontWeight: 700,
+            padding: '2px 7px',
+            borderRadius: 5,
+            border: isHovered ? '1px solid #a78bfa' : '1px solid rgba(255,255,255,0.25)',
+            cursor: 'pointer',
+            backdropFilter: 'blur(4px)',
+            lineHeight: 1.4,
+          }}
+          title={isHovered ? "Stop preview" : "Tap to preview"}
+        >
+          {isHovered ? '⏸ Preview' : '🎬 Preview'}
+        </button>
+
+        {isHovered && isTouchDevice ? (
+          <video
+            src={`/api/hwasi/preview/${relId}`}
+            autoPlay
+            muted
+            loop
+            playsInline
+            webkit-playsinline="true"
+            preload="auto"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              zIndex: 3,
+              pointerEvents: 'none',
+              borderRadius: 8,
+            }}
+          />
+        ) : isHovered ? (
           <canvas
             ref={canvasRef}
             style={{
@@ -2402,7 +2454,7 @@ function RelatedVideoCard({ relId, title, thumbSrc, user, isPremiumVideo, onOpen
               transition: 'opacity .2s ease-in',
             }}
           />
-        )}
+        ) : null}
         <span className="related-badge-dur" style={{ zIndex: 4 }}>720p</span>
         {isPremiumVideo && (
           <div

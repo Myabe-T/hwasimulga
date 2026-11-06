@@ -11,6 +11,10 @@ export async function GET() {
   while (typeof settings === 'string') {
     try { settings = JSON.parse(settings); } catch { break; }
   }
+  if (settings && typeof settings === 'object') {
+    delete settings.cipher;
+    delete settings.iv;
+  }
   let deletedIds = [];
   if (session && (session.role === 'admin' || session.role === 'advisor')) {
     const rawDeleted = await redis.smembers('hwasi:deleted:index');
@@ -59,6 +63,8 @@ export async function PUT(req) {
       ? (body.extraRanges !== undefined ? body.extraRanges : cur.extraRanges)
       : [],
   };
+  delete updated.cipher;
+  delete updated.iv;
   await redis.set(KEYS.SETTINGS, JSON.stringify(updated));
   return NextResponse.json(await encryptPayload(updated));
 }

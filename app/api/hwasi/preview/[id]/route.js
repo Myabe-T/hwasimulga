@@ -25,6 +25,18 @@ async function getInstaviralIds() {
   return cachedInstaviralIds;
 }
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range, User-Agent, Origin, Accept, Content-Type',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
+
 export async function GET(req, { params }) {
   // 1. Block automated download managers and scrapers (IDM, wget, curl, etc.)
   const userAgent = req.headers.get('user-agent') || '';
