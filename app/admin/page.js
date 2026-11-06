@@ -378,6 +378,37 @@ export default function AdminPage() {
     }
   }
 
+  function handleManualIdChange(site, val) {
+    setManualCdnId(val);
+    const cid = parseInt(val, 10);
+    if (!isNaN(cid) && cid > 0) {
+      const sysId = site === 'hindibf' ? (10000 + cid) : cid;
+      if (videoTitles && videoTitles[String(sysId)]) {
+        setManualTitle(videoTitles[String(sysId)]);
+      }
+    }
+  }
+
+  function openCustomAttach(sysId) {
+    const isHindi = sysId >= 10000;
+    const cid = isHindi ? sysId - 10000 : sysId;
+    const site = isHindi ? 'hindibf' : 'desimms';
+    setManualSite(site);
+    setManualCdnId(String(cid));
+    if (videoTitles && videoTitles[String(sysId)]) {
+      setManualTitle(videoTitles[String(sysId)]);
+    } else {
+      setManualTitle('');
+    }
+    setManualThumbUrl('');
+    setManualDataUrl('');
+    setTab('scraper');
+    setTimeout(() => {
+      const el = document.getElementById('manual-add-section');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 150);
+  }
+
   function handleManualFileUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1644,6 +1675,19 @@ export default function AdminPage() {
                                   justifyContent: 'center', fontSize: 11, fontWeight: 900, color: '#000'
                                 }}>✓</div>
                               )}
+                              <button
+                                type="button"
+                                title={`Custom attach thumbnail & title for #${id}`}
+                                onClick={(e) => { e.stopPropagation(); openCustomAttach(id); }}
+                                style={{
+                                  position: 'absolute', top: 4, left: 4, zIndex: 3,
+                                  background: 'rgba(0,0,0,.75)', border: '1px solid rgba(255,255,255,.2)',
+                                  borderRadius: 4, padding: '2px 5px', fontSize: 10, color: '#fff',
+                                  cursor: 'pointer', lineHeight: 1
+                                }}
+                              >
+                                ✍️
+                              </button>
                               {hasThumb ? (
                                 <img src={id >= 10000 ? `/api/hwasi/thumb-extra/${id}` : `/api/hwasi/thumbnail/${id}`}
                                   style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }}
@@ -2102,13 +2146,13 @@ export default function AdminPage() {
               )}
 
               {/* Card 3: Manual Video Add (Thumbnail + Title) */}
-              <div className={styles.card} style={{ marginBottom: 20 }}>
+              <div id="manual-add-section" className={styles.card} style={{ marginBottom: 20 }}>
                 <div className={styles.cardHeader}>
                   <span style={{ fontSize: 24 }}>✍️</span>
                   <div style={{ flex: 1 }}>
-                    <h3 className={styles.cardTitle}>Manual Video Add (Thumbnail & Title)</h3>
+                    <h3 className={styles.cardTitle}>Custom Attach & Manual Video Add</h3>
                     <p className={styles.cardSub}>
-                      Manually add or replace a video in Redis. Automatically uploads thumbnail, saves custom title, maps CDN, and extends the gallery range!
+                      Custom attach any authentic site thumbnail & title, or add a new video into Redis. Automatically uploads thumbnail, saves custom title, maps CDN, and extends the gallery range!
                     </p>
                   </div>
                 </div>
@@ -2118,7 +2162,10 @@ export default function AdminPage() {
                     <label className={styles.fieldLabel}>Target Site / CDN Source</label>
                     <select
                       value={manualSite}
-                      onChange={e => setManualSite(e.target.value)}
+                      onChange={e => {
+                        setManualSite(e.target.value);
+                        if (manualCdnId) handleManualIdChange(e.target.value, manualCdnId);
+                      }}
                       className={styles.input}
                     >
                       <option value="desimms">DesiMMS (Primary CDN: cdn.desimms.com.co)</option>
@@ -2136,11 +2183,35 @@ export default function AdminPage() {
                       type="number"
                       placeholder={manualSite === 'hindibf' ? "e.g. 752 (System #10752)" : "e.g. 1178"}
                       value={manualCdnId}
-                      onChange={e => setManualCdnId(e.target.value)}
+                      onChange={e => handleManualIdChange(manualSite, e.target.value)}
                       className={styles.input}
                     />
                   </div>
                 </div>
+
+                {(() => {
+                  const cidNum = parseInt(manualCdnId, 10);
+                  const curSysId = (!isNaN(cidNum) && cidNum > 0) ? (manualSite === 'hindibf' ? 10000 + cidNum : cidNum) : null;
+                  const existingTitle = curSysId ? videoTitles[String(curSysId)] : null;
+                  const hasExistingThumb = curSysId ? allThumbIds.has(curSysId) : false;
+                  return curSysId ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(255,255,255,.03)', borderRadius: 8, marginBottom: 12, fontSize: 12 }}>
+                      <span style={{ color: hasExistingThumb ? '#4ade80' : '#f59e0b', fontWeight: 600 }}>
+                        {hasExistingThumb ? '✓ Video #' + curSysId + ' has thumbnail in Redis' : '⚠️ Video #' + curSysId + ' has no thumbnail'}
+                      </span>
+                      {existingTitle && manualTitle !== existingTitle && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ marginLeft: 'auto', fontSize: 11, padding: '2px 8px' }}
+                          onClick={() => setManualTitle(existingTitle)}
+                        >
+                          Use Existing Title
+                        </button>
+                      )}
+                    </div>
+                  ) : null;
+                })()}
 
                 <div style={{ marginBottom: 14 }}>
                   <label className={styles.fieldLabel}>Video Title</label>
@@ -2178,19 +2249,36 @@ export default function AdminPage() {
                 </div>
 
                 {/* Thumbnail Live Preview */}
-                {(manualDataUrl || manualThumbUrl) && (
+                {(manualDataUrl || manualThumbUrl) ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 12, background: 'rgba(255,255,255,.03)', borderRadius: 10, marginBottom: 16 }}>
                     <div style={{ width: 120, height: 80, borderRadius: 8, overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,.1)' }}>
                       <img src={manualDataUrl || manualThumbUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
                     <div>
-                      <div style={{ fontWeight: 600, color: '#fff', fontSize: 13 }}>Thumbnail Preview Loaded</div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: 13 }}>New Thumbnail Ready to Save</div>
                       <div style={{ fontSize: 11, color: 'var(--text3)' }}>
                         {manualDataUrl ? 'Compressed base64 data ready' : 'Will be downloaded & converted by server'}
                       </div>
                     </div>
                   </div>
-                )}
+                ) : (() => {
+                  const cidNum = parseInt(manualCdnId, 10);
+                  const curSysId = (!isNaN(cidNum) && cidNum > 0) ? (manualSite === 'hindibf' ? 10000 + cidNum : cidNum) : null;
+                  const hasExistingThumb = curSysId ? allThumbIds.has(curSysId) : false;
+                  return (curSysId && hasExistingThumb) ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 12, background: 'rgba(255,255,255,.03)', borderRadius: 10, marginBottom: 16 }}>
+                      <div style={{ width: 120, height: 80, borderRadius: 8, overflow: 'hidden', background: '#000', border: '1px solid rgba(124,58,237,.3)' }}>
+                        <img src={curSysId >= 10000 ? `/api/hwasi/thumb-extra/${curSysId}` : `/api/hwasi/thumbnail/${curSysId}`} alt="Current" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, color: '#4ade80', fontSize: 13 }}>Current Thumbnail in Database</div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                          Upload a new file or paste a URL above to replace/custom attach.
+                        </div>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
 
                 <button
                   className="btn btn-primary"
@@ -2198,7 +2286,11 @@ export default function AdminPage() {
                   onClick={handleManualSave}
                   style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                 >
-                  {manualSaving ? '⏳ Saving Video to Redis...' : '💾 Save Video to Database'}
+                  {manualSaving ? '⏳ Saving Video to Redis...' : (() => {
+                    const cidNum = parseInt(manualCdnId, 10);
+                    const curSysId = (!isNaN(cidNum) && cidNum > 0) ? (manualSite === 'hindibf' ? 10000 + cidNum : cidNum) : null;
+                    return curSysId ? '💾 Custom Attach / Update #' + curSysId : '💾 Save Video to Database';
+                  })()}
                 </button>
               </div>
             </div>

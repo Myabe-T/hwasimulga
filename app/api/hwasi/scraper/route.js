@@ -192,9 +192,9 @@ export async function GET(req) {
                 cdnUrl = m[0];
               }
 
-              if (!thumbUrl) {
-                const posterMatch = urlDecoded.match(/poster=["']([^"']+)["']/i);
-                if (posterMatch) thumbUrl = posterMatch[1];
+              const posterMatch = urlDecoded.match(/poster=["']([^"']+)["']/i);
+              if (posterMatch && posterMatch[1]) {
+                thumbUrl = posterMatch[1];
               }
             }
           }
@@ -306,11 +306,13 @@ export async function POST(req) {
       // 1. If thumbnail is a remote HTTP URL and no dataUrl is provided, download and convert to base64
       if (!dataUrl && item.thumbnail && item.thumbnail.startsWith('http')) {
         try {
+          let refererOrigin = cfg.cdnBase;
+          try { refererOrigin = new URL(item.thumbnail).origin + '/'; } catch {}
           const tRes = await fetch(item.thumbnail, {
             headers: {
               'User-Agent': UA,
               'Accept': 'image/*,*/*',
-              'Referer': cfg.cdnBase,
+              'Referer': refererOrigin,
             },
           });
           if (tRes.ok) {
